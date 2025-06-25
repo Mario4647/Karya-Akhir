@@ -713,7 +713,7 @@ const Transactions = ({ user }) => {
                                     className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all duration-300 flex items-center justify-center gap-2"
                                 >
                                     <i className="bx bx-save text-lg"></i>
-                                    Simpan Perubahan
+                                    Simpan
                                 </button>
                                 <button
                                     type="button"
