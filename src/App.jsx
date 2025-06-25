@@ -7,6 +7,7 @@ import Transactions from "./components/Transactions";
 import Statistics from "./components/Statistics";
 import Budget from "./components/Budget";
 import ScrollToTop from "./components/ScrollToTop";
+import Footer from "./components/Footer";
 
 import Form from "./auth/Form";
 
@@ -28,6 +29,7 @@ function App() {
               <Transactions />
               <Statistics />
               <Budget />
+              <Footer />
               <ScrollToTop />
             </>
           }
