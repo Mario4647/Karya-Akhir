@@ -67,7 +67,7 @@ const Budget = () => {
             category: formData.category,
             amount: parseFloat(formData.amount),
             period: formData.period,
-            spent: 0, // Placeholder: to be calculated from transactions
+            spent: 0, // Placeholder
             createdAt: new Date().toISOString()
         };
         setBudgets([...budgets, newBudget]);
@@ -100,7 +100,7 @@ const Budget = () => {
         <section id="budget" className="min-h-screen overflow-hidden bg-white pt-20">
             <div className="container">
                 <div className="max-w-7xl mx-auto px-4 mt-6">
-                    <div className="text-center mb-8" data-aos-duration="1000" data-aos="fade-down">
+                    <div className="text-center mb-8" data-aos="fade-down" data-aos-duration="1000">
                         <h2 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-gray-800 via-gray-700 to-gray-800 bg-clip-text text-transparent leading-tight">
                             Rencana Anggaran
                         </h2>
@@ -109,7 +109,7 @@ const Budget = () => {
                         </p>
                         <i className="bx bx-wallet text-5xl text-indigo-600 mt-4 animate-bounce"></i>
                     </div>
-                    <div className="relative bg-white backdrop-blur-xl shadow-lg border border-white text-gray-800 p-8 md:p-10 rounded-lg transition-all duration-500 mb-4" data-aos-delay="600" data-aos="fade-up">
+                    <div className="relative bg-white backdrop-blur-xl shadow-lg border border-white text-gray-800 p-8 md:p-10 rounded-lg transition-all duration-500 mb-4" data-aos="fade-up" data-aos-delay="600">
                         {submitSuccess && (
                             <div className="mb-6 p-4 bg-green-50 border border-green-200/50 rounded-lg text-green-800 flex items-center gap-3 animate-pulse">
                                 <i className="bx bx-check-circle text-xl text-green-500"></i>
@@ -117,74 +117,86 @@ const Budget = () => {
                             </div>
                         )}
                         <form onSubmit={handleSubmit} className="mb-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            <div className="relative">
+                            <div className="relative min-h-[80px]">
                                 <label className="block text-sm font-medium text-gray-600 mb-2">
                                     Kategori <span className="text-red-500">*</span>
                                 </label>
-                                <i className="bx bx-category absolute left-3 top-[calc(50%+16px)] transform -translate-y-1/2 text-gray-500 text-lg"></i>
-                                <select
-                                    name="category"
-                                    value={formData.category}
-                                    onChange={handleChange}
-                                    className={`w-full pl-10 pr-10 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 appearance-none bg-white ${errors.category ? "border-red-300 bg-red-50" : ""}`}
-                                >
-                                    <option value="">Pilih Kategori</option>
-                                    {categories.map((cat) => (
-                                        <option key={cat.value} value={cat.value}>{cat.label}</option>
-                                    ))}
-                                </select>
-                                <i className="bx bx-chevron-down absolute right-3 top-[calc(50%+16px)] transform -translate-y-1/2 text-gray-500 text-lg"></i>
-                                {errors.category && (
-                                    <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
-                                        <i className="bx bx-error-circle"></i>
-                                        {errors.category}
-                                    </p>
-                                )}
+                                <div className="relative">
+                                    <i className="bx bx-category absolute left-3 top-4 text-gray-500 text-lg z-10"></i>
+                                    <select
+                                        name="category"
+                                        value={formData.category}
+                                        onChange={handleChange}
+                                        className={`w-full pl-10 pr-10 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 appearance-none bg-white ${errors.category ? "border-red-300 bg-red-50" : ""}`}
+                                    >
+                                        <option value="">Pilih Kategori</option>
+                                        {categories.map((cat) => (
+                                            <option key={cat.value} value={cat.value}>{cat.label}</option>
+                                        ))}
+                                    </select>
+                                    <i className="bx bx-chevron-down absolute right-3 top-4 text-gray-500 text-lg z-10"></i>
+                                </div>
+                                <div className="h-5 mt-1">
+                                    {errors.category && (
+                                        <p className="text-red-500 text-sm flex items-center gap-1">
+                                            <i className="bx bx-error-circle"></i>
+                                            {errors.category}
+                                        </p>
+                                    )}
+                                </div>
                             </div>
-                            <div className="relative">
+                            <div className="relative min-h-[80px]">
                                 <label className="block text-sm font-medium text-gray-600 mb-2">
                                     Jumlah <span className="text-red-500">*</span>
                                 </label>
-                                <i className="bx bx-money absolute left-3 top-[calc(50%+16px)] transform -translate-y-1/2 text-gray-500 text-lg"></i>
-                                <input
-                                    type="number"
-                                    name="amount"
-                                    value={formData.amount}
-                                    onChange={handleChange}
-                                    placeholder="Jumlah (Rp)"
-                                    min="0"
-                                    step="1000"
-                                    className={`w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${errors.amount ? "border-red-300 bg-red-50" : ""}`}
-                                />
-                                {errors.amount && (
-                                    <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
-                                        <i className="bx bx-error-circle"></i>
-                                        {errors.amount}
-                                    </p>
-                                )}
+                                <div className="relative">
+                                    <i className="bx bx-money absolute left-3 top-4 text-gray-500 text-lg z-10"></i>
+                                    <input
+                                        type="number"
+                                        name="amount"
+                                        value={formData.amount}
+                                        onChange={handleChange}
+                                        placeholder="Jumlah (Rp)"
+                                        min="0"
+                                        step="1000"
+                                        className={`w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${errors.amount ? "border-red-300 bg-red-50" : ""}`}
+                                    />
+                                </div>
+                                <div className="h-5 mt-1">
+                                    {errors.amount && (
+                                        <p className="text-red-500 text-sm flex items-center gap-1">
+                                            <i className="bx bx-error-circle"></i>
+                                            {errors.amount}
+                                        </p>
+                                    )}
+                                </div>
                             </div>
-                            <div className="relative">
+                            <div className="relative min-h-[80px]">
                                 <label className="block text-sm font-medium text-gray-600 mb-2">
                                     Periode <span className="text-red-500">*</span>
                                 </label>
-                                <i className="bx bx-calendar absolute left-3 top-[calc(50%+16px)] transform -translate-y-1/2 text-gray-500 text-lg"></i>
-                                <select
-                                    name="period"
-                                    value={formData.period}
-                                    onChange={handleChange}
-                                    className={`w-full pl-10 pr-10 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 appearance-none bg-white ${errors.period ? "border-red-300 bg-red-50" : ""}`}
-                                >
-                                    {periods.map((period) => (
-                                        <option key={period.value} value={period.value}>{period.label}</option>
-                                    ))}
-                                </select>
-                                <i className="bx bx-chevron-down absolute right-3 top-[calc(50%+16px)] transform -translate-y-1/2 text-gray-500 text-lg"></i>
-                                {errors.period && (
-                                    <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
-                                        <i className="bx bx-error-circle"></i>
-                                        {errors.period}
-                                    </p>
-                                )}
+                                <div className="relative">
+                                    <i className="bx bx-calendar absolute left-3 top-4 text-gray-500 text-lg z-10"></i>
+                                    <select
+                                        name="period"
+                                        value={formData.period}
+                                        onChange={handleChange}
+                                        className={`w-full pl-10 pr-10 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 appearance-none bg-white ${errors.period ? "border-red-300 bg-red-50" : ""}`}
+                                    >
+                                        {periods.map((period) => (
+                                            <option key={period.value} value={period.value}>{period.label}</option>
+                                        ))}
+                                    </select>
+                                    <i className="bx bx-chevron-down absolute right-3 top-4 text-gray-500 text-lg z-10"></i>
+                                </div>
+                                <div className="h-5 mt-1">
+                                    {errors.period && (
+                                        <p className="text-red-500 text-sm flex items-center gap-1">
+                                            <i className="bx bx-error-circle"></i>
+                                            {errors.period}
+                                        </p>
+                                    )}
+                                </div>
                             </div>
                             <div className="sm:col-span-3 mt-4">
                                 <button
