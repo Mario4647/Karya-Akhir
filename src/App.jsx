@@ -1,7 +1,7 @@
 import { Routes, Route } from "react-router-dom";
 
 import Navbar from "./components/Navbar";
-import Header from "./components/Header";
+import Dashboard from "./components/Dashboard";
 import Add from "./components/Add";
 import Transactions from "./components/Transactions";
 import Statistics from "./components/Statistics";
@@ -23,7 +23,7 @@ function App() {
           element={
             <>
               <Navbar />
-              <Header />
+              <Dashboard />
               <Add />
               <Transactions />
               <Statistics />
