@@ -8,7 +8,7 @@ const Header = () => {
         day: "numeric"
     });
 
-    const [namaUser] = useState("Pengguna");
+    const [namaUser] = useState("Hizkia Siahaan");
 
     return (
         <>
