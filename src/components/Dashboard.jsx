@@ -150,17 +150,19 @@ const Dashboard = ({ user }) => {
                                         <span className="text-sm text-white">✓</span>
                                     </div>
                                 </div>
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-3">
-                                        <h2 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-gray-800 via-gray-700 to-gray-800 bg-clip-text text-transparent leading-tight">
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2 mb-3">
+                                        <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-gray-800 via-gray-700 to-gray-800 bg-clip-text text-transparent leading-tight truncate">
                                             Selamat datang kembali,
                                         </h2>
-                                        <div className="animate-wave text-2xl origin-bottom">👋</div>
+                                        <div className="animate-wave text-xl sm:text-2xl origin-bottom">👋</div>
                                     </div>
-                                    <h3 className="text-2xl md:text-3xl font-semibold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent mb-4">
+
+                                    <h3 className="text-xl sm:text-2xl md:text-3xl font-semibold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent mb-4 truncate">
                                         {namaUser}
                                     </h3>
                                 </div>
+
                             </div>
                             <div
                                 className="space-y-4"
@@ -175,9 +177,9 @@ const Dashboard = ({ user }) => {
                                     </span>
                                 </div>
                                 <p className="text-base md:text-lg text-gray-700 leading-relaxed pl-5 border-l-4 border-gradient-to-b border-blue-500/50">
-                                    Kelola keuanganmu dengan bijak untuk masa depan yang lebih cerah. 
-                                    Mulai dari mencatat pemasukan dan pengeluaran, hingga merencanakan anggaran bulanan, setiap langkah kecil membawa kamu lebih dekat ke tujuan finansialmu. 
-                                    Tetap disiplin, pantau pengeluaran, dan pastikan anggaranmu sesuai dengan prioritas hidupmu. 
+                                    Kelola keuanganmu dengan bijak untuk masa depan yang lebih cerah.
+                                    Mulai dari mencatat pemasukan dan pengeluaran, hingga merencanakan anggaran bulanan, setiap langkah kecil membawa kamu lebih dekat ke tujuan finansialmu.
+                                    Tetap disiplin, pantau pengeluaran, dan pastikan anggaranmu sesuai dengan prioritas hidupmu.
                                     <span className="inline-block ml-2 text-blue-600 font-semibold">
                                         Yuk, mulai hari ini dengan langkah yang produktif menuju kebebasan finansial!
                                     </span>
