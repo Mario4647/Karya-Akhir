@@ -19,29 +19,9 @@ function App() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsLoading(false);
-    }, 2000); // 2-second delay
+    }, 5000); // 2-second delay
     return () => clearTimeout(timer);
   }, []);
-
-  // Loading text messages for animation
-  const loadingMessages = [
-    "Tracking your finances...",
-    "Managing your budget...",
-    "Planning your savings...",
-    "Analyzing your expenses...",
-  ];
-
-  const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
-
-  // Cycle through loading messages
-  useEffect(() => {
-    if (isLoading) {
-      const interval = setInterval(() => {
-        setCurrentMessageIndex((prev) => (prev + 1) % loadingMessages.length);
-      }, 800); // Change message every 0.8 seconds
-      return () => clearInterval(interval);
-    }
-  }, [isLoading]);
 
   if (isLoading) {
     return (
@@ -118,14 +98,6 @@ function App() {
             </div>
           </div>
         </section>
-
-        {/* Animated Text at Bottom */}
-        <div className="fixed bottom-10 left-0 right-0 text-center">
-          <div className="text-gray-600 text-lg font-semibold animate-fade-in-out">
-            {loadingMessages[currentMessageIndex]}
-          </div>
-          <div className="mt-2 text-gray-500 text-sm">Money Management Tracker</div>
-        </div>
       </div>
     );
   }
