@@ -1,23 +1,63 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "../supabaseClient"; // Import supabase client
 
 const Header = () => {
     const today = new Date().toLocaleDateString("id-ID", {
         weekday: "long",
         year: "numeric",
         month: "long",
-        day: "numeric"
+        day: "numeric",
     });
 
-    const [namaUser] = useState("Hizkia Siahaan");
+    const [namaUser, setNamaUser] = useState(""); // Inisialisasi kosong
+    const [loading, setLoading] = useState(true); // State untuk loading
+
+    // Ambil data pengguna saat komponen dimuat
+    useEffect(() => {
+        const fetchUser = async () => {
+            try {
+                const { data: { user }, error } = await supabase.auth.getUser();
+                if (error) {
+                    console.error("Gagal mengambil pengguna:", error.message);
+                    setNamaUser("Tamu"); // Fallback jika error
+                } else if (user && user.email) {
+                    setNamaUser(user.email); // Gunakan email sebagai namaUser
+                } else {
+                    setNamaUser("Tamu"); // Fallback jika tidak ada pengguna
+                }
+            } catch (err) {
+                console.error("Kesalahan tak terduga:", err);
+                setNamaUser("Tamu");
+            } finally {
+                setLoading(false); // Selesai loading
+            }
+        };
+
+        fetchUser();
+    }, []);
+
+    // Tampilkan loading saat mengambil data
+    if (loading) {
+        return <div>Memuat...</div>;
+    }
 
     return (
         <>
-            <section id="dashboard" className="min-h-screen pt-24 overflow-hidden pb-6" data-aos-duration="1000" data-aos="fade-down">
+            <section
+                id="dashboard"
+                className="min-h-screen pt-24 overflow-hidden pb-6"
+                data-aos-duration="1000"
+                data-aos="fade-down"
+            >
                 <div className="container">
                     <div className="max-w-7xl mx-auto px-4 mt-6">
                         <div className="relative">
                             <div className="relative bg-white backdrop-blur-xl shadow-lg border border-white text-gray-800 p-8 md:p-10 rounded-2xl transition-all duration-500 mb-4">
-                                <div className="flex items-start gap-4 mb-6" data-aos-delay="600" data-aos="fade-down">
+                                <div
+                                    className="flex items-start gap-4 mb-6"
+                                    data-aos-delay="600"
+                                    data-aos="fade-down"
+                                >
                                     <div className="relative">
                                         <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg transform hover:scale-110 transition-all duration-300">
                                             <i className="bx bx-id-card text-2xl text-white"></i>
@@ -38,7 +78,11 @@ const Header = () => {
                                         </h3>
                                     </div>
                                 </div>
-                                <div className="space-y-3" data-aos-delay="600" data-aos="fade-left">
+                                <div
+                                    className="space-y-3"
+                                    data-aos-delay="600"
+                                    data-aos="fade-left"
+                                >
                                     <div className="flex items-center gap-3 text-sm md:text-base text-gray-600">
                                         <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
                                         <span className="font-medium">Hari ini</span>
@@ -54,14 +98,22 @@ const Header = () => {
                                         <span className="inline-block ml-1 animate-pulse">💪</span>
                                     </p>
                                 </div>
-                                <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4" data-aos-delay="600" data-aos="fade-up">
+                                <div
+                                    className="mt-8 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4"
+                                    data-aos-delay="600"
+                                    data-aos="fade-up"
+                                >
                                     <div className="flex items-center p-4 bg-gradient-to-br shadow-lg from-blue-50 to-blue-100/50 rounded-xl border border-blue-200/50 transition-all duration-300 hover:scale-105 hover:shadow-lg">
                                         <div className="w-10 h-10 bg-blue-500 shadow-lg rounded-lg flex items-center justify-center mr-4">
                                             <i className="bx bx-wallet text-white text-lg"></i>
                                         </div>
                                         <div>
-                                            <div className="text-sm text-gray-600 font-medium">Saldo Hari Ini</div>
-                                            <div className="text-lg font-semibold text-gray-900">Rp 0</div>
+                                            <div className="text-sm text-gray-600 font-medium">
+                                                Saldo Hari Ini
+                                            </div>
+                                            <div className="text-lg font-semibold text-gray-900">
+                                                Rp 0
+                                            </div>
                                         </div>
                                     </div>
                                     <div className="flex items-center shadow-lg p-4 bg-gradient-to-br from-green-50 to-green-100/50 rounded-xl border border-green-200/50 transition-all duration-300 hover:scale-105 hover:shadow-lg">
@@ -69,8 +121,12 @@ const Header = () => {
                                             <i className="bx bx-trending-up text-white text-lg"></i>
                                         </div>
                                         <div>
-                                            <div className="text-sm text-gray-600 font-medium">Pemasukan</div>
-                                            <div className="text-lg font-semibold text-gray-900">Rp 0</div>
+                                            <div className="text-sm text-gray-600 font-medium">
+                                                Pemasukan
+                                            </div>
+                                            <div className="text-lg font-semibold text-gray-900">
+                                                Rp 0
+                                            </div>
                                         </div>
                                     </div>
                                     <div className="flex shadow-lg items-center p-4 bg-gradient-to-br from-red-50 to-red-100/50 rounded-xl border border-red-200/50 transition-all duration-300 hover:scale-105 hover:shadow-lg">
@@ -78,8 +134,12 @@ const Header = () => {
                                             <i className="bx bx-trending-down text-white text-lg"></i>
                                         </div>
                                         <div>
-                                            <div className="text-sm text-gray-600 font-medium">Pengeluaran</div>
-                                            <div className="text-lg font-semibold text-gray-900">Rp 0</div>
+                                            <div className="text-sm text-gray-600 font-medium">
+                                                Pengeluaran
+                                            </div>
+                                            <div className="text-lg font-semibold text-gray-900">
+                                                Rp 0
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -89,9 +149,16 @@ const Header = () => {
                 </div>
                 <style>{`
                     @keyframes wave {
-                        0%, 100% { transform: rotate(0deg); }
-                        25% { transform: rotate(-10deg); }
-                        75% { transform: rotate(10deg); }
+                        0%,
+                        100% {
+                            transform: rotate(0deg);
+                        }
+                        25% {
+                            transform: rotate(-10deg);
+                        }
+                        75% {
+                            transform: rotate(10deg);
+                        }
                     }
                     .animate-wave {
                         animation: wave 2s ease-in-out infinite;
