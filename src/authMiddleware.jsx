@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "./supabaseClient"; 
+import { supabase } from "./supabaseClient";
 import { useNavigate } from "react-router-dom";
 
 export const useAuth = () => {
@@ -8,6 +8,7 @@ export const useAuth = () => {
     const navigate = useNavigate();
 
     useEffect(() => {
+        // Check initial authentication state
         const checkAuth = async () => {
             try {
                 const { data: { user }, error } = await supabase.auth.getUser();
@@ -20,7 +21,7 @@ export const useAuth = () => {
             } catch (err) {
                 console.error("Auth check error:", err);
                 setUser(null);
-                navigate("/login");
+                navigate("/auth");
             } finally {
                 setLoading(false);
             }
@@ -28,7 +29,7 @@ export const useAuth = () => {
 
         checkAuth();
 
-
+        // Listen for auth state changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
             if (event === "SIGNED_IN") {
                 setUser(session?.user || null);
@@ -38,7 +39,22 @@ export const useAuth = () => {
             }
         });
 
-        return () => subscription.unsubscribe();
+        // Handle browser close to trigger logout
+        const handleBeforeUnload = async () => {
+            try {
+                await supabase.auth.signOut();
+            } catch (err) {
+                console.error("Error during sign out on browser close:", err);
+            }
+        };
+
+        window.addEventListener("beforeunload", handleBeforeUnload);
+
+        // Cleanup
+        return () => {
+            subscription.unsubscribe();
+            window.removeEventListener("beforeunload", handleBeforeUnload);
+        };
     }, [navigate]);
 
     return { user, loading };
@@ -53,7 +69,7 @@ export const withAuth = (Component) => {
         }
 
         if (!user) {
-            return null; 
+            return null;
         }
 
         return <Component {...props} user={user} />;
