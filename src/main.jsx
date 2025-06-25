@@ -10,10 +10,17 @@ import 'boxicons/css/boxicons.min.css'
 import AOS from 'aos'
 import 'aos/dist/aos.css'
 
-AOS.init({duration: 1000, once: false});
+// React Router
+import { BrowserRouter } from 'react-router-dom'
 
+// Init AOS
+AOS.init({ duration: 1000, once: false })
+
+// Render app
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <App />
-  </StrictMode>,
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
+  </StrictMode>
 )

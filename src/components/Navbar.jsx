@@ -1,9 +1,12 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { navbarData } from "../data/navbarData.jsx";
+import { supabase } from "../supabaseClient";
 
 const Navbar = () => {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [activeSection, setActiveSection] = useState('dashboard');
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
 
     const toggleMobileMenu = () => {
         setIsMobileMenuOpen(!isMobileMenuOpen);
@@ -19,6 +22,19 @@ const Navbar = () => {
     };
 
     useEffect(() => {
+        // Check initial session
+        const checkSession = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            setIsLoggedIn(!!session);
+        };
+        checkSession();
+
+        // Listen for auth state changes
+        const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+            setIsLoggedIn(!!session);
+        });
+
+        // IntersectionObserver for active section
         const observerOptions = {
             root: null,
             rootMargin: '-100px 0px -50% 0px',
@@ -44,6 +60,7 @@ const Navbar = () => {
 
         return () => {
             observer.disconnect();
+            authListener.subscription.unsubscribe();
         };
     }, []);
 
@@ -76,6 +93,18 @@ const Navbar = () => {
                                     </a>
                                 </li>
                             ))}
+                            {!isLoggedIn && (
+                                <li>
+                                    <Link
+                                        to="/auth"
+                                        onClick={closeMobileMenu}
+                                        className="flex items-center gap-2 text-sm lg:text-base px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg shadow-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-300"
+                                    >
+                                        <i className="bx bx-log-in text-lg"></i>
+                                        <span>Login</span>
+                                    </Link>
+                                </li>
+                            )}
                         </ul>
                         <button
                             onClick={toggleMobileMenu}
@@ -121,6 +150,18 @@ const Navbar = () => {
                                 </a>
                             </li>
                         ))}
+                        {!isLoggedIn && (
+                            <li>
+                                <Link
+                                    to="/auth"
+                                    onClick={closeMobileMenu}
+                                    className="flex items-center gap-3 p-3 w-full text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg border-l-4 border-blue-500 hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 group"
+                                >
+                                    <i className="bx bx-log-in text-xl group-hover:scale-110 transition-transform duration-200"></i>
+                                    <span className="text-base font-medium">Login</span>
+                                </Link>
+                            </li>
+                        )}
                     </ul>
                 </div>
                 <div className="border-t border-gray-400 p-6 bg-white shadow-lg">

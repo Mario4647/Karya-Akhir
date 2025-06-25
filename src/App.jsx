@@ -1,3 +1,4 @@
+import { Routes, Route } from "react-router-dom";
 
 import Navbar from "./components/Navbar";
 import Header from "./components/Header";
@@ -6,18 +7,34 @@ import Transactions from "./components/Transactions";
 import Statistics from "./components/Statistics";
 import Budget from "./components/Budget";
 import ScrollToTop from "./components/ScrollToTop";
+
+import Form from "./auth/Form";
+
 function App() {
   return (
     <>
-     <Navbar />
-     <Header />
-     <Add />
-     <Transactions />
-     <Statistics />
-     <Budget />
-     <ScrollToTop />
+      <Routes>
+        {/* Route untuk halaman login */}
+        <Route path="/auth" element={<Form />} />
+
+        {/* Route untuk halaman utama (dashboard) */}
+        <Route
+          path="/"
+          element={
+            <>
+              <Navbar />
+              <Header />
+              <Add />
+              <Transactions />
+              <Statistics />
+              <Budget />
+              <ScrollToTop />
+            </>
+          }
+        />
+      </Routes>
     </>
-  )
+  );
 }
 
-export default App
+export default App;
