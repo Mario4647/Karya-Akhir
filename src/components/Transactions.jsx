@@ -1,14 +1,18 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "../supabaseClient";
+import { withAuth } from "../authMiddleware";
 
-const Transactions = () => {
+const Transactions = ({ user }) => {
     const [filter, setFilter] = useState({
         type: "all",
         category: "",
         startDate: "",
-        endDate: ""
+        endDate: "",
     });
 
     const [transactions, setTransactions] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
     const categories = {
         income: [
@@ -17,7 +21,7 @@ const Transactions = () => {
             { value: "investasi", label: "Investasi" },
             { value: "bonus", label: "Bonus" },
             { value: "bisnis", label: "Bisnis" },
-            { value: "lainnya", label: "Lainnya" }
+            { value: "lainnya", label: "Lainnya" },
         ],
         expense: [
             { value: "makanan", label: "Makanan" },
@@ -27,9 +31,34 @@ const Transactions = () => {
             { value: "kesehatan", label: "Kesehatan" },
             { value: "pendidikan", label: "Pendidikan" },
             { value: "belanja", label: "Belanja" },
-            { value: "lainnya", label: "Lainnya" }
-        ]
+            { value: "lainnya", label: "Lainnya" },
+        ],
     };
+
+    useEffect(() => {
+        const fetchTransactions = async () => {
+            try {
+                setLoading(true);
+                setError(null);
+                const { data, error } = await supabase
+                    .from("transactions")
+                    .select("*")
+                    .eq("user_id", user.id)
+                    .order("date", { ascending: false });
+                if (error) {
+                    throw error;
+                }
+                setTransactions(data || []);
+            } catch (err) {
+                setError("Gagal memuat transaksi: " + err.message);
+                console.error("Fetch error:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchTransactions();
+    }, [user.id]);
 
     const handleFilterChange = (e) => {
         const { name, value } = e.target;
@@ -40,52 +69,95 @@ const Transactions = () => {
         e.preventDefault();
         let filtered = transactions;
         if (filter.type !== "all") {
-            filtered = filtered.filter(t => t.type === filter.type);
+            filtered = filtered.filter((t) => t.type === filter.type);
         }
         if (filter.category) {
-            filtered = filtered.filter(t => t.category === filter.category);
+            filtered = filtered.filter((t) => t.category === filter.category);
         }
         if (filter.startDate) {
-            filtered = filtered.filter(t => t.date >= filter.startDate);
+            filtered = filtered.filter((t) => t.date >= filter.startDate);
         }
         if (filter.endDate) {
-            filtered = filtered.filter(t => t.date <= filter.endDate);
+            filtered = filtered.filter((t) => t.date <= filter.endDate);
         }
         setTransactions(filtered);
     };
 
-    const handleResetFilter = () => {
+    const handleResetFilter = async () => {
         setFilter({
             type: "all",
             category: "",
             startDate: "",
-            endDate: ""
+            endDate: "",
         });
-        setTransactions([]);
+        try {
+            setLoading(true);
+            setError(null);
+            const { data, error } = await supabase
+                .from("transactions")
+                .select("*")
+                .eq("user_id", user.id)
+                .order("date", { ascending: false });
+            if (error) {
+                throw error;
+            }
+            setTransactions(data || []);
+        } catch (err) {
+            setError("Gagal memuat transaksi: " + err.message);
+            console.error("Fetch error:", err);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleEdit = (id) => {
         console.log("Edit transaction ID:", id);
     };
 
-    const handleDelete = (id) => {
-        console.log("Delete transaction ID:", id);
-        setTransactions(transactions.filter(t => t.id !== id));
+    const handleDelete = async (id) => {
+        try {
+            const { error } = await supabase
+                .from("transactions")
+                .delete()
+                .eq("id", id)
+                .eq("user_id", user.id);
+            if (error) {
+                throw error;
+            }
+            setTransactions(transactions.filter((t) => t.id !== id));
+        } catch (err) {
+            setError("Gagal menghapus transaksi: " + err.message);
+            console.error("Delete error:", err);
+        }
     };
 
     const formatCurrency = (value) => {
-        return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(value);
+        return new Intl.NumberFormat("id-ID", {
+            style: "currency",
+            currency: "IDR",
+        }).format(value);
     };
 
     const formatDate = (date) => {
-        return new Date(date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+        return new Date(date).toLocaleDateString("id-ID", {
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+        });
     };
 
     return (
-        <section id="transactions" className="min-h-screen bg-white overflow-hidden pt-20">
+        <section
+            id="transactions"
+            className="min-h-screen bg-white overflow-hidden pt-20"
+        >
             <div className="container">
                 <div className="max-w-7xl mx-auto px-4 mt-6">
-                    <div className="text-center mb-8" data-aos-duration="1000" data-aos="fade-down">
+                    <div
+                        className="text-center mb-8"
+                        data-aos-duration="1000"
+                        data-aos="fade-down"
+                    >
                         <h2 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-gray-800 via-gray-700 to-gray-800 bg-clip-text text-transparent leading-tight">
                             Daftar Transaksi
                         </h2>
@@ -94,8 +166,21 @@ const Transactions = () => {
                         </p>
                         <i className="bx bx-list-ul text-5xl text-indigo-600 mt-4 animate-bounce"></i>
                     </div>
-                    <div className="relative bg-white backdrop-blur-xl shadow-lg border border-white text-gray-800 p-8 md:p-10 rounded-lg transition-all duration-500 mb-4" data-aos-delay="600" data-aos="fade-up">
-                        <form onSubmit={handleFilterSubmit} className="mb-8 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div
+                        className="relative bg-white backdrop-blur-xl shadow-lg border border-white text-gray-800 p-8 md:p-10 rounded-lg transition-all duration-500 mb-4"
+                        data-aos-delay="600"
+                        data-aos="fade-up"
+                    >
+                        {error && (
+                            <div className="mb-6 p-4 bg-red-50 border border-red-200/50 rounded-xl text-red-800 flex items-center gap-3">
+                                <i className="bx bx-error-circle text-xl text-red-500"></i>
+                                <span>{error}</span>
+                            </div>
+                        )}
+                        <form
+                            onSubmit={handleFilterSubmit}
+                            className="mb-8 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4"
+                        >
                             <div className="relative">
                                 <label className="block text-sm font-medium text-gray-600 mb-2">
                                     Tipe Transaksi
@@ -125,8 +210,22 @@ const Transactions = () => {
                                     className="w-full pl-10 pr-10 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 appearance-none bg-white"
                                 >
                                     <option value="">Semua</option>
-                                    {[...categories.income.map(cat => ({ ...cat, type: 'income' })), ...categories.expense.map(cat => ({ ...cat, type: 'expense' }))].map((cat) => (
-                                        <option key={`${cat.type}-${cat.value}`} value={cat.value}>{cat.label}</option>
+                                    {[
+                                        ...categories.income.map((cat) => ({
+                                            ...cat,
+                                            type: "income",
+                                        })),
+                                        ...categories.expense.map((cat) => ({
+                                            ...cat,
+                                            type: "expense",
+                                        })),
+                                    ].map((cat) => (
+                                        <option
+                                            key={`${cat.type}-${cat.value}`}
+                                            value={cat.value}
+                                        >
+                                            {cat.label}
+                                        </option>
                                     ))}
                                 </select>
                                 <i className="bx bx-chevron-down absolute right-3 top-[calc(50%+16px)] transform -translate-y-1/2 text-gray-500 text-lg"></i>
@@ -175,60 +274,104 @@ const Transactions = () => {
                                 </button>
                             </div>
                         </form>
-                        <div className="overflow-x-auto shadow-lg">
-                            <table className="w-full border-collapse">
-                                <thead>
-                                    <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                                        <th className="px-4 py-3 text-left text-sm font-semibold text-white">Tanggal</th>
-                                        <th className="px-4 py-3 text-left text-sm font-semibold text-white">Kategori</th>
-                                        <th className="px-4 py-3 text-left text-sm font-semibold text-white">Jumlah</th>
-                                        <th className="px-4 py-3 text-left text-sm font-semibold text-white">Deskripsi</th>
-                                        <th className="px-4 py-3 text-left text-sm font-semibold text-white">Aksi</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {transactions.length === 0 ? (
-                                        <tr>
-                                            <td colSpan="5" className="px-4 py-6 text-center text-gray-700 text-base font-medium">
-                                                <div className="flex flex-col items-center gap-2">
-                                                    <i className="bx bx-info-circle text-3xl text-gray-500"></i>
-                                                    <span>Belum ada transaksi</span>
-                                                </div>
-                                            </td>
+                        {loading ? (
+                            <div className="text-center py-6">
+                                <i className="bx bx-loader-alt text-3xl text-indigo-600 animate-spin"></i>
+                                <p className="text-gray-700 mt-2">Memuat transaksi...</p>
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto shadow-lg">
+                                <table className="w-full border-collapse">
+                                    <thead>
+                                        <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
+                                            <th className="px-4 py-3 text-left text-sm font-semibold text-white">
+                                                Tanggal
+                                            </th>
+                                            <th className="px-4 py-3 text-left text-sm font-semibold text-white">
+                                                Kategori
+                                            </th>
+                                            <th className="px-4 py-3 text-left text-sm font-semibold text-white">
+                                                Jumlah
+                                            </th>
+                                            <th className="px-4 py-3 text-left text-sm font-semibold text-white">
+                                                Deskripsi
+                                            </th>
+                                            <th className="px-4 py-3 text-left text-sm font-semibold text-white">
+                                                Aksi
+                                            </th>
                                         </tr>
-                                    ) : (
-                                        transactions.map((transaction) => (
-                                            <tr key={transaction.id} className="border-t border-gray-200 hover:bg-gray-50 transition-all duration-200">
-                                                <td className="px-4 py-3 text-sm text-gray-800">{formatDate(transaction.date)}</td>
-                                                <td className="px-4 py-3 text-sm text-gray-800 capitalize">
-                                                    {[...categories.income, ...categories.expense].find(cat => cat.value === transaction.category)?.label || transaction.category}
-                                                </td>
-                                                <td className={`px-4 py-3 text-sm font-semibold ${transaction.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                                                    {formatCurrency(transaction.amount)}
-                                                </td>
-                                                <td className="px-4 py-3 text-sm text-gray-800">{transaction.description || '-'}</td>
-                                                <td className="px-4 py-3 flex gap-2">
-                                                    <button
-                                                        onClick={() => handleEdit(transaction.id)}
-                                                        className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-all duration-200"
-                                                        title="Edit"
-                                                    >
-                                                        <i className="bx bx-edit text-lg"></i>
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDelete(transaction.id)}
-                                                        className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-all duration-200"
-                                                        title="Hapus"
-                                                    >
-                                                        <i className="bx bx-trash text-lg"></i>
-                                                    </button>
+                                    </thead>
+                                    <tbody>
+                                        {transactions.length === 0 ? (
+                                            <tr>
+                                                <td
+                                                    colSpan="5"
+                                                    className="px-4 py-6 text-center text-gray-700 text-base font-medium"
+                                                >
+                                                    <div className="flex flex-col items-center gap-2">
+                                                        <i className="bx bx-info-circle text-3xl text-gray-500"></i>
+                                                        <span>Belum ada transaksi</span>
+                                                    </div>
                                                 </td>
                                             </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
+                                        ) : (
+                                            transactions.map((transaction) => (
+                                                <tr
+                                                    key={transaction.id}
+                                                    className="border-t border-gray-200 hover:bg-gray-50 transition-all duration-200"
+                                                >
+                                                    <td className="px-4 py-3 text-sm text-gray-800">
+                                                        {formatDate(transaction.date)}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-sm text-gray-800 capitalize">
+                                                        {[
+                                                            ...categories.income,
+                                                            ...categories.expense,
+                                                        ].find(
+                                                            (cat) =>
+                                                                cat.value ===
+                                                                transaction.category
+                                                        )?.label || transaction.category}
+                                                    </td>
+                                                    <td
+                                                        className={`px-4 py-3 text-sm font-semibold ${
+                                                            transaction.type === "income"
+                                                                ? "text-green-600"
+                                                                : "text-red-600"
+                                                        }`}
+                                                    >
+                                                        {formatCurrency(transaction.amount)}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-sm text-gray-800">
+                                                        {transaction.description || "-"}
+                                                    </td>
+                                                    <td className="px-4 py-3 flex gap-2">
+                                                        <button
+                                                            onClick={() =>
+                                                                handleEdit(transaction.id)
+                                                            }
+                                                            className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-all duration-200"
+                                                            title="Edit"
+                                                        >
+                                                            <i className="bx bx-edit text-lg"></i>
+                                                        </button>
+                                                        <button
+                                                            onClick={() =>
+                                                                handleDelete(transaction.id)
+                                                            }
+                                                            className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-all duration-200"
+                                                            title="Hapus"
+                                                        >
+                                                            <i className="bx bx-trash text-lg"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -236,4 +379,4 @@ const Transactions = () => {
     );
 };
 
-export default Transactions;
+export default withAuth(Transactions);
