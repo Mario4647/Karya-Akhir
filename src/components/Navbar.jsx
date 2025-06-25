@@ -21,6 +21,11 @@ const Navbar = () => {
         closeMobileMenu();
     };
 
+    const handleLogout = async () => {
+        await supabase.auth.signOut();
+        closeMobileMenu();
+    };
+
     useEffect(() => {
         // Check initial session
         const checkSession = async () => {
@@ -73,7 +78,7 @@ const Navbar = () => {
                     <div className="flex justify-between items-center">
                         <div className="flex items-center gap-2 text-xl font-bold text-gray-800 leading-none tracking-wide">
                             <i className="bx bx-money"></i>
-                            <span className="hidden sm:inline">Money Management Tracker</span>
+                            <span className="hidden sm:inline">Money Tracker</span>
                             <span className="sm:hidden">Money Management</span>
                         </div>
                         <ul className="hidden md:flex gap-6 items-center">
@@ -93,7 +98,17 @@ const Navbar = () => {
                                     </a>
                                 </li>
                             ))}
-                            {!isLoggedIn && (
+                            {isLoggedIn ? (
+                                <li>
+                                    <button
+                                        onClick={handleLogout}
+                                        className="flex items-center gap-2 text-sm lg:text-base px-4 py-2 bg-red-600 text-white rounded-lg shadow-lg hover:bg-red-700 transition-all duration-300"
+                                    >
+                                        <i className="bx bx-log-out text-lg"></i>
+                                        <span>Logout</span>
+                                    </button>
+                                </li>
+                            ) : (
                                 <li>
                                     <Link
                                         to="/auth"
@@ -150,7 +165,17 @@ const Navbar = () => {
                                 </a>
                             </li>
                         ))}
-                        {!isLoggedIn && (
+                        {isLoggedIn ? (
+                            <li>
+                                <button
+                                    onClick={handleLogout}
+                                    className="flex items-center gap-3 p-3 w-full text-white bg-red-600 rounded-lg border-l-4 border-red-500 hover:bg-red-700 transition-all duration-200 group"
+                                >
+                                    <i className="bx bx-log-out text-xl group-hover:scale-110 transition-transform duration-200"></i>
+                                    <span className="text-base font-medium">Logout</span>
+                                </button>
+                            </li>
+                        ) : (
                             <li>
                                 <Link
                                     to="/auth"
