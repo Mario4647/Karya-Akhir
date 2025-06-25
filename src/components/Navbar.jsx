@@ -57,7 +57,7 @@ const Navbar = () => {
                         <div className="flex items-center gap-2 text-xl font-bold text-gray-800 leading-none tracking-wide">
                             <i className="bx bx-money"></i>
                             <span className="hidden sm:inline">Money Management Tracker</span>
-                            <span className="sm:hidden">MMT</span>
+                            <span className="sm:hidden">Money Management</span>
                         </div>
                         <ul className="hidden md:flex gap-6 items-center">
                             {navbarData.map((item) => (
@@ -93,7 +93,7 @@ const Navbar = () => {
                 <div className="flex justify-between items-center p-6 border-b border-gray-200">
                     <div className="flex items-center gap-2 text-lg font-bold text-gray-800">
                         <i className="bx bx-money"></i>
-                        Money Management
+                        Navigation Links
                     </div>
                     <button
                         onClick={closeMobileMenu}
@@ -123,10 +123,10 @@ const Navbar = () => {
                         ))}
                     </ul>
                 </div>
-                <div className="border-t border-gray-200 p-6 bg-gray-50">
+                <div className="border-t border-gray-400 p-6 bg-white shadow-lg">
                     <div className="text-center space-y-1">
-                        <p className="text-xs text-gray-400">Money Management v1.0</p>
-                        <p className="text-xs text-gray-400">© 2025 All rights reserved</p>
+                        <p className="text-xs text-gray-800">Money Management v1.0</p>
+                        <p className="text-xs text-gray-800">© {new Date().getFullYear()} All rights reserved</p>
                     </div>
                 </div>
             </div>
