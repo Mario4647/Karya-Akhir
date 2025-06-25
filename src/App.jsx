@@ -5,6 +5,7 @@ import Add from "./components/Add";
 import Transactions from "./components/Transactions";
 import Statistics from "./components/Statistics";
 import Budget from "./components/Budget";
+import ScrollToTop from "./components/ScrollToTop";
 function App() {
   return (
     <>
@@ -14,6 +15,7 @@ function App() {
      <Transactions />
      <Statistics />
      <Budget />
+     <ScrollToTop />
     </>
   )
 }
