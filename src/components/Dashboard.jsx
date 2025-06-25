@@ -14,6 +14,10 @@ const Dashboard = ({ user }) => {
     const [currentTime, setCurrentTime] = useState(
         new Date().toLocaleTimeString("id-ID", { hour12: false })
     );
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState("edit");
+    const [newEmail, setNewEmail] = useState("");
+    const [confirmDelete, setConfirmDelete] = useState("");
 
     const today = new Date().toLocaleDateString("id-ID", {
         weekday: "long",
@@ -45,6 +49,7 @@ const Dashboard = ({ user }) => {
                     .single();
                 if (profileError) throw profileError;
                 setNamaUser(profileData.email || "Tamu");
+                setNewEmail(profileData.email || "");
 
                 // Fetch transactions
                 const { data: transactionsData, error: transactionsError } = await supabase
@@ -69,7 +74,7 @@ const Dashboard = ({ user }) => {
                     .from("budgets")
                     .select("*")
                     .eq("user_id", user.id)
-                    .eq("period", "monthly"); // Focus on monthly budgets for current month
+                    .eq("period", "monthly");
                 if (budgetsError) throw budgetsError;
 
                 const currentMonthStart = new Date();
@@ -107,6 +112,56 @@ const Dashboard = ({ user }) => {
 
     const formatCurrency = (value) => {
         return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR" }).format(value);
+    };
+
+    const openModal = () => {
+        setIsModalOpen(true);
+        setActiveTab("edit");
+        setConfirmDelete("");
+    };
+
+    const closeModal = () => {
+        setIsModalOpen(false);
+        setConfirmDelete("");
+    };
+
+    const handleEditEmail = async (e) => {
+        e.preventDefault();
+        try {
+            setError(null);
+            const { error: profileError } = await supabase
+                .from("profiles")
+                .update({ email: newEmail })
+                .eq("id", user.id);
+            if (profileError) throw profileError;
+
+            const { error: authError } = await supabase.auth.updateUser({ email: newEmail });
+            if (authError) throw authError;
+
+            setNamaUser(newEmail);
+            closeModal();
+        } catch (err) {
+            setError("Gagal memperbarui email: " + err.message);
+        }
+    };
+
+    const handleDeleteProfile = async () => {
+        if (confirmDelete !== "HAPUS") return;
+        try {
+            setError(null);
+            // Delete profile (RLS will handle the deletion based on auth.uid() = id)
+            const { error: profileError } = await supabase
+                .from("profiles")
+                .delete()
+                .eq("id", user.id);
+            if (profileError) throw profileError;
+
+            // Sign out user
+            await supabase.auth.signOut();
+            closeModal();
+        } catch (err) {
+            setError("Gagal menghapus profil: " + err.message);
+        }
     };
 
     if (loading) {
@@ -151,6 +206,7 @@ const Dashboard = ({ user }) => {
                                     </div>
                                 </div>
                                 <div className="flex-1 min-w-0">
+                                    {/* Salam */}
                                     <div className="flex flex-wrap items-center gap-2 mb-3">
                                         <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-gray-800 via-gray-700 to-gray-800 bg-clip-text text-transparent leading-tight truncate">
                                             Selamat datang kembali,
@@ -158,9 +214,20 @@ const Dashboard = ({ user }) => {
                                         <div className="animate-wave text-xl sm:text-2xl origin-bottom">👋</div>
                                     </div>
 
-                                    <h3 className="text-xl sm:text-2xl md:text-3xl font-semibold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent mb-4 truncate">
-                                        {namaUser}
-                                    </h3>
+                                    {/* Nama user + Tombol edit */}
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <h3 className="text-xl sm:text-2xl md:text-3xl font-semibold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent truncate">
+                                            {namaUser}
+                                        </h3>
+                                        <button
+                                            onClick={openModal}
+                                            className="flex items-center gap-1 text-gray-600 hover:text-indigo-600 transition-colors duration-200 text-base sm:text-lg"
+                                            aria-label="Edit profile"
+                                        >
+                                            <i className="bx bx-edit text-xl sm:text-2xl md:text-3xl"></i>
+                                            <span>Edit Profile</span>
+                                        </button>
+                                    </div>
                                 </div>
 
                             </div>
@@ -251,6 +318,115 @@ const Dashboard = ({ user }) => {
                     </div>
                 </div>
             </div>
+
+            {/* Modal for Edit and Delete */}
+            {isModalOpen && (
+                <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50">
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-semibold text-gray-800">Kelola Profil</h3>
+                            <button
+                                onClick={closeModal}
+                                className="text-gray-600 hover:text-gray-800"
+                                aria-label="Close modal"
+                            >
+                                <i className="bx bx-x text-xl"></i>
+                            </button>
+                        </div>
+                        <div className="flex border-b border-gray-200 mb-4">
+                            <button
+                                onClick={() => setActiveTab("edit")}
+                                className={`px-4 py-2 text-sm font-medium ${activeTab === "edit"
+                                    ? "border-b-2 border-indigo-600 text-indigo-600"
+                                    : "text-gray-600 hover:text-indigo-600"
+                                    }`}
+                            >
+                                Edit Email
+                            </button>
+                            <button
+                                onClick={() => setActiveTab("delete")}
+                                className={`px-4 py-2 text-sm font-medium ${activeTab === "delete"
+                                    ? "border-b-2 border-red-600 text-red-600"
+                                    : "text-gray-600 hover:text-red-600"
+                                    }`}
+                            >
+                                Hapus Profil
+                            </button>
+                        </div>
+                        {activeTab === "edit" && (
+                            <form onSubmit={handleEditEmail} className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Email
+                                    </label>
+                                    <input
+                                        type="email"
+                                        value={newEmail}
+                                        onChange={(e) => setNewEmail(e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        placeholder="Masukkan email baru"
+                                        required
+                                    />
+                                </div>
+                                <div className="flex justify-end gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={closeModal}
+                                        className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-200  rounded-lg hover:bg-gray-300"
+                                    >
+                                        Batal
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 shadow-lg rounded-lg hover:bg-indigo-700 flex items-center gap-2"
+                                    >
+                                        <i className="bx bx-save text-base"></i>
+                                        Simpan
+                                    </button>
+
+                                </div>
+                            </form>
+                        )}
+                        {activeTab === "delete" && (
+                            <div className="space-y-4">
+                                <p className="text-sm text-gray-600">
+                                    Untuk menghapus profil Anda, ketik{" "}
+                                    <span className="font-semibold text-red-600">"HAPUS"</span> di kolom
+                                    di bawah ini. Tindakan ini tidak dapat dibatalkan.
+                                </p>
+                                <input
+                                    type="text"
+                                    value={confirmDelete}
+                                    onChange={(e) => setConfirmDelete(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                                    placeholder="Ketik HAPUS untuk mengonfirmasi"
+                                />
+                                <div className="flex justify-end gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={closeModal}
+                                        className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-200 rounded-lg hover:bg-gray-300"
+                                    >
+                                        Batal
+                                    </button>
+                                    <button
+                                        onClick={handleDeleteProfile}
+                                        disabled={confirmDelete !== "HAPUS"}
+                                        className={`px-4 py-2 text-sm font-medium text-white shadow-lg rounded-lg flex items-center gap-2 ${confirmDelete === "HAPUS"
+                                                ? "bg-red-600 hover:bg-red-700"
+                                                : "bg-red-400 cursor-not-allowed"
+                                            }`}
+                                    >
+                                        <i className="bx bx-trash text-base"></i>
+                                        Hapus Profil
+                                    </button>
+
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
             <style>{`
                 @keyframes wave {
                     0%, 100% { transform: rotate(0deg); }
