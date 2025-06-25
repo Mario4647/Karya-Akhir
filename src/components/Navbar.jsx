@@ -1,0 +1,137 @@
+import { useState, useEffect } from "react";
+import { navbarData } from "../data/navbarData.jsx";
+
+const Navbar = () => {
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [activeSection, setActiveSection] = useState('dashboard');
+
+    const toggleMobileMenu = () => {
+        setIsMobileMenuOpen(!isMobileMenuOpen);
+    };
+
+    const closeMobileMenu = () => {
+        setIsMobileMenuOpen(false);
+    };
+
+    const handleMenuClick = (itemId) => {
+        setActiveSection(itemId);
+        closeMobileMenu();
+    };
+
+    useEffect(() => {
+        const observerOptions = {
+            root: null,
+            rootMargin: '-100px 0px -50% 0px',
+            threshold: 0.1
+        };
+
+        const observerCallback = (entries) => {
+            entries.forEach((entry) => {
+                if (entry.isIntersecting) {
+                    setActiveSection(entry.target.id);
+                }
+            });
+        };
+
+        const observer = new IntersectionObserver(observerCallback, observerOptions);
+
+        navbarData.forEach(item => {
+            const section = document.getElementById(item.id);
+            if (section) {
+                observer.observe(section);
+            }
+        });
+
+        return () => {
+            observer.disconnect();
+        };
+    }, []);
+
+    const isActive = (itemId) => activeSection === itemId;
+
+    return (
+        <nav className="bg-white shadow-lg w-full fixed z-50 p-4">
+            <div className="container">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2 text-xl font-bold text-gray-800 leading-none tracking-wide">
+                            <i className="bx bx-money"></i>
+                            <span className="hidden sm:inline">Money Management Tracker</span>
+                            <span className="sm:hidden">MMT</span>
+                        </div>
+                        <ul className="hidden md:flex gap-6 items-center">
+                            {navbarData.map((item) => (
+                                <li key={item.id}>
+                                    <a
+                                        href={`#${item.id}`}
+                                        onClick={() => handleMenuClick(item.id)}
+                                        className={`flex items-center gap-2 text-sm lg:text-base px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer ${
+                                            isActive(item.id)
+                                                ? 'text-white bg-gray-800'
+                                                : 'text-gray-800 hover:text-white hover:bg-gray-600'
+                                        }`}
+                                    >
+                                        <i className={`bx ${item.icon} text-lg`}></i>
+                                        <span>{item.label}</span>
+                                    </a>
+                                </li>
+                            ))}
+                        </ul>
+                        <button
+                            onClick={toggleMobileMenu}
+                            className="md:hidden flex items-center justify-center w-10 h-10 text-gray-800 hover:text-indigo-500 transition-colors duration-200"
+                            aria-label="Toggle mobile menu"
+                        >
+                            <i className={`bx ${isMobileMenuOpen ? 'bx-x' : 'bx-menu'} text-2xl`}></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div className={`fixed top-0 right-0 h-full w-80 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out z-50 md:hidden flex flex-col ${
+                isMobileMenuOpen ? 'translate-x-0' : 'translate-x-full'
+            }`}>
+                <div className="flex justify-between items-center p-6 border-b border-gray-200">
+                    <div className="flex items-center gap-2 text-lg font-bold text-gray-800">
+                        <i className="bx bx-money"></i>
+                        Money Management
+                    </div>
+                    <button
+                        onClick={closeMobileMenu}
+                        className="flex items-center justify-center w-8 h-8 text-gray-800 hover:text-indigo-500 transition-colors duration-200"
+                        aria-label="Close mobile menu"
+                    >
+                        <i className="bx bx-x text-xl"></i>
+                    </button>
+                </div>
+                <div className="flex-1 p-6">
+                    <ul className="space-y-2">
+                        {navbarData.map((item) => (
+                            <li key={item.id}>
+                                <a
+                                    href={`#${item.id}`}
+                                    onClick={() => handleMenuClick(item.id)}
+                                    className={`flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group cursor-pointer ${
+                                        isActive(item.id)
+                                            ? 'text-white bg-gray-800 border-l-4 border-gray-600'
+                                            : 'text-gray-800 hover:text-white hover:bg-gray-600 border-l-4 border-transparent hover:border-gray-500'
+                                    }`}
+                                >
+                                    <i className={`bx ${item.icon} text-xl group-hover:scale-110 transition-transform duration-200`}></i>
+                                    <span className="text-base font-medium">{item.label}</span>
+                                </a>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+                <div className="border-t border-gray-200 p-6 bg-gray-50">
+                    <div className="text-center space-y-1">
+                        <p className="text-xs text-gray-400">Money Management v1.0</p>
+                        <p className="text-xs text-gray-400">© 2025 All rights reserved</p>
+                    </div>
+                </div>
+            </div>
+        </nav>
+    );
+};
+
+export default Navbar;
