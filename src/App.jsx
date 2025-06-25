@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
 
 import Navbar from "./components/Navbar";
@@ -12,6 +13,123 @@ import Footer from "./components/Footer";
 import Form from "./auth/Form";
 
 function App() {
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Simulate loading delay
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 2000); // 2-second delay
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Loading text messages for animation
+  const loadingMessages = [
+    "Tracking your finances...",
+    "Managing your budget...",
+    "Planning your savings...",
+    "Analyzing your expenses...",
+  ];
+
+  const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
+
+  // Cycle through loading messages
+  useEffect(() => {
+    if (isLoading) {
+      const interval = setInterval(() => {
+        setCurrentMessageIndex((prev) => (prev + 1) % loadingMessages.length);
+      }, 800); // Change message every 0.8 seconds
+      return () => clearInterval(interval);
+    }
+  }, [isLoading]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col">
+        {/* Skeleton Navbar */}
+        <nav className="bg-white shadow-lg w-full fixed z-50 p-4">
+          <div className="container">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 bg-gray-200 rounded animate-pulse"></div>
+                  <div className="hidden sm:block w-40 h-6 bg-gray-200 rounded animate-pulse"></div>
+                  <div className="sm:hidden w-20 h-6 bg-gray-200 rounded animate-pulse"></div>
+                </div>
+                <div className="hidden md:flex gap-6 items-center">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="w-20 h-8 bg-gray-200 rounded-lg animate-pulse"></div>
+                  ))}
+                  <div className="w-24 h-8 bg-gray-200 rounded-lg animate-pulse"></div>
+                </div>
+                <div className="md:hidden w-10 h-10 bg-gray-200 rounded animate-pulse"></div>
+              </div>
+            </div>
+          </div>
+        </nav>
+
+        {/* Skeleton Dashboard */}
+        <section className="min-h-screen pt-24 pb-6 bg-white">
+          <div className="container">
+            <div className="max-w-7xl mx-auto px-4 mt-6">
+              <div className="relative bg-white backdrop-blur-xl shadow-xl border border-gray-100 p-10 md:p-12 rounded-2xl">
+                {/* Profile Section */}
+                <div className="flex items-start gap-4 mb-8">
+                  <div className="w-20 h-20 bg-gray-200 rounded-2xl animate-pulse"></div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 mb-3">
+                      <div className="w-48 h-8 bg-gray-200 rounded animate-pulse"></div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-32 h-6 bg-gray-200 rounded animate-pulse"></div>
+                      <div className="w-6 h-6 bg-gray-200 rounded animate-pulse"></div>
+                    </div>
+                  </div>
+                </div>
+                {/* Date and Text Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 bg-gray-200 rounded-full animate-pulse"></div>
+                    <div className="w-20 h-4 bg-gray-200 rounded animate-pulse"></div>
+                    <div className="w-40 h-6 bg-gray-200 rounded-full animate-pulse"></div>
+                  </div>
+                  <div className="space-y-2 pl-5">
+                    <div className="w-full h-4 bg-gray-200 rounded animate-pulse"></div>
+                    <div className="w-3/4 h-4 bg-gray-200 rounded animate-pulse"></div>
+                    <div className="w-1/2 h-4 bg-gray-200 rounded animate-pulse"></div>
+                  </div>
+                </div>
+                {/* Cards Section */}
+                <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {[...Array(4)].map((_, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center p-4 bg-gray-100 rounded-xl shadow-lg animate-pulse"
+                    >
+                      <div className="w-12 h-12 bg-gray-200 rounded-lg mr-4"></div>
+                      <div>
+                        <div className="w-24 h-4 bg-gray-200 rounded mb-2"></div>
+                        <div className="w-32 h-6 bg-gray-200 rounded"></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Animated Text at Bottom */}
+        <div className="fixed bottom-10 left-0 right-0 text-center">
+          <div className="text-gray-600 text-lg font-semibold animate-fade-in-out">
+            {loadingMessages[currentMessageIndex]}
+          </div>
+          <div className="mt-2 text-gray-500 text-sm">Money Management Tracker</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <Routes>
