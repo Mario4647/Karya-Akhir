@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { supabase } from "../supabaseClient"; 
+import { supabase } from "../supabaseClient";
 import { withAuth } from "../authMiddleware";
 
 const Add = ({ user }) => {
@@ -94,7 +94,6 @@ const Add = ({ user }) => {
 
         try {
             const transactionData = {
-                id: Date.now(),
                 user_id: user.id, // Use authenticated user's ID
                 type: formData.type,
                 amount: parseFloat(formData.amount),
@@ -127,7 +126,6 @@ const Add = ({ user }) => {
             console.error("Submit error:", err);
         }
     };
-
     const formatCurrency = (value) => {
         if (!value) return "";
         return new Intl.NumberFormat("id-ID").format(value);
@@ -167,11 +165,10 @@ const Add = ({ user }) => {
                                 onClick={() =>
                                     handleChange({ target: { name: "type", value: "income" } })
                                 }
-                                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all duration-300 ${
-                                    formData.type === "income"
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all duration-300 ${formData.type === "income"
                                         ? "bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg"
                                         : "bg-gray-200 text-gray-800 hover:bg-gray-300"
-                                }`}
+                                    }`}
                             >
                                 <i className="bx bx-trending-up text-lg"></i>
                                 Pemasukan
@@ -181,11 +178,10 @@ const Add = ({ user }) => {
                                 onClick={() =>
                                     handleChange({ target: { name: "type", value: "expense" } })
                                 }
-                                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all duration-300 ${
-                                    formData.type === "expense"
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all duration-300 ${formData.type === "expense"
                                         ? "bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg"
                                         : "bg-gray-200 text-gray-800 hover:bg-gray-300"
-                                }`}
+                                    }`}
                             >
                                 <i className="bx bx-trending-down text-lg"></i>
                                 Pengeluaran
@@ -206,9 +202,8 @@ const Add = ({ user }) => {
                                         placeholder="Jumlah (Rp)"
                                         min="0"
                                         step="1000"
-                                        className={`w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${
-                                            errors.amount ? "border-red-300 bg-red-50" : ""
-                                        }`}
+                                        className={`w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${errors.amount ? "border-red-300 bg-red-50" : ""
+                                            }`}
                                     />
                                     {formData.amount && (
                                         <span className="absolute right-4 top-1/2 transform -translate-y-1/2 text-sm text-gray-600">
@@ -233,9 +228,8 @@ const Add = ({ user }) => {
                                         name="category"
                                         value={formData.category}
                                         onChange={handleChange}
-                                        className={`w-full pl-10 pr-10 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 appearance-none bg-white ${
-                                            errors.category ? "border-red-300 bg-red-50" : ""
-                                        }`}
+                                        className={`w-full pl-10 pr-10 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 appearance-none bg-white ${errors.category ? "border-red-300 bg-red-50" : ""
+                                            }`}
                                     >
                                         <option value="">Pilih Kategori</option>
                                         {categories[formData.type].map((cat) => (
@@ -265,9 +259,8 @@ const Add = ({ user }) => {
                                         value={formData.date}
                                         onChange={handleChange}
                                         max={new Date().toISOString().split("T")[0]}
-                                        className={`w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${
-                                            errors.date ? "border-red-300 bg-red-50" : ""
-                                        }`}
+                                        className={`w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${errors.date ? "border-red-300 bg-red-50" : ""
+                                            }`}
                                     />
                                 </div>
                                 {errors.date && (
@@ -289,9 +282,8 @@ const Add = ({ user }) => {
                                         onChange={handleChange}
                                         placeholder="Catatan tambahan tentang transaksi ini..."
                                         maxLength="200"
-                                        className={`w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 resize-none ${
-                                            errors.description ? "border-red-300 bg-red-50" : ""
-                                        }`}
+                                        className={`w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 resize-none ${errors.description ? "border-red-300 bg-red-50" : ""
+                                            }`}
                                         rows="3"
                                     />
                                     <span className="absolute bottom-2 right-4 text-xs text-gray-600">

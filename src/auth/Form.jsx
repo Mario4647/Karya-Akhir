@@ -79,11 +79,16 @@ const Form = () => {
         try {
             const { data, error } = await supabase.auth.signUp({
                 email: signUpData.email,
-                password: signUpData.password
+                password: signUpData.password,
             });
 
             if (error) {
-                setErrors({ submit: error.message === "User already registered" ? "Email sudah terdaftar" : error.message });
+                setErrors({
+                    submit:
+                        error.message === "User already registered"
+                            ? "Email sudah terdaftar"
+                            : error.message,
+                });
                 return;
             }
 
@@ -97,7 +102,6 @@ const Form = () => {
             console.error("Sign Up Error:", error);
         }
     };
-
     const handleSignIn = async (e) => {
         e.preventDefault();
         if (!validateSignIn()) return;
@@ -158,21 +162,19 @@ const Form = () => {
                         <div className="flex border-b border-gray-200 mb-6">
                             <button
                                 onClick={() => setActiveTab('signin')}
-                                className={`flex-1 py-3 text-center text-sm font-medium transition-all duration-200 ${
-                                    activeTab === 'signin'
-                                        ? 'text-blue-600 border-b-2 border-blue-500 bg-white'
-                                        : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
-                                }`}
+                                className={`flex-1 py-3 text-center text-sm font-medium transition-all duration-200 ${activeTab === 'signin'
+                                    ? 'text-blue-600 border-b-2 border-blue-500 bg-white'
+                                    : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
+                                    }`}
                             >
                                 Sign In
                             </button>
                             <button
                                 onClick={() => setActiveTab('signup')}
-                                className={`flex-1 py-3 text-center text-sm font-medium transition-all duration-200 ${
-                                    activeTab === 'signup'
-                                        ? 'text-blue-600 border-b-2 border-blue-500 bg-white'
-                                        : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
-                                }`}
+                                className={`flex-1 py-3 text-center text-sm font-medium transition-all duration-200 ${activeTab === 'signup'
+                                    ? 'text-blue-600 border-b-2 border-blue-500 bg-white'
+                                    : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
+                                    }`}
                             >
                                 Sign Up
                             </button>
@@ -191,9 +193,8 @@ const Form = () => {
                                             value={signUpData.email}
                                             onChange={handleSignUpChange}
                                             placeholder="Masukkan email"
-                                            className={`w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${
-                                                errors.email ? "border-red-300 bg-red-50" : ""
-                                            }`}
+                                            className={`w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${errors.email ? "border-red-300 bg-red-50" : ""
+                                                }`}
                                         />
                                     </div>
                                     <div className="h-5 mt-1">
@@ -217,9 +218,8 @@ const Form = () => {
                                             value={signUpData.password}
                                             onChange={handleSignUpChange}
                                             placeholder="Masukkan kata sandi"
-                                            className={`w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${
-                                                errors.password ? "border-red-300 bg-red-50" : ""
-                                            }`}
+                                            className={`w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${errors.password ? "border-red-300 bg-red-50" : ""
+                                                }`}
                                         />
                                     </div>
                                     <div className="h-5 mt-1">
@@ -243,9 +243,8 @@ const Form = () => {
                                             value={signUpData.confirmPassword}
                                             onChange={handleSignUpChange}
                                             placeholder="Konfirmasi kata sandi"
-                                            className={`w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${
-                                                errors.confirmPassword ? "border-red-300 bg-red-50" : ""
-                                            }`}
+                                            className={`w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${errors.confirmPassword ? "border-red-300 bg-red-50" : ""
+                                                }`}
                                         />
                                     </div>
                                     <div className="h-5 mt-1">
@@ -279,9 +278,8 @@ const Form = () => {
                                             value={signInData.email}
                                             onChange={handleSignInChange}
                                             placeholder="Masukkan email"
-                                            className={`w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${
-                                                errors.email ? "border-red-300 bg-red-50" : ""
-                                            }`}
+                                            className={`w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${errors.email ? "border-red-300 bg-red-50" : ""
+                                                }`}
                                         />
                                     </div>
                                     <div className="h-5 mt-1">
@@ -305,9 +303,8 @@ const Form = () => {
                                             value={signInData.password}
                                             onChange={handleSignInChange}
                                             placeholder="Masukkan kata sandi"
-                                            className={`w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${
-                                                errors.password ? "border-red-300 bg-red-50" : ""
-                                            }`}
+                                            className={`w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${errors.password ? "border-red-300 bg-red-50" : ""
+                                                }`}
                                         />
                                     </div>
                                     <div className="h-5 mt-1">

@@ -45,20 +45,25 @@ const Dashboard = ({ user }) => {
                 const { data: profileData, error: profileError } = await supabase
                     .from("profiles")
                     .select("email")
-                    .eq("id", user.id)
-                    .single();
-                if (profileError) throw profileError;
-                setNamaUser(profileData.email || "Tamu");
-                setNewEmail(profileData.email || "");
+                    .eq("id", user.id);
 
-                // Fetch transactions
+                if (profileError) throw profileError;
+                if (profileData.length === 0) {
+                    // No profile exists, set default email or handle accordingly
+                    setNamaUser(user.email || "Tamu");
+                    setNewEmail(user.email || "");
+                } else {
+                    setNamaUser(profileData[0].email || "Tamu");
+                    setNewEmail(profileData[0].email || "");
+                }
+
+                // Rest of the fetchData logic remains the same
                 const { data: transactionsData, error: transactionsError } = await supabase
                     .from("transactions")
-                    .select("type, amount")
+                    .select("type, amount, category, date")
                     .eq("user_id", user.id);
                 if (transactionsError) throw transactionsError;
 
-                // Calculate balance, income, and expense
                 const incomeTotal = transactionsData
                     .filter((t) => t.type === "income")
                     .reduce((sum, t) => sum + t.amount, 0);
@@ -69,7 +74,6 @@ const Dashboard = ({ user }) => {
                 setExpense(expenseTotal);
                 setBalance(incomeTotal - expenseTotal);
 
-                // Fetch budgets and calculate spent
                 const { data: budgetsData, error: budgetsError } = await supabase
                     .from("budgets")
                     .select("*")
@@ -102,7 +106,7 @@ const Dashboard = ({ user }) => {
             } catch (err) {
                 setError("Gagal memuat data: " + err.message);
                 console.error("Fetch error:", err);
-                setNamaUser("Tamu");
+                setNamaUser(user.email || "Tamu");
             } finally {
                 setLoading(false);
             }
@@ -413,8 +417,8 @@ const Dashboard = ({ user }) => {
                                         onClick={handleDeleteProfile}
                                         disabled={confirmDelete !== "HAPUS"}
                                         className={`px-4 py-2 text-sm font-medium text-white shadow-lg rounded-lg flex items-center gap-2 ${confirmDelete === "HAPUS"
-                                                ? "bg-red-600 hover:bg-red-700"
-                                                : "bg-red-400 cursor-not-allowed"
+                                            ? "bg-red-600 hover:bg-red-700"
+                                            : "bg-red-400 cursor-not-allowed"
                                             }`}
                                     >
                                         <i className="bx bx-trash text-base"></i>
