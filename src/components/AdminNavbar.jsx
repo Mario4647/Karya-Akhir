@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { navbarData } from "../data/adminNavbar.js";
+import { adminNavbar } from "../data/adminNavbar.js";
 import { supabase } from "../supabaseClient";
 
 const Navbar = () => {
