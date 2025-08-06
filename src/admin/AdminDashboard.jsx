@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
+import AdminNavbar from '../components/AdminNavbar';
 import Footer from '../components/Footer';
 
 const AdminDashboard = () => {
@@ -10,20 +11,59 @@ const AdminDashboard = () => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [detailData, setDetailData] = useState(null);
+  const [userCount, setUserCount] = useState(0);
+  const [userEmail, setUserEmail] = useState('');
 
   useEffect(() => {
     fetchData();
+    fetchUserCount();
+    getSession();
   }, [activeTab]);
+
+  const getSession = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user?.email) {
+      setUserEmail(session.user.email);
+    }
+  };
+
+  const fetchUserCount = async () => {
+    const { count } = await supabase
+      .from('profiles')
+      .select('*', { count: 'exact', head: true });
+    setUserCount(count || 0);
+  };
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const { data: fetchedData, error } = await supabase
-        .from(activeTab)
-        .select('*');
+      let query = supabase.from(activeTab).select('*');
+      
+      // For transactions and budgets, join with profiles to get email
+      if (activeTab === 'transactions' || activeTab === 'budgets') {
+        query = query.select(`
+          *,
+          profiles:user_id (email)
+        `);
+      }
+      
+      const { data: fetchedData, error } = await query;
       
       if (error) throw error;
-      setData(fetchedData);
+      
+      // Transform data to include email instead of user_id where applicable
+      const transformedData = fetchedData.map(item => {
+        if (item.profiles) {
+          return {
+            ...item,
+            user_id: item.profiles.email,
+            profiles: undefined // Remove the profiles object
+          };
+        }
+        return item;
+      });
+      
+      setData(transformedData);
     } catch (error) {
       console.error('Error fetching data:', error.message);
     } finally {
@@ -69,7 +109,7 @@ const AdminDashboard = () => {
         return (
           <>
             <th className="px-6 py-3">ID</th>
-            <th className="px-6 py-3">User ID</th>
+            <th className="px-6 py-3">User Email</th>
             <th className="px-6 py-3">Type</th>
             <th className="px-6 py-3">Amount</th>
             <th className="px-6 py-3">Category</th>
@@ -84,7 +124,7 @@ const AdminDashboard = () => {
         return (
           <>
             <th className="px-6 py-3">ID</th>
-            <th className="px-6 py-3">User ID</th>
+            <th className="px-6 py-3">User Email</th>
             <th className="px-6 py-3">Category</th>
             <th className="px-6 py-3">Amount</th>
             <th className="px-6 py-3">Period</th>
@@ -114,13 +154,13 @@ const AdminDashboard = () => {
               setSelectedItem(item);
               setShowDeleteModal(true);
             }}
-            className="text-red-600 hover:text-red-900"
+            className="px-4 py-2 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-md hover:from-red-600 hover:to-pink-600 transition-all duration-200 shadow-md"
           >
             Delete
           </button>
           <button
             onClick={() => openDetailModal(item)}
-            className="text-blue-600 hover:text-blue-900"
+            className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-md hover:from-blue-600 hover:to-purple-600 transition-all duration-200 shadow-md"
           >
             Detail
           </button>
@@ -146,8 +186,26 @@ const AdminDashboard = () => {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <AdminNavbar />
       
-      <div className="flex-grow container mx-auto px-4 py-8">
+      <div className="flex-grow container mx-auto px-4 py-8 mt-16">
+        {/* Welcome Message */}
+        <h1 className="text-2xl font-bold text-gray-800 mb-6">
+          Selamat Datang di Dashboard Admin ({userEmail})
+        </h1>
+        
+        {/* User Count Card */}
+        <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl shadow-lg p-6 mb-8 text-white">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-lg font-semibold mb-1">Jumlah User</h2>
+              <p className="text-sm opacity-80">Total pengguna yang terdaftar</p>
+            </div>
+            <div className="text-4xl font-bold">{userCount}</div>
+          </div>
+        </div>
+
+        {/* Table Section */}
         <div className="flex border-b mb-6">
           <button
             className={`py-2 px-4 ${activeTab === 'profiles' ? 'border-b-2 border-blue-500 font-medium' : ''}`}
@@ -212,7 +270,7 @@ const AdminDashboard = () => {
               </button>
               <button
                 onClick={handleDelete}
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                className="px-4 py-2 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-md hover:from-red-600 hover:to-pink-600 transition-all duration-200 shadow-md"
               >
                 Delete
               </button>
