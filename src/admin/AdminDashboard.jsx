@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import AdminNavbar from '../components/AdminNavbar';
 import Footer from '../components/Footer';
@@ -13,18 +14,38 @@ const AdminDashboard = () => {
   const [detailData, setDetailData] = useState(null);
   const [userCount, setUserCount] = useState(0);
   const [userEmail, setUserEmail] = useState('');
+  const [userRole, setUserRole] = useState('');
+  const navigate = useNavigate();
 
   useEffect(() => {
+    checkAdminAccess();
     fetchData();
     fetchUserCount();
-    getSession();
   }, [activeTab]);
 
-  const getSession = async () => {
+  const checkAdminAccess = async () => {
     const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user?.email) {
-      setUserEmail(session.user.email);
+    
+    if (!session) {
+      navigate('/auth');
+      return;
     }
+
+    setUserEmail(session.user.email);
+
+    // Fetch user role
+    const { data: userData, error } = await supabase
+      .from('profiles')
+      .select('roles')
+      .eq('id', session.user.id)
+      .single();
+
+    if (error || !userData || userData.roles !== 'admin') {
+      navigate('/');
+      return;
+    }
+
+    setUserRole(userData.roles);
   };
 
   const fetchUserCount = async () => {
@@ -37,33 +58,58 @@ const AdminDashboard = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      let query = supabase.from(activeTab).select('*');
+      let query;
       
-      // For transactions and budgets, join with profiles to get email
-      if (activeTab === 'transactions' || activeTab === 'budgets') {
-        query = query.select(`
-          *,
-          profiles:user_id (email)
-        `);
+      if (activeTab === 'profiles') {
+        query = supabase.from('profiles').select('*');
+      } 
+      else if (activeTab === 'transactions') {
+        // Fetch transactions with user email
+        const { data: transactions, error } = await supabase
+          .from('transactions')
+          .select(`
+            *,
+            profile:user_id (email)
+          `);
+        
+        if (error) throw error;
+        
+        const transformedData = transactions.map(tx => ({
+          ...tx,
+          user_id: tx.profile?.email || tx.user_id,
+          profile: undefined
+        }));
+        
+        setData(transformedData);
+        setLoading(false);
+        return;
+      } 
+      else if (activeTab === 'budgets') {
+        // Fetch budgets with user email
+        const { data: budgets, error } = await supabase
+          .from('budgets')
+          .select(`
+            *,
+            profile:user_id (email)
+          `);
+        
+        if (error) throw error;
+        
+        const transformedData = budgets.map(budget => ({
+          ...budget,
+          user_id: budget.profile?.email || budget.user_id,
+          profile: undefined
+        }));
+        
+        setData(transformedData);
+        setLoading(false);
+        return;
       }
-      
+
       const { data: fetchedData, error } = await query;
       
       if (error) throw error;
-      
-      // Transform data to include email instead of user_id where applicable
-      const transformedData = fetchedData.map(item => {
-        if (item.profiles) {
-          return {
-            ...item,
-            user_id: item.profiles.email,
-            profiles: undefined // Remove the profiles object
-          };
-        }
-        return item;
-      });
-      
-      setData(transformedData);
+      setData(fetchedData);
     } catch (error) {
       console.error('Error fetching data:', error.message);
     } finally {
@@ -100,6 +146,7 @@ const AdminDashboard = () => {
           <>
             <th className="px-6 py-3">ID</th>
             <th className="px-6 py-3">Email</th>
+            <th className="px-6 py-3">Role</th>
             <th className="px-6 py-3">Created At</th>
             <th className="px-6 py-3">Updated At</th>
             <th className="px-6 py-3">Actions</th>
@@ -184,17 +231,32 @@ const AdminDashboard = () => {
     );
   };
 
+  if (userRole !== 'admin') {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100">
+        <div className="bg-white p-8 rounded-lg shadow-lg max-w-md text-center">
+          <h1 className="text-2xl font-bold text-red-600 mb-4">Access Denied</h1>
+          <p className="text-gray-700 mb-6">You don't have permission to access this page.</p>
+          <button
+            onClick={() => navigate('/')}
+            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+          >
+            Go to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col">
       <AdminNavbar />
       
       <div className="flex-grow container mx-auto px-4 py-8 mt-16">
-        {/* Welcome Message */}
         <h1 className="text-2xl font-bold text-gray-800 mb-6">
           Selamat Datang di Dashboard Admin ({userEmail})
         </h1>
         
-        {/* User Count Card */}
         <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl shadow-lg p-6 mb-8 text-white">
           <div className="flex justify-between items-center">
             <div>
@@ -205,7 +267,6 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-        {/* Table Section */}
         <div className="flex border-b mb-6">
           <button
             className={`py-2 px-4 ${activeTab === 'profiles' ? 'border-b-2 border-blue-500 font-medium' : ''}`}
@@ -255,7 +316,6 @@ const AdminDashboard = () => {
         )}
       </div>
 
-      {/* Delete Confirmation Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
@@ -279,7 +339,6 @@ const AdminDashboard = () => {
         </div>
       )}
 
-      {/* Detail Modal */}
       {showDetailModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
