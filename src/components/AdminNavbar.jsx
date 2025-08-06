@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { adminNavbar } from "../data/adminNavbar";
 import { supabase } from "../supabaseClient";
 
-const Navbar = () => {
+const AdminNavbar = () => {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [activeSection, setActiveSection] = useState('dashboard');
     const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -200,4 +200,4 @@ const Navbar = () => {
     );
 };
 
-export default Navbar;
+export default AdminNavbar;
