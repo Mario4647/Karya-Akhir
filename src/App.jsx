@@ -108,8 +108,13 @@ function App() {
       <Routes>
         {/* Route untuk halaman login */}
         <Route path="/auth" element={<Form />} />
-        
-           <Route path="/admin" element={<AdminDashboard />} />
+           <Route path="/admin/*" element={
+          <>
+            <AdminNavbar /> {/* Tambahkan ini jika belum ada */}
+            <AdminDashboard />
+            <Footer />
+          </>
+        } />
         {/* Route untuk halaman utama (dashboard) */}
         <Route
           path="/"
