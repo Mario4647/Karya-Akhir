@@ -11,6 +11,7 @@ import ScrollToTop from "./components/ScrollToTop";
 import Footer from "./components/Footer";
 
 import Form from "./auth/Form";
+import AdminDashboard from "./admin/AdminDashboard";
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -107,6 +108,7 @@ function App() {
       <Routes>
         {/* Route untuk halaman login */}
         <Route path="/auth" element={<Form />} />
+        <Route path="/admin" element={<AdminDashboard />} />
 
         {/* Route untuk halaman utama (dashboard) */}
         <Route
