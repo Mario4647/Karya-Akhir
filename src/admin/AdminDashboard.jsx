@@ -146,7 +146,6 @@ const AdminDashboard = () => {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <AdminNavbar />
       
       <div className="flex-grow container mx-auto px-4 py-8">
         <div className="flex border-b mb-6">
