@@ -11,7 +11,6 @@ import ScrollToTop from "./components/ScrollToTop";
 import Footer from "./components/Footer";
 
 import Form from "./auth/Form";
-import AdminDashboard from "./admin/AdminDasboard";
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
