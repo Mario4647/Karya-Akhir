@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import AdminNavbar from '../components/AdminNavbar';
 import Footer from '../components/Footer';
 
 const AdminDashboard = () => {
