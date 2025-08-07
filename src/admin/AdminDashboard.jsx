@@ -35,7 +35,6 @@ const AdminDashboard = () => {
 
     setUserEmail(session.user.email);
 
-    // Fetch user role
     const { data: userData, error } = await supabase
       .from('profiles')
       .select('roles')
@@ -69,48 +68,50 @@ const AdminDashboard = () => {
       if (activeTab === 'profiles') {
         const { data: profiles, error } = await supabase
           .from('profiles')
-          .select('*');
+          .select('*')
+          .order('created_at', { ascending: false });
         
         if (error) throw error;
-        setData(profiles);
+        setData(profiles || []);
       } 
       else if (activeTab === 'transactions') {
         const { data: transactions, error } = await supabase
           .from('transactions')
           .select(`
-            *,
-            profiles!inner(email)
+            id, type, amount, category, description, date, created_at, updated_at,
+            profiles!inner(id, email)
           `);
         
         if (error) throw error;
         
         const transformedData = transactions.map(tx => ({
           ...tx,
-          user_id: tx.profiles.email
+          user_id: tx.profiles?.email || 'Unknown'
         }));
         
-        setData(transformedData);
+        setData(transformedData || []);
       } 
       else if (activeTab === 'budgets') {
         const { data: budgets, error } = await supabase
           .from('budgets')
           .select(`
-            *,
-            profiles!inner(email)
+            id, category, amount, period, created_at, updated_at,
+            profiles!inner(id, email)
           `);
         
         if (error) throw error;
         
         const transformedData = budgets.map(budget => ({
           ...budget,
-          user_id: budget.profiles.email
+          user_id: budget.profiles?.email || 'Unknown'
         }));
         
-        setData(transformedData);
+        setData(transformedData || []);
       }
     } catch (error) {
-      console.error('Error fetching data:', error.message);
-      alert('Failed to fetch data');
+      console.error(`Error fetching ${activeTab} data:`, error.message);
+      alert(`Failed to fetch ${activeTab} data: ${error.message}`);
+      setData([]);
     } finally {
       setLoading(false);
     }
@@ -214,6 +215,16 @@ const AdminDashboard = () => {
   };
 
   const renderTableRows = () => {
+    if (data.length === 0) {
+      return (
+        <tr>
+          <td colSpan="10" className="px-6 py-4 text-center">
+            {loading ? 'Loading...' : 'No data found'}
+          </td>
+        </tr>
+      );
+    }
+
     return data.map((item) => (
       <tr key={item.id} className="bg-white border-b hover:bg-gray-50">
         {activeTab === 'profiles' && (
@@ -363,15 +374,7 @@ const AdminDashboard = () => {
                 </tr>
               </thead>
               <tbody>
-                {data.length > 0 ? (
-                  renderTableRows()
-                ) : (
-                  <tr>
-                    <td colSpan="10" className="px-6 py-4 text-center">
-                      No data found
-                    </td>
-                  </tr>
-                )}
+                {renderTableRows()}
               </tbody>
             </table>
           </div>
