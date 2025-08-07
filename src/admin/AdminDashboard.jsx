@@ -11,7 +11,9 @@ const AdminDashboard = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [detailData, setDetailData] = useState(null);
+  const [editData, setEditData] = useState({ email: '', roles: '' });
   const [userCount, setUserCount] = useState(0);
   const [userEmail, setUserEmail] = useState('');
   const [userRole, setUserRole] = useState('');
@@ -65,7 +67,6 @@ const AdminDashboard = () => {
     setLoading(true);
     try {
       if (activeTab === 'profiles') {
-        // Fetch all profiles
         const { data: profiles, error } = await supabase
           .from('profiles')
           .select('*');
@@ -74,39 +75,35 @@ const AdminDashboard = () => {
         setData(profiles);
       } 
       else if (activeTab === 'transactions') {
-        // Fetch all transactions with user emails
         const { data: transactions, error } = await supabase
           .from('transactions')
           .select(`
             *,
-            user:user_id (email)
+            profiles!inner(email)
           `);
         
         if (error) throw error;
         
         const transformedData = transactions.map(tx => ({
           ...tx,
-          user_id: tx.user?.email || tx.user_id,
-          user: undefined
+          user_id: tx.profiles.email
         }));
         
         setData(transformedData);
       } 
       else if (activeTab === 'budgets') {
-        // Fetch all budgets with user emails
         const { data: budgets, error } = await supabase
           .from('budgets')
           .select(`
             *,
-            user:user_id (email)
+            profiles!inner(email)
           `);
         
         if (error) throw error;
         
         const transformedData = budgets.map(budget => ({
           ...budget,
-          user_id: budget.user?.email || budget.user_id,
-          user: undefined
+          user_id: budget.profiles.email
         }));
         
         setData(transformedData);
@@ -128,15 +125,47 @@ const AdminDashboard = () => {
       
       if (error) throw error;
       
-      // Refresh data after deletion
       await fetchData();
-      await fetchUserCount();
+      if (activeTab === 'profiles') await fetchUserCount();
       
       setShowDeleteModal(false);
       alert('Data deleted successfully!');
     } catch (error) {
       console.error('Error deleting data:', error.message);
       alert('Failed to delete data');
+    }
+  };
+
+  const openEditModal = (item) => {
+    if (activeTab !== 'profiles') return;
+    
+    setEditData({
+      id: item.id,
+      email: item.email,
+      roles: item.roles
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditSubmit = async () => {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          email: editData.email,
+          roles: editData.roles,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', editData.id);
+      
+      if (error) throw error;
+      
+      await fetchData();
+      setShowEditModal(false);
+      alert('Data updated successfully!');
+    } catch (error) {
+      console.error('Error updating data:', error.message);
+      alert('Failed to update data');
     }
   };
 
@@ -150,7 +179,6 @@ const AdminDashboard = () => {
       case 'profiles':
         return (
           <>
-            <th className="px-6 py-3">ID</th>
             <th className="px-6 py-3">Email</th>
             <th className="px-6 py-3">Role</th>
             <th className="px-6 py-3">Created At</th>
@@ -161,28 +189,22 @@ const AdminDashboard = () => {
       case 'transactions':
         return (
           <>
-            <th className="px-6 py-3">ID</th>
             <th className="px-6 py-3">User Email</th>
             <th className="px-6 py-3">Type</th>
             <th className="px-6 py-3">Amount</th>
             <th className="px-6 py-3">Category</th>
             <th className="px-6 py-3">Description</th>
             <th className="px-6 py-3">Date</th>
-            <th className="px-6 py-3">Created At</th>
-            <th className="px-6 py-3">Updated At</th>
             <th className="px-6 py-3">Actions</th>
           </>
         );
       case 'budgets':
         return (
           <>
-            <th className="px-6 py-3">ID</th>
             <th className="px-6 py-3">User Email</th>
             <th className="px-6 py-3">Category</th>
             <th className="px-6 py-3">Amount</th>
             <th className="px-6 py-3">Period</th>
-            <th className="px-6 py-3">Created At</th>
-            <th className="px-6 py-3">Updated At</th>
             <th className="px-6 py-3">Actions</th>
           </>
         );
@@ -194,14 +216,41 @@ const AdminDashboard = () => {
   const renderTableRows = () => {
     return data.map((item) => (
       <tr key={item.id} className="bg-white border-b hover:bg-gray-50">
-        {Object.entries(item).filter(([key]) => key !== 'user').map(([key, value]) => (
-          <td key={key} className="px-6 py-4">
-            {typeof value === 'string' && value.length > 20 
-              ? `${value.substring(0, 20)}...` 
-              : value}
-          </td>
-        ))}
+        {activeTab === 'profiles' && (
+          <>
+            <td className="px-6 py-4">{item.email}</td>
+            <td className="px-6 py-4">{item.roles}</td>
+            <td className="px-6 py-4">{new Date(item.created_at).toLocaleString()}</td>
+            <td className="px-6 py-4">{new Date(item.updated_at).toLocaleString()}</td>
+          </>
+        )}
+        {activeTab === 'transactions' && (
+          <>
+            <td className="px-6 py-4">{item.email}</td>
+            <td className="px-6 py-4">{item.type}</td>
+            <td className="px-6 py-4">{item.amount}</td>
+            <td className="px-6 py-4">{item.category}</td>
+            <td className="px-6 py-4">{item.description?.substring(0, 20)}{item.description?.length > 20 ? '...' : ''}</td>
+            <td className="px-6 py-4">{new Date(item.date).toLocaleDateString()}</td>
+          </>
+        )}
+        {activeTab === 'budgets' && (
+          <>
+            <td className="px-6 py-4">{item.email}</td>
+            <td className="px-6 py-4">{item.category}</td>
+            <td className="px-6 py-4">{item.amount}</td>
+            <td className="px-6 py-4">{item.period}</td>
+          </>
+        )}
         <td className="px-6 py-4 flex space-x-2">
+          {activeTab === 'profiles' && (
+            <button
+              onClick={() => openEditModal(item)}
+              className="px-4 py-2 bg-gradient-to-r from-yellow-500 to-amber-500 text-white rounded-md hover:from-yellow-600 hover:to-amber-600 transition-all duration-200 shadow-md"
+            >
+              Edit
+            </button>
+          )}
           <button
             onClick={() => {
               setSelectedItem(item);
@@ -227,12 +276,19 @@ const AdminDashboard = () => {
     
     return (
       <div className="space-y-4">
-        {Object.entries(detailData).filter(([key]) => key !== 'user').map(([key, value]) => (
-          <div key={key} className="flex">
-            <span className="font-semibold w-1/3 capitalize">{key.replace('_', ' ')}:</span>
-            <span className="w-2/3 break-all">{value}</span>
-          </div>
-        ))}
+        {Object.entries(detailData).map(([key, value]) => {
+          if (key === 'profiles') return null;
+          return (
+            <div key={key} className="flex">
+              <span className="font-semibold w-1/3 capitalize">{key.replace('_', ' ')}:</span>
+              <span className="w-2/3 break-all">
+                {key.includes('_at') || key === 'date' 
+                  ? new Date(value).toLocaleString() 
+                  : value}
+              </span>
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -322,6 +378,7 @@ const AdminDashboard = () => {
         )}
       </div>
 
+      {/* Delete Confirmation Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
@@ -345,6 +402,52 @@ const AdminDashboard = () => {
         </div>
       )}
 
+      {/* Edit Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
+            <h3 className="text-lg font-medium mb-4">Edit User</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={editData.email}
+                  onChange={(e) => setEditData({...editData, email: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                <select
+                  value={editData.roles}
+                  onChange={(e) => setEditData({...editData, roles: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                >
+                  <option value="admin">Admin</option>
+                  <option value="user">User</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end space-x-4 mt-6">
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="px-4 py-2 border border-gray-300 rounded-md"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleEditSubmit}
+                className="px-4 py-2 bg-gradient-to-r from-green-500 to-teal-500 text-white rounded-md hover:from-green-600 hover:to-teal-600 transition-all duration-200 shadow-md"
+              >
+                Simpan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Detail Modal */}
       {showDetailModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
