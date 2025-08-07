@@ -237,7 +237,7 @@ const AdminDashboard = () => {
         )}
         {activeTab === 'transactions' && (
           <>
-            <td className="px-6 py-4">{item.email}</td>
+            <td className="px-6 py-4">{item.user_id}</td>
             <td className="px-6 py-4">{item.type}</td>
             <td className="px-6 py-4">{item.amount}</td>
             <td className="px-6 py-4">{item.category}</td>
@@ -247,7 +247,7 @@ const AdminDashboard = () => {
         )}
         {activeTab === 'budgets' && (
           <>
-            <td className="px-6 py-4">{item.email}</td>
+            <td className="px-6 py-4">{item.user_id}</td>
             <td className="px-6 py-4">{item.category}</td>
             <td className="px-6 py-4">{item.amount}</td>
             <td className="px-6 py-4">{item.period}</td>
