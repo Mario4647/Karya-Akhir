@@ -49,69 +49,71 @@ const AdminDashboard = () => {
   };
 
   const fetchUserCount = async () => {
-    const { count } = await supabase
-      .from('profiles')
-      .select('*', { count: 'exact', head: true });
-    setUserCount(count || 0);
+    try {
+      const { count, error } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true });
+      
+      if (error) throw error;
+      setUserCount(count || 0);
+    } catch (error) {
+      console.error('Error fetching user count:', error.message);
+    }
   };
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      let query;
-      
       if (activeTab === 'profiles') {
-        query = supabase.from('profiles').select('*');
+        // Fetch all profiles
+        const { data: profiles, error } = await supabase
+          .from('profiles')
+          .select('*');
+        
+        if (error) throw error;
+        setData(profiles);
       } 
       else if (activeTab === 'transactions') {
-        // Fetch transactions with user email
+        // Fetch all transactions with user emails
         const { data: transactions, error } = await supabase
           .from('transactions')
           .select(`
             *,
-            profile:user_id (email)
+            user:user_id (email)
           `);
         
         if (error) throw error;
         
         const transformedData = transactions.map(tx => ({
           ...tx,
-          user_id: tx.profile?.email || tx.user_id,
-          profile: undefined
+          user_id: tx.user?.email || tx.user_id,
+          user: undefined
         }));
         
         setData(transformedData);
-        setLoading(false);
-        return;
       } 
       else if (activeTab === 'budgets') {
-        // Fetch budgets with user email
+        // Fetch all budgets with user emails
         const { data: budgets, error } = await supabase
           .from('budgets')
           .select(`
             *,
-            profile:user_id (email)
+            user:user_id (email)
           `);
         
         if (error) throw error;
         
         const transformedData = budgets.map(budget => ({
           ...budget,
-          user_id: budget.profile?.email || budget.user_id,
-          profile: undefined
+          user_id: budget.user?.email || budget.user_id,
+          user: undefined
         }));
         
         setData(transformedData);
-        setLoading(false);
-        return;
       }
-
-      const { data: fetchedData, error } = await query;
-      
-      if (error) throw error;
-      setData(fetchedData);
     } catch (error) {
       console.error('Error fetching data:', error.message);
+      alert('Failed to fetch data');
     } finally {
       setLoading(false);
     }
@@ -125,7 +127,11 @@ const AdminDashboard = () => {
         .eq('id', selectedItem.id);
       
       if (error) throw error;
-      fetchData();
+      
+      // Refresh data after deletion
+      await fetchData();
+      await fetchUserCount();
+      
       setShowDeleteModal(false);
       alert('Data deleted successfully!');
     } catch (error) {
@@ -188,7 +194,7 @@ const AdminDashboard = () => {
   const renderTableRows = () => {
     return data.map((item) => (
       <tr key={item.id} className="bg-white border-b hover:bg-gray-50">
-        {Object.entries(item).map(([key, value]) => (
+        {Object.entries(item).filter(([key]) => key !== 'user').map(([key, value]) => (
           <td key={key} className="px-6 py-4">
             {typeof value === 'string' && value.length > 20 
               ? `${value.substring(0, 20)}...` 
@@ -221,10 +227,10 @@ const AdminDashboard = () => {
     
     return (
       <div className="space-y-4">
-        {Object.entries(detailData).map(([key, value]) => (
+        {Object.entries(detailData).filter(([key]) => key !== 'user').map(([key, value]) => (
           <div key={key} className="flex">
             <span className="font-semibold w-1/3 capitalize">{key.replace('_', ' ')}:</span>
-            <span className="w-2/3">{value}</span>
+            <span className="w-2/3 break-all">{value}</span>
           </div>
         ))}
       </div>
@@ -261,7 +267,7 @@ const AdminDashboard = () => {
           <div className="flex justify-between items-center">
             <div>
               <h2 className="text-lg font-semibold mb-1">Jumlah User</h2>
-              <p className="text-sm opacity-80">Total pengguna yang terdaftar</p>
+              <p className="text-sm opacity-80">Total pengguna yang terdaftar: {userCount}</p>
             </div>
             <div className="text-4xl font-bold">{userCount}</div>
           </div>
