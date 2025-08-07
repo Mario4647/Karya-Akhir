@@ -51,14 +51,31 @@ const AdminDashboard = () => {
 
   const fetchUserCount = async () => {
     try {
-      const { count, error } = await supabase
+      // Fetch all profiles without any filters
+      const { data: profiles, count, error } = await supabase
         .from('profiles')
-        .select('*', { count: 'exact', head: true });
+        .select('*', { count: 'exact' });
       
       if (error) throw error;
+      
+      console.log('Fetched profiles:', profiles); // Debug log
+      console.log('User count:', count); // Debug log
+      
       setUserCount(count || 0);
     } catch (error) {
       console.error('Error fetching user count:', error.message);
+      // If count fails, try alternative method
+      try {
+        const { data: profiles, error: altError } = await supabase
+          .from('profiles')
+          .select('id');
+        
+        if (altError) throw altError;
+        
+        setUserCount(profiles.length || 0);
+      } catch (altError) {
+        console.error('Alternative count method failed:', altError.message);
+      }
     }
   };
 
@@ -66,16 +83,19 @@ const AdminDashboard = () => {
     setLoading(true);
     try {
       if (activeTab === 'profiles') {
+        // Fetch all profiles without any filters
         const { data: profiles, error } = await supabase
           .from('profiles')
           .select('*')
           .order('created_at', { ascending: false });
         
         if (error) throw error;
+        
+        console.log('Fetched profiles:', profiles); // Debug log
         setData(profiles || []);
       } 
       else if (activeTab === 'transactions') {
-        // Fetch transactions and profiles separately
+        // Fetch all transactions and profiles separately
         const { data: transactions, error: txError } = await supabase
           .from('transactions')
           .select('*');
@@ -100,7 +120,7 @@ const AdminDashboard = () => {
         setData(transformedData || []);
       } 
       else if (activeTab === 'budgets') {
-        // Fetch budgets and profiles separately
+        // Fetch all budgets and profiles separately
         const { data: budgets, error: budgetError } = await supabase
           .from('budgets')
           .select('*');
@@ -143,7 +163,7 @@ const AdminDashboard = () => {
       if (error) throw error;
       
       await fetchData();
-      if (activeTab === 'profiles') await fetchUserCount();
+      await fetchUserCount();
       
       setShowDeleteModal(false);
       alert('Data deleted successfully!');
@@ -176,6 +196,7 @@ const AdminDashboard = () => {
       if (error) throw error;
       
       await fetchData();
+      await fetchUserCount();
       setShowEditModal(false);
       alert('Data updated successfully!');
     } catch (error) {
