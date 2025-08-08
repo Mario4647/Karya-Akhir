@@ -221,7 +221,6 @@ const AdminDashboard = () => {
         return (
           <>
             <th className="px-6 py-3">Email</th>
-            <th className="px-6 py-3">Auth Email</th>
             <th className="px-6 py-3">Role</th>
             <th className="px-6 py-3">Last Sign In</th>
             <th className="px-6 py-3">Created At</th>
@@ -279,7 +278,6 @@ const AdminDashboard = () => {
         {activeTab === 'profiles' && (
           <>
             <td className="px-6 py-4">{item.email || 'N/A'}</td>
-            <td className="px-6 py-4">{item.auth_email || 'N/A'}</td>
             <td className="px-6 py-4">{item.roles || 'user'}</td>
             <td className="px-6 py-4">
               {item.last_sign_in_at 
