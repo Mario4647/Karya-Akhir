@@ -51,42 +51,14 @@ const AdminDashboard = () => {
 
   const fetchUserCount = async () => {
     try {
-      // First try to get exact count
       const { count, error } = await supabase
         .from('profiles')
         .select('*', { count: 'exact', head: true });
       
       if (error) throw error;
-      
-      console.log('User count from count method:', count);
       setUserCount(count || 0);
-
-      // Verify by fetching all data
-      const { data: profiles, error: fetchError } = await supabase
-        .from('profiles')
-        .select('id');
-      
-      if (fetchError) throw fetchError;
-      
-      console.log('Actual number of profiles:', profiles.length);
-      if (count !== profiles.length) {
-        console.warn('Count mismatch, using actual length');
-        setUserCount(profiles.length);
-      }
     } catch (error) {
-      console.error('Error counting users:', error.message);
-      // Fallback to simple count
-      try {
-        const { data: profiles, error: altError } = await supabase
-          .from('profiles')
-          .select('id');
-        
-        if (altError) throw altError;
-        
-        setUserCount(profiles.length);
-      } catch (altError) {
-        console.error('Fallback count failed:', altError.message);
-      }
+      console.error('Error fetching user count:', error.message);
     }
   };
 
@@ -94,33 +66,45 @@ const AdminDashboard = () => {
     setLoading(true);
     try {
       if (activeTab === 'profiles') {
-        // Fetch ALL profiles without any filters
-        const { data: profiles, error } = await supabase
+        // Fetch all profiles
+        const { data: profiles, error: profileError } = await supabase
           .from('profiles')
-          .select('*')
-          .order('created_at', { ascending: false });
+          .select('*');
         
-        if (error) throw error;
+        if (profileError) throw profileError;
+
+        // Fetch auth data (last sign in)
+        const { data: authUsers, error: authError } = await supabase
+          .from('auth.users')
+          .select('id, last_sign_in_at, email');
         
-        console.log('Fetched profiles:', profiles);
-        setData(profiles || []);
+        if (authError) throw authError;
+
+        // Combine profile data with auth data
+        const combinedData = profiles.map(profile => {
+          const authUser = authUsers.find(auth => auth.id === profile.id);
+          return {
+            ...profile,
+            last_sign_in_at: authUser?.last_sign_in_at || null,
+            auth_email: authUser?.email || null
+          };
+        });
+
+        setData(combinedData);
       } 
       else if (activeTab === 'transactions') {
-        // Fetch all transactions
         const { data: transactions, error: txError } = await supabase
           .from('transactions')
           .select('*');
         
         if (txError) throw txError;
 
-        // Fetch all profiles
         const { data: profiles, error: profileError } = await supabase
           .from('profiles')
           .select('id, email');
         
         if (profileError) throw profileError;
 
-        // Combine data
         const transformedData = transactions.map(tx => {
           const user = profiles.find(p => p.id === tx.user_id);
           return {
@@ -132,21 +116,18 @@ const AdminDashboard = () => {
         setData(transformedData || []);
       } 
       else if (activeTab === 'budgets') {
-        // Fetch all budgets
         const { data: budgets, error: budgetError } = await supabase
           .from('budgets')
           .select('*');
         
         if (budgetError) throw budgetError;
 
-        // Fetch all profiles
         const { data: profiles, error: profileError } = await supabase
           .from('profiles')
           .select('id, email');
         
         if (profileError) throw profileError;
 
-        // Combine data
         const transformedData = budgets.map(budget => {
           const user = profiles.find(p => p.id === budget.user_id);
           return {
@@ -176,7 +157,7 @@ const AdminDashboard = () => {
       if (error) throw error;
       
       await fetchData();
-      await fetchUserCount();
+      if (activeTab === 'profiles') await fetchUserCount();
       
       setShowDeleteModal(false);
       alert('Data deleted successfully!');
@@ -187,6 +168,8 @@ const AdminDashboard = () => {
   };
 
   const openEditModal = (item) => {
+    if (activeTab !== 'profiles') return;
+    
     setEditData({
       id: item.id,
       email: item.email,
@@ -209,7 +192,6 @@ const AdminDashboard = () => {
       if (error) throw error;
       
       await fetchData();
-      await fetchUserCount();
       setShowEditModal(false);
       alert('Data updated successfully!');
     } catch (error) {
@@ -229,7 +211,9 @@ const AdminDashboard = () => {
         return (
           <>
             <th className="px-6 py-3">Email</th>
+            <th className="px-6 py-3">Auth Email</th>
             <th className="px-6 py-3">Role</th>
+            <th className="px-6 py-3">Last Sign In</th>
             <th className="px-6 py-3">Created At</th>
             <th className="px-6 py-3">Updated At</th>
             <th className="px-6 py-3">Actions</th>
@@ -278,7 +262,13 @@ const AdminDashboard = () => {
         {activeTab === 'profiles' && (
           <>
             <td className="px-6 py-4">{item.email}</td>
+            <td className="px-6 py-4">{item.auth_email || 'N/A'}</td>
             <td className="px-6 py-4">{item.roles}</td>
+            <td className="px-6 py-4">
+              {item.last_sign_in_at 
+                ? new Date(item.last_sign_in_at).toLocaleString() 
+                : 'Never signed in'}
+            </td>
             <td className="px-6 py-4">{new Date(item.created_at).toLocaleString()}</td>
             <td className="px-6 py-4">{new Date(item.updated_at).toLocaleString()}</td>
           </>
@@ -357,7 +347,7 @@ const AdminDashboard = () => {
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100">
         <div className="bg-white p-8 rounded-lg shadow-lg max-w-md text-center">
           <h1 className="text-2xl font-bold text-red-600 mb-4">Access Denied</h1>
-          <p className="text-gray-700 mb-6">You don't have permission to access this page</p>
+          <p className="text-gray-700 mb-6">You don't have permission to access this page.</p>
           <button
             onClick={() => navigate('/')}
             className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
