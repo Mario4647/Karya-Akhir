@@ -26,27 +26,34 @@ const AdminDashboard = () => {
   }, [activeTab]);
 
   const checkAdminAccess = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session) {
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) throw sessionError;
+      if (!session) {
+        navigate('/auth');
+        return;
+      }
+
+      setUserEmail(session.user.email);
+
+      const { data: userData, error: userError } = await supabase
+        .from('profiles')
+        .select('roles')
+        .eq('id', session.user.id)
+        .single();
+
+      if (userError) throw userError;
+      if (!userData || userData.roles !== 'admin') {
+        navigate('/');
+        return;
+      }
+
+      setUserRole(userData.roles);
+    } catch (error) {
+      console.error('Error checking admin access:', error.message);
       navigate('/auth');
-      return;
     }
-
-    setUserEmail(session.user.email);
-
-    const { data: userData, error } = await supabase
-      .from('profiles')
-      .select('roles')
-      .eq('id', session.user.id)
-      .single();
-
-    if (error || !userData || userData.roles !== 'admin') {
-      navigate('/');
-      return;
-    }
-
-    setUserRole(userData.roles);
   };
 
   const fetchUserCount = async () => {
@@ -59,6 +66,27 @@ const AdminDashboard = () => {
       setUserCount(count || 0);
     } catch (error) {
       console.error('Error fetching user count:', error.message);
+      try {
+        const { data: profiles, error: fallbackError } = await supabase
+          .from('profiles')
+          .select('id');
+        
+        if (fallbackError) throw fallbackError;
+        setUserCount(profiles.length || 0);
+      } catch (fallbackError) {
+        console.error('Fallback count failed:', fallbackError.message);
+      }
+    }
+  };
+
+  const fetchAuthUsers = async () => {
+    try {
+      const { data: { users }, error } = await supabase.auth.admin.listUsers();
+      if (error) throw error;
+      return users || [];
+    } catch (error) {
+      console.error('Error fetching auth users:', error.message);
+      return [];
     }
   };
 
@@ -66,77 +94,62 @@ const AdminDashboard = () => {
     setLoading(true);
     try {
       if (activeTab === 'profiles') {
-        // Fetch all profiles
-        const { data: profiles, error: profileError } = await supabase
-          .from('profiles')
-          .select('*');
-        
+        const [{ data: profiles, error: profileError }, authUsers] = await Promise.all([
+          supabase.from('profiles').select('*'),
+          fetchAuthUsers()
+        ]);
+
         if (profileError) throw profileError;
 
-        // Fetch auth data (last sign in)
-        const { data: authUsers, error: authError } = await supabase
-          .from('auth.users')
-          .select('id, last_sign_in_at, email');
-        
-        if (authError) throw authError;
-
-        // Combine profile data with auth data
         const combinedData = profiles.map(profile => {
           const authUser = authUsers.find(auth => auth.id === profile.id);
           return {
             ...profile,
             last_sign_in_at: authUser?.last_sign_in_at || null,
-            auth_email: authUser?.email || null
+            auth_email: authUser?.email || null,
+            created_at: profile.created_at || null,
+            updated_at: profile.updated_at || null
           };
         });
 
         setData(combinedData);
       } 
       else if (activeTab === 'transactions') {
-        const { data: transactions, error: txError } = await supabase
-          .from('transactions')
-          .select('*');
-        
-        if (txError) throw txError;
+        const [{ data: transactions, error: txError }, { data: profiles, error: profileError }] = await Promise.all([
+          supabase.from('transactions').select('*'),
+          supabase.from('profiles').select('id, email')
+        ]);
 
-        const { data: profiles, error: profileError } = await supabase
-          .from('profiles')
-          .select('id, email');
-        
+        if (txError) throw txError;
         if (profileError) throw profileError;
 
-        const transformedData = transactions.map(tx => {
-          const user = profiles.find(p => p.id === tx.user_id);
-          return {
-            ...tx,
-            user_email: user?.email || 'Unknown'
-          };
-        });
-        
-        setData(transformedData || []);
+        const transformedData = transactions.map(tx => ({
+          ...tx,
+          user_email: profiles.find(p => p.id === tx.user_id)?.email || 'Unknown',
+          date: tx.date || null,
+          created_at: tx.created_at || null,
+          updated_at: tx.updated_at || null
+        }));
+
+        setData(transformedData);
       } 
       else if (activeTab === 'budgets') {
-        const { data: budgets, error: budgetError } = await supabase
-          .from('budgets')
-          .select('*');
-        
-        if (budgetError) throw budgetError;
+        const [{ data: budgets, error: budgetError }, { data: profiles, error: profileError }] = await Promise.all([
+          supabase.from('budgets').select('*'),
+          supabase.from('profiles').select('id, email')
+        ]);
 
-        const { data: profiles, error: profileError } = await supabase
-          .from('profiles')
-          .select('id, email');
-        
+        if (budgetError) throw budgetError;
         if (profileError) throw profileError;
 
-        const transformedData = budgets.map(budget => {
-          const user = profiles.find(p => p.id === budget.user_id);
-          return {
-            ...budget,
-            user_email: user?.email || 'Unknown'
-          };
-        });
-        
-        setData(transformedData || []);
+        const transformedData = budgets.map(budget => ({
+          ...budget,
+          user_email: profiles.find(p => p.id === budget.user_id)?.email || 'Unknown',
+          created_at: budget.created_at || null,
+          updated_at: budget.updated_at || null
+        }));
+
+        setData(transformedData);
       }
     } catch (error) {
       console.error(`Error fetching ${activeTab} data:`, error.message);
@@ -156,9 +169,7 @@ const AdminDashboard = () => {
       
       if (error) throw error;
       
-      await fetchData();
-      if (activeTab === 'profiles') await fetchUserCount();
-      
+      await Promise.all([fetchData(), activeTab === 'profiles' && fetchUserCount()]);
       setShowDeleteModal(false);
       alert('Data deleted successfully!');
     } catch (error) {
@@ -169,11 +180,10 @@ const AdminDashboard = () => {
 
   const openEditModal = (item) => {
     if (activeTab !== 'profiles') return;
-    
     setEditData({
       id: item.id,
       email: item.email,
-      roles: item.roles
+      roles: item.roles || 'user'
     });
     setShowEditModal(true);
   };
@@ -191,7 +201,7 @@ const AdminDashboard = () => {
       
       if (error) throw error;
       
-      await fetchData();
+      await Promise.all([fetchData(), fetchUserCount()]);
       setShowEditModal(false);
       alert('Data updated successfully!');
     } catch (error) {
@@ -228,6 +238,8 @@ const AdminDashboard = () => {
             <th className="px-6 py-3">Category</th>
             <th className="px-6 py-3">Description</th>
             <th className="px-6 py-3">Date</th>
+            <th className="px-6 py-3">Created At</th>
+            <th className="px-6 py-3">Updated At</th>
             <th className="px-6 py-3">Actions</th>
           </>
         );
@@ -238,6 +250,8 @@ const AdminDashboard = () => {
             <th className="px-6 py-3">Category</th>
             <th className="px-6 py-3">Amount</th>
             <th className="px-6 py-3">Period</th>
+            <th className="px-6 py-3">Created At</th>
+            <th className="px-6 py-3">Updated At</th>
             <th className="px-6 py-3">Actions</th>
           </>
         );
@@ -248,9 +262,12 @@ const AdminDashboard = () => {
 
   const renderTableRows = () => {
     if (data.length === 0) {
+      const colSpan = activeTab === 'profiles' ? 7 : 
+                     activeTab === 'transactions' ? 10 : 
+                     activeTab === 'budgets' ? 7 : 1;
       return (
         <tr>
-          <td colSpan="10" className="px-6 py-4 text-center">
+          <td colSpan={colSpan} className="px-6 py-4 text-center">
             {loading ? 'Loading...' : 'No data found'}
           </td>
         </tr>
@@ -261,34 +278,54 @@ const AdminDashboard = () => {
       <tr key={item.id} className="bg-white border-b hover:bg-gray-50">
         {activeTab === 'profiles' && (
           <>
-            <td className="px-6 py-4">{item.email}</td>
+            <td className="px-6 py-4">{item.email || 'N/A'}</td>
             <td className="px-6 py-4">{item.auth_email || 'N/A'}</td>
-            <td className="px-6 py-4">{item.roles}</td>
+            <td className="px-6 py-4">{item.roles || 'user'}</td>
             <td className="px-6 py-4">
               {item.last_sign_in_at 
                 ? new Date(item.last_sign_in_at).toLocaleString() 
                 : 'Never signed in'}
             </td>
-            <td className="px-6 py-4">{new Date(item.created_at).toLocaleString()}</td>
-            <td className="px-6 py-4">{new Date(item.updated_at).toLocaleString()}</td>
+            <td className="px-6 py-4">
+              {item.created_at ? new Date(item.created_at).toLocaleString() : 'N/A'}
+            </td>
+            <td className="px-6 py-4">
+              {item.updated_at ? new Date(item.updated_at).toLocaleString() : 'N/A'}
+            </td>
           </>
         )}
         {activeTab === 'transactions' && (
           <>
-            <td className="px-6 py-4">{item.user_email || item.user_id}</td>
-            <td className="px-6 py-4">{item.type}</td>
-            <td className="px-6 py-4">{item.amount}</td>
-            <td className="px-6 py-4">{item.category}</td>
-            <td className="px-6 py-4">{item.description?.substring(0, 20)}{item.description?.length > 20 ? '...' : ''}</td>
-            <td className="px-6 py-4">{new Date(item.date).toLocaleDateString()}</td>
+            <td className="px-6 py-4">{item.user_email || item.user_id || 'Unknown'}</td>
+            <td className="px-6 py-4">{item.type || 'N/A'}</td>
+            <td className="px-6 py-4">{item.amount || '0'}</td>
+            <td className="px-6 py-4">{item.category || 'N/A'}</td>
+            <td className="px-6 py-4">
+              {item.description ? `${item.description.substring(0, 20)}${item.description.length > 20 ? '...' : ''}` : 'N/A'}
+            </td>
+            <td className="px-6 py-4">
+              {item.date ? new Date(item.date).toLocaleDateString() : 'N/A'}
+            </td>
+            <td className="px-6 py-4">
+              {item.created_at ? new Date(item.created_at).toLocaleString() : 'N/A'}
+            </td>
+            <td className="px-6 py-4">
+              {item.updated_at ? new Date(item.updated_at).toLocaleString() : 'N/A'}
+            </td>
           </>
         )}
         {activeTab === 'budgets' && (
           <>
-            <td className="px-6 py-4">{item.user_email || item.user_id}</td>
-            <td className="px-6 py-4">{item.category}</td>
-            <td className="px-6 py-4">{item.amount}</td>
-            <td className="px-6 py-4">{item.period}</td>
+            <td className="px-6 py-4">{item.user_email || item.user_id || 'Unknown'}</td>
+            <td className="px-6 py-4">{item.category || 'N/A'}</td>
+            <td className="px-6 py-4">{item.amount || '0'}</td>
+            <td className="px-6 py-4">{item.period || 'N/A'}</td>
+            <td className="px-6 py-4">
+              {item.created_at ? new Date(item.created_at).toLocaleString() : 'N/A'}
+            </td>
+            <td className="px-6 py-4">
+              {item.updated_at ? new Date(item.updated_at).toLocaleString() : 'N/A'}
+            </td>
           </>
         )}
         <td className="px-6 py-4 flex space-x-2">
@@ -327,14 +364,20 @@ const AdminDashboard = () => {
       <div className="space-y-4">
         {Object.entries(detailData).map(([key, value]) => {
           if (key === 'profiles') return null;
+          
+          let displayValue = value;
+          if (key.includes('_at') || key === 'date') {
+            displayValue = value ? new Date(value).toLocaleString() : 'N/A';
+          } else if (typeof value === 'string' && value.length > 50) {
+            displayValue = `${value.substring(0, 50)}...`;
+          } else if (value === null || value === undefined) {
+            displayValue = 'N/A';
+          }
+
           return (
             <div key={key} className="flex">
               <span className="font-semibold w-1/3 capitalize">{key.replace('_', ' ')}:</span>
-              <span className="w-2/3 break-all">
-                {key.includes('_at') || key === 'date' 
-                  ? new Date(value).toLocaleString() 
-                  : value}
-              </span>
+              <span className="w-2/3 break-all">{displayValue}</span>
             </div>
           );
         })}
@@ -419,7 +462,6 @@ const AdminDashboard = () => {
         )}
       </div>
 
-      {/* Delete Confirmation Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
@@ -443,7 +485,6 @@ const AdminDashboard = () => {
         </div>
       )}
 
-      {/* Edit Modal */}
       {showEditModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
@@ -488,7 +529,6 @@ const AdminDashboard = () => {
         </div>
       )}
 
-      {/* Detail Modal */}
       {showDetailModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
