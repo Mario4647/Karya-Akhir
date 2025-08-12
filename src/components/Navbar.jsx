@@ -78,8 +78,8 @@ const Navbar = () => {
                     <div className="flex justify-between items-center">
                         <div className="flex items-center gap-2 text-xl font-bold text-gray-800 leading-none tracking-wide">
                             <i className="bx bx-money"></i>
-                            <span className="hidden sm:inline">Money Tracker</span>
-                            <span className="sm:hidden">Money Management</span>
+                            <span className="hidden sm:inline">Pelacakan Keuangan</span>
+                            <span className="sm:hidden">Management Keunangan Pribadi</span>
                         </div>
                         <ul className="hidden md:flex gap-6 items-center">
                             {navbarData.map((item) => (
