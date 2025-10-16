@@ -33,6 +33,8 @@ const Budget = ({ user }) => {
         { value: "kesehatan", label: "Kesehatan" },
         { value: "pendidikan", label: "Pendidikan" },
         { value: "belanja", label: "Belanja" },
+        { value: "ngedate", label: "Ngedate" },
+        { value: "liburan", label: "Liburan" },
         { value: "lainnya", label: "Lainnya" },
     ];
 
