@@ -137,10 +137,10 @@ const Form = () => {
                 <div className="max-w-7xl mx-auto px-4">
                     <div className="text-center mb-8" data-aos="fade-down" data-aos-duration="1000">
                         <h2 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-gray-800 via-gray-700 to-gray-800 bg-clip-text text-transparent leading-tight">
-                            Welcome to Money Management
+                           Selamat Datang Di Website Management Keuangan Pribadi
                         </h2>
                         <p className="text-base md:text-lg text-gray-700 mt-2">
-                            Sign up or log in to manage your finances
+                            Daftar dan Login untuk menggunakan fitur management keuangan 
                         </p>
                         <i className="bx bx-money text-5xl text-indigo-600 mt-4 animate-bounce"></i>
                     </div>
@@ -167,7 +167,7 @@ const Form = () => {
                                     : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
                                     }`}
                             >
-                                Sign In
+                                Login
                             </button>
                             <button
                                 onClick={() => setActiveTab('signup')}
@@ -176,7 +176,7 @@ const Form = () => {
                                     : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
                                     }`}
                             >
-                                Sign Up
+                                Daftar
                             </button>
                         </div>
                         {activeTab === 'signup' ? (
@@ -326,7 +326,7 @@ const Form = () => {
                             </form>
                         )}
                         <div className="text-center mt-6">
-                            <p className="text-sm text-gray-800">© {new Date().getFullYear()} All rights reserved</p>
+                            <p className="text-sm text-gray-800">© {new Date().getFullYear()} Karya Akhir Procommit 2025</p>
                         </div>
                     </div>
                 </div>
