@@ -113,11 +113,11 @@ const Footer = () => {
                         <ul className="space-y-2 text-sm md:text-base">
                             <li className="flex items-center gap-2">
                                 <i className="bx bx-envelope text-blue-400"></i>
-                                <span>support@moneymanagement.app</span>
+                                <span>support@managementkeuangan.com</span>
                             </li>
                             <li className="flex items-center gap-2">
                                 <i className="bx bx-phone text-blue-400"></i>
-                                <span>+62 21 1234 5678</span>
+                                <span>+62 895-275-541-25</span>
                             </li>
                             <li className="flex items-center gap-2">
                                 <i className="bx bx-map text-blue-400"></i>
@@ -181,7 +181,7 @@ const Footer = () => {
                 </div>
                 <div className="mt-12 border-t border-gray-700 pt-6 text-center">
                     <p className="text-sm text-gray-400">
-                        © {currentYear} Money Management Tracker. All Right Reserved.
+                        © {currentYear} Karya Akhir Procommit 2025.
                     </p>
                 </div>
             </div>
