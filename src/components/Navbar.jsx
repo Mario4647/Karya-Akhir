@@ -191,8 +191,8 @@ const Navbar = () => {
                 </div>
                 <div className="border-t border-gray-400 p-6 bg-white shadow-lg">
                     <div className="text-center space-y-1">
-                        <p className="text-xs text-gray-800">Money Management v1.0</p>
-                        <p className="text-xs text-gray-800">© {new Date().getFullYear()} All rights reserved</p>
+                        <p className="text-xs text-gray-800">Management Keuangan v1.0</p>
+                        <p className="text-xs text-gray-800">© {new Date().getFullYear()} Karya Akhir Procommit 2025</p>
                     </div>
                 </div>
             </div>
