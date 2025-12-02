@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { withAuth } from "../authMiddleware";
 
 const Dashboard = ({ user }) => {
     const [namaUser, setNamaUser] = useState("Tamu");
+    const [userRole, setUserRole] = useState("user");
     const [balance, setBalance] = useState(0);
     const [income, setIncome] = useState(0);
     const [expense, setExpense] = useState(0);
@@ -18,6 +20,7 @@ const Dashboard = ({ user }) => {
     const [activeTab, setActiveTab] = useState("edit");
     const [newEmail, setNewEmail] = useState("");
     const [confirmDelete, setConfirmDelete] = useState("");
+    const navigate = useNavigate();
 
     const today = new Date().toLocaleDateString("id-ID", {
         weekday: "long",
@@ -44,17 +47,21 @@ const Dashboard = ({ user }) => {
                 // Fetch user profile
                 const { data: profileData, error: profileError } = await supabase
                     .from("profiles")
-                    .select("email")
-                    .eq("id", user.id);
+                    .select("email, roles")
+                    .eq("id", user.id)
+                    .single();
 
                 if (profileError) throw profileError;
-                if (profileData.length === 0) {
+                
+                if (!profileData) {
                     // No profile exists, set default email or handle accordingly
                     setNamaUser(user.email || "Tamu");
                     setNewEmail(user.email || "");
+                    setUserRole("user");
                 } else {
-                    setNamaUser(profileData[0].email || "Tamu");
-                    setNewEmail(profileData[0].email || "");
+                    setNamaUser(profileData.email || "Tamu");
+                    setNewEmail(profileData.email || "");
+                    setUserRole(profileData.roles || "user");
                 }
 
                 // Rest of the fetchData logic remains the same
@@ -107,6 +114,7 @@ const Dashboard = ({ user }) => {
                 setError("Gagal memuat data: " + err.message);
                 console.error("Fetch error:", err);
                 setNamaUser(user.email || "Tamu");
+                setUserRole("user");
             } finally {
                 setLoading(false);
             }
@@ -166,6 +174,10 @@ const Dashboard = ({ user }) => {
         } catch (err) {
             setError("Gagal menghapus profil: " + err.message);
         }
+    };
+
+    const handleAdminDashboardClick = () => {
+        navigate("/admin");
     };
 
     if (loading) {
@@ -231,9 +243,34 @@ const Dashboard = ({ user }) => {
                                             <i className="bx bx-edit text-xl sm:text-2xl md:text-3xl"></i>
                                             <span>Edit Profile</span>
                                         </button>
+                                        
+                                        {/* Admin Dashboard Button - Only visible for admin users */}
+                                        {userRole === "admin" && (
+                                            <button
+                                                onClick={handleAdminDashboardClick}
+                                                className="flex items-center gap-1 text-gray-600 hover:text-blue-600 transition-colors duration-200 text-base sm:text-lg ml-2"
+                                                aria-label="Admin Dashboard"
+                                            >
+                                                <i className="bx bx-dashboard text-xl sm:text-2xl md:text-3xl"></i>
+                                                <span>Admin Dashboard</span>
+                                            </button>
+                                        )}
+                                    </div>
+                                    
+                                    {/* Role badge */}
+                                    <div className="mt-2">
+                                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                                            userRole === "admin" 
+                                                ? "bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 border border-blue-200" 
+                                                : "bg-gradient-to-r from-gray-100 to-gray-200 text-gray-800 border border-gray-200"
+                                        }`}>
+                                            <i className={`bx ${
+                                                userRole === "admin" ? "bx-shield-alt" : "bx-user"
+                                            } mr-1`}></i>
+                                            {userRole === "admin" ? "Administrator" : "Pengguna"}
+                                        </span>
                                     </div>
                                 </div>
-
                             </div>
                             <div
                                 className="space-y-4"
@@ -376,7 +413,7 @@ const Dashboard = ({ user }) => {
                                     <button
                                         type="button"
                                         onClick={closeModal}
-                                        className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-200  rounded-lg hover:bg-gray-300"
+                                        className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-200 rounded-lg hover:bg-gray-300"
                                     >
                                         Batal
                                     </button>
@@ -387,7 +424,6 @@ const Dashboard = ({ user }) => {
                                         <i className="bx bx-save text-base"></i>
                                         Simpan
                                     </button>
-
                                 </div>
                             </form>
                         )}
@@ -424,7 +460,6 @@ const Dashboard = ({ user }) => {
                                         <i className="bx bx-trash text-base"></i>
                                         Hapus Profil
                                     </button>
-
                                 </div>
                             </div>
                         )}
