@@ -506,6 +506,7 @@ const AdminDashboard = () => {
                 >
                   <option value="admin">Admin</option>
                   <option value="user">User</option>
+                  <option value="user-raport">User Raport</option>
                 </select>
               </div>
             </div>
