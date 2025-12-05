@@ -12,11 +12,28 @@ const AdminDashboard = () => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [detailData, setDetailData] = useState(null);
-  const [editData, setEditData] = useState({ id: '', email: '', roles: '' });
+  const [editData, setEditData] = useState({ 
+    id: '', 
+    email: '', 
+    roles: '',
+    name: '',
+    class: ''
+  });
+  const [newUser, setNewUser] = useState({
+    email: '',
+    password: '',
+    confirmPassword: '',
+    name: '',
+    class: '',
+    roles: 'user'
+  });
   const [userCount, setUserCount] = useState(0);
   const [userEmail, setUserEmail] = useState('');
   const [userRole, setUserRole] = useState('');
+  const [errors, setErrors] = useState({});
+  const [successMessage, setSuccessMessage] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -26,34 +43,27 @@ const AdminDashboard = () => {
   }, [activeTab]);
 
   const checkAdminAccess = async () => {
-    try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) throw sessionError;
-      if (!session) {
-        navigate('/auth');
-        return;
-      }
-
-      setUserEmail(session.user.email);
-
-      const { data: userData, error: userError } = await supabase
-        .from('profiles')
-        .select('roles')
-        .eq('id', session.user.id)
-        .single();
-
-      if (userError) throw userError;
-      if (!userData || userData.roles !== 'admin') {
-        navigate('/');
-        return;
-      }
-
-      setUserRole(userData.roles);
-    } catch (error) {
-      console.error('Error checking admin access:', error.message);
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
       navigate('/auth');
+      return;
     }
+
+    setUserEmail(session.user.email);
+
+    const { data: userData, error } = await supabase
+      .from('profiles')
+      .select('roles')
+      .eq('id', session.user.id)
+      .single();
+
+    if (error || !userData || userData.roles !== 'admin') {
+      navigate('/');
+      return;
+    }
+
+    setUserRole(userData.roles);
   };
 
   const fetchUserCount = async () => {
@@ -66,27 +76,6 @@ const AdminDashboard = () => {
       setUserCount(count || 0);
     } catch (error) {
       console.error('Error fetching user count:', error.message);
-      try {
-        const { data: profiles, error: fallbackError } = await supabase
-          .from('profiles')
-          .select('id');
-        
-        if (fallbackError) throw fallbackError;
-        setUserCount(profiles.length || 0);
-      } catch (fallbackError) {
-        console.error('Fallback count failed:', fallbackError.message);
-      }
-    }
-  };
-
-  const fetchAuthUsers = async () => {
-    try {
-      const { data: { users }, error } = await supabase.auth.admin.listUsers();
-      if (error) throw error;
-      return users || [];
-    } catch (error) {
-      console.error('Error fetching auth users:', error.message);
-      return [];
     }
   };
 
@@ -94,7 +83,8 @@ const AdminDashboard = () => {
     setLoading(true);
     try {
       if (activeTab === 'profiles') {
-        const [{ data: profiles, error: profileError }, authUsers] = await Promise.all([
+        // Fetch all profiles with auth data
+        const [{ data: profiles, error: profileError }, authUsersData] = await Promise.all([
           supabase.from('profiles').select('*'),
           fetchAuthUsers()
         ]);
@@ -102,13 +92,11 @@ const AdminDashboard = () => {
         if (profileError) throw profileError;
 
         const combinedData = profiles.map(profile => {
-          const authUser = authUsers.find(auth => auth.id === profile.id);
+          const authUser = authUsersData.find(auth => auth.id === profile.id);
           return {
             ...profile,
             last_sign_in_at: authUser?.last_sign_in_at || null,
-            auth_email: authUser?.email || null,
-            created_at: profile.created_at || null,
-            updated_at: profile.updated_at || null
+            auth_email: authUser?.email || null
           };
         });
 
@@ -125,10 +113,7 @@ const AdminDashboard = () => {
 
         const transformedData = transactions.map(tx => ({
           ...tx,
-          user_email: profiles.find(p => p.id === tx.user_id)?.email || 'Unknown',
-          date: tx.date || null,
-          created_at: tx.created_at || null,
-          updated_at: tx.updated_at || null
+          user_email: profiles.find(p => p.id === tx.user_id)?.email || 'Unknown'
         }));
 
         setData(transformedData);
@@ -144,12 +129,21 @@ const AdminDashboard = () => {
 
         const transformedData = budgets.map(budget => ({
           ...budget,
-          user_email: profiles.find(p => p.id === budget.user_id)?.email || 'Unknown',
-          created_at: budget.created_at || null,
-          updated_at: budget.updated_at || null
+          user_email: profiles.find(p => p.id === budget.user_id)?.email || 'Unknown'
         }));
 
         setData(transformedData);
+      }
+      else if (activeTab === 'user-report') {
+        // Fetch users with role 'user' (excluding admins)
+        const { data: userReports, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .or('roles.eq.user,roles.eq.user-raport')
+          .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        setData(userReports || []);
       }
     } catch (error) {
       console.error(`Error fetching ${activeTab} data:`, error.message);
@@ -160,18 +154,30 @@ const AdminDashboard = () => {
     }
   };
 
+  const fetchAuthUsers = async () => {
+    try {
+      const { data: { users }, error } = await supabase.auth.admin.listUsers();
+      if (error) throw error;
+      return users || [];
+    } catch (error) {
+      console.error('Error fetching auth users:', error.message);
+      return [];
+    }
+  };
+
   const handleDelete = async () => {
     try {
       const { error } = await supabase
-        .from(activeTab)
+        .from(activeTab === 'user-report' ? 'profiles' : activeTab)
         .delete()
         .eq('id', selectedItem.id);
       
       if (error) throw error;
       
-      await Promise.all([fetchData(), activeTab === 'profiles' && fetchUserCount()]);
+      await Promise.all([fetchData(), fetchUserCount()]);
       setShowDeleteModal(false);
-      alert('Data deleted successfully!');
+      setSuccessMessage('Data deleted successfully!');
+      setTimeout(() => setSuccessMessage(''), 3000);
     } catch (error) {
       console.error('Error deleting data:', error.message);
       alert('Failed to delete data');
@@ -179,34 +185,143 @@ const AdminDashboard = () => {
   };
 
   const openEditModal = (item) => {
-    if (activeTab !== 'profiles') return;
-    setEditData({
-      id: item.id,
-      email: item.email,
-      roles: item.roles || 'user'
-    });
+    if (activeTab === 'profiles') {
+      setEditData({
+        id: item.id,
+        email: item.email,
+        roles: item.roles || 'user'
+      });
+    } else if (activeTab === 'user-report') {
+      setEditData({
+        id: item.id,
+        email: item.email,
+        roles: item.roles || 'user',
+        name: item.name || '',
+        class: item.class || ''
+      });
+    }
     setShowEditModal(true);
   };
 
   const handleEditSubmit = async () => {
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
+      let updateData = {};
+      
+      if (activeTab === 'profiles') {
+        updateData = {
           email: editData.email,
           roles: editData.roles,
           updated_at: new Date().toISOString()
-        })
+        };
+      } else if (activeTab === 'user-report') {
+        updateData = {
+          email: editData.email,
+          roles: editData.roles,
+          name: editData.name,
+          class: editData.class,
+          updated_at: new Date().toISOString()
+        };
+      }
+      
+      const { error } = await supabase
+        .from('profiles')
+        .update(updateData)
         .eq('id', editData.id);
       
       if (error) throw error;
       
       await Promise.all([fetchData(), fetchUserCount()]);
       setShowEditModal(false);
-      alert('Data updated successfully!');
+      setSuccessMessage('Data updated successfully!');
+      setTimeout(() => setSuccessMessage(''), 3000);
     } catch (error) {
       console.error('Error updating data:', error.message);
       alert('Failed to update data');
+    }
+  };
+
+  const validateNewUser = () => {
+    const newErrors = {};
+    
+    if (!newUser.email) {
+      newErrors.email = "Email tidak boleh kosong";
+    } else if (!/\S+@\S+\.\S+/.test(newUser.email)) {
+      newErrors.email = "Email tidak valid";
+    }
+    
+    if (!newUser.password) {
+      newErrors.password = "Kata sandi tidak boleh kosong";
+    } else if (newUser.password.length < 6) {
+      newErrors.password = "Kata sandi minimal 6 karakter";
+    }
+    
+    if (newUser.password !== newUser.confirmPassword) {
+      newErrors.confirmPassword = "Kata sandi tidak cocok";
+    }
+    
+    if (!newUser.name) {
+      newErrors.name = "Nama tidak boleh kosong";
+    }
+    
+    if (!newUser.class) {
+      newErrors.class = "Kelas tidak boleh kosong";
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleAddUser = async (e) => {
+    e.preventDefault();
+    
+    if (!validateNewUser()) return;
+    
+    try {
+      // Create auth user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: newUser.email,
+        password: newUser.password,
+      });
+      
+      if (authError) throw authError;
+      
+      if (authData.user) {
+        // Create profile
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: authData.user.id,
+            email: newUser.email,
+            roles: newUser.roles,
+            name: newUser.name,
+            class: newUser.class,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+        
+        if (profileError) throw profileError;
+        
+        // Reset form
+        setNewUser({
+          email: '',
+          password: '',
+          confirmPassword: '',
+          name: '',
+          class: '',
+          roles: 'user'
+        });
+        setErrors({});
+        setShowAddUserModal(false);
+        setSuccessMessage('User added successfully!');
+        
+        // Refresh data
+        await Promise.all([fetchData(), fetchUserCount()]);
+        
+        setTimeout(() => setSuccessMessage(''), 3000);
+      }
+    } catch (error) {
+      console.error('Error adding user:', error.message);
+      alert(`Failed to add user: ${error.message}`);
     }
   };
 
@@ -221,8 +336,21 @@ const AdminDashboard = () => {
         return (
           <>
             <th className="px-6 py-3">Email</th>
+            <th className="px-6 py-3">Auth Email</th>
             <th className="px-6 py-3">Role</th>
             <th className="px-6 py-3">Last Sign In</th>
+            <th className="px-6 py-3">Created At</th>
+            <th className="px-6 py-3">Updated At</th>
+            <th className="px-6 py-3">Actions</th>
+          </>
+        );
+      case 'user-report':
+        return (
+          <>
+            <th className="px-6 py-3">Email</th>
+            <th className="px-6 py-3">Nama</th>
+            <th className="px-6 py-3">Kelas</th>
+            <th className="px-6 py-3">Role</th>
             <th className="px-6 py-3">Created At</th>
             <th className="px-6 py-3">Updated At</th>
             <th className="px-6 py-3">Actions</th>
@@ -237,8 +365,6 @@ const AdminDashboard = () => {
             <th className="px-6 py-3">Category</th>
             <th className="px-6 py-3">Description</th>
             <th className="px-6 py-3">Date</th>
-            <th className="px-6 py-3">Created At</th>
-            <th className="px-6 py-3">Updated At</th>
             <th className="px-6 py-3">Actions</th>
           </>
         );
@@ -249,8 +375,6 @@ const AdminDashboard = () => {
             <th className="px-6 py-3">Category</th>
             <th className="px-6 py-3">Amount</th>
             <th className="px-6 py-3">Period</th>
-            <th className="px-6 py-3">Created At</th>
-            <th className="px-6 py-3">Updated At</th>
             <th className="px-6 py-3">Actions</th>
           </>
         );
@@ -262,8 +386,9 @@ const AdminDashboard = () => {
   const renderTableRows = () => {
     if (data.length === 0) {
       const colSpan = activeTab === 'profiles' ? 7 : 
-                     activeTab === 'transactions' ? 10 : 
-                     activeTab === 'budgets' ? 7 : 1;
+                     activeTab === 'user-report' ? 7 :
+                     activeTab === 'transactions' ? 7 : 
+                     activeTab === 'budgets' ? 5 : 1;
       return (
         <tr>
           <td colSpan={colSpan} className="px-6 py-4 text-center">
@@ -278,12 +403,27 @@ const AdminDashboard = () => {
         {activeTab === 'profiles' && (
           <>
             <td className="px-6 py-4">{item.email || 'N/A'}</td>
+            <td className="px-6 py-4">{item.auth_email || 'N/A'}</td>
             <td className="px-6 py-4">{item.roles || 'user'}</td>
             <td className="px-6 py-4">
               {item.last_sign_in_at 
                 ? new Date(item.last_sign_in_at).toLocaleString() 
                 : 'Never signed in'}
             </td>
+            <td className="px-6 py-4">
+              {item.created_at ? new Date(item.created_at).toLocaleString() : 'N/A'}
+            </td>
+            <td className="px-6 py-4">
+              {item.updated_at ? new Date(item.updated_at).toLocaleString() : 'N/A'}
+            </td>
+          </>
+        )}
+        {activeTab === 'user-report' && (
+          <>
+            <td className="px-6 py-4">{item.email || 'N/A'}</td>
+            <td className="px-6 py-4">{item.name || 'N/A'}</td>
+            <td className="px-6 py-4">{item.class || 'N/A'}</td>
+            <td className="px-6 py-4">{item.roles || 'user'}</td>
             <td className="px-6 py-4">
               {item.created_at ? new Date(item.created_at).toLocaleString() : 'N/A'}
             </td>
@@ -304,12 +444,6 @@ const AdminDashboard = () => {
             <td className="px-6 py-4">
               {item.date ? new Date(item.date).toLocaleDateString() : 'N/A'}
             </td>
-            <td className="px-6 py-4">
-              {item.created_at ? new Date(item.created_at).toLocaleString() : 'N/A'}
-            </td>
-            <td className="px-6 py-4">
-              {item.updated_at ? new Date(item.updated_at).toLocaleString() : 'N/A'}
-            </td>
           </>
         )}
         {activeTab === 'budgets' && (
@@ -318,16 +452,10 @@ const AdminDashboard = () => {
             <td className="px-6 py-4">{item.category || 'N/A'}</td>
             <td className="px-6 py-4">{item.amount || '0'}</td>
             <td className="px-6 py-4">{item.period || 'N/A'}</td>
-            <td className="px-6 py-4">
-              {item.created_at ? new Date(item.created_at).toLocaleString() : 'N/A'}
-            </td>
-            <td className="px-6 py-4">
-              {item.updated_at ? new Date(item.updated_at).toLocaleString() : 'N/A'}
-            </td>
           </>
         )}
         <td className="px-6 py-4 flex space-x-2">
-          {activeTab === 'profiles' && (
+          {(activeTab === 'profiles' || activeTab === 'user-report') && (
             <button
               onClick={() => openEditModal(item)}
               className="px-4 py-2 bg-gradient-to-r from-yellow-500 to-amber-500 text-white rounded-md hover:from-yellow-600 hover:to-amber-600 transition-all duration-200 shadow-md"
@@ -409,6 +537,13 @@ const AdminDashboard = () => {
           Selamat Datang di Dashboard Admin ({userEmail})
         </h1>
         
+        {successMessage && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200/50 rounded-xl text-green-800 flex items-center gap-3">
+            <i className="bx bx-check-circle text-xl text-green-500"></i>
+            <span>{successMessage}</span>
+          </div>
+        )}
+        
         <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl shadow-lg p-6 mb-8 text-white">
           <div className="flex justify-between items-center">
             <div>
@@ -427,6 +562,12 @@ const AdminDashboard = () => {
             Profiles
           </button>
           <button
+            className={`py-2 px-4 ${activeTab === 'user-report' ? 'border-b-2 border-blue-500 font-medium' : ''}`}
+            onClick={() => setActiveTab('user-report')}
+          >
+            User Report
+          </button>
+          <button
             className={`py-2 px-4 ${activeTab === 'transactions' ? 'border-b-2 border-blue-500 font-medium' : ''}`}
             onClick={() => setActiveTab('transactions')}
           >
@@ -440,7 +581,19 @@ const AdminDashboard = () => {
           </button>
         </div>
 
-        {loading ? (
+        {activeTab === 'user-report' && (
+          <div className="flex justify-end mb-4">
+            <button
+              onClick={() => setShowAddUserModal(true)}
+              className="px-4 py-2 bg-gradient-to-r from-green-500 to-teal-500 text-white rounded-md hover:from-green-600 hover:to-teal-600 transition-all duration-200 shadow-md flex items-center gap-2"
+            >
+              <i className="bx bx-user-plus"></i>
+              Tambah User
+            </button>
+          </div>
+        )}
+
+          {loading ? (
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
           </div>
@@ -460,6 +613,7 @@ const AdminDashboard = () => {
         )}
       </div>
 
+      {/* Delete Confirmation Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
@@ -483,10 +637,13 @@ const AdminDashboard = () => {
         </div>
       )}
 
+      {/* Edit Modal */}
       {showEditModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
-            <h3 className="text-lg font-medium mb-4">Edit User</h3>
+            <h3 className="text-lg font-medium mb-4">
+              Edit {activeTab === 'profiles' ? 'User' : 'User Report'}
+            </h3>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
@@ -497,6 +654,30 @@ const AdminDashboard = () => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md"
                 />
               </div>
+              
+              {activeTab === 'user-report' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nama</label>
+                    <input
+                      type="text"
+                      value={editData.name}
+                      onChange={(e) => setEditData({...editData, name: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Kelas</label>
+                    <input
+                      type="text"
+                      value={editData.class}
+                      onChange={(e) => setEditData({...editData, class: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                </>
+              )}
+              
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
                 <select
@@ -528,6 +709,116 @@ const AdminDashboard = () => {
         </div>
       )}
 
+      {/* Add User Modal */}
+      {showAddUserModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-medium mb-4">Tambah User Baru</h3>
+            <form onSubmit={handleAddUser}>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={newUser.email}
+                    onChange={(e) => setNewUser({...newUser, email: e.target.value})}
+                    className={`w-full px-3 py-2 border ${errors.email ? 'border-red-300' : 'border-gray-300'} rounded-md`}
+                    placeholder="Masukkan email"
+                  />
+                  {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Password <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={newUser.password}
+                    onChange={(e) => setNewUser({...newUser, password: e.target.value})}
+                    className={`w-full px-3 py-2 border ${errors.password ? 'border-red-300' : 'border-gray-300'} rounded-md`}
+                    placeholder="Masukkan password"
+                  />
+                  {errors.password && <p className="text-red-500 text-sm mt-1">{errors.password}</p>}
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Konfirmasi Password <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={newUser.confirmPassword}
+                    onChange={(e) => setNewUser({...newUser, confirmPassword: e.target.value})}
+                    className={`w-full px-3 py-2 border ${errors.confirmPassword ? 'border-red-300' : 'border-gray-300'} rounded-md`}
+                    placeholder="Konfirmasi password"
+                  />
+                  {errors.confirmPassword && <p className="text-red-500 text-sm mt-1">{errors.confirmPassword}</p>}
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nama <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newUser.name}
+                    onChange={(e) => setNewUser({...newUser, name: e.target.value})}
+                    className={`w-full px-3 py-2 border ${errors.name ? 'border-red-300' : 'border-gray-300'} rounded-md`}
+                    placeholder="Masukkan nama"
+                  />
+                  {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Kelas <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newUser.class}
+                    onChange={(e) => setNewUser({...newUser, class: e.target.value})}
+                    className={`w-full px-3 py-2 border ${errors.class ? 'border-red-300' : 'border-gray-300'} rounded-md`}
+                    placeholder="Masukkan kelas"
+                  />
+                  {errors.class && <p className="text-red-500 text-sm mt-1">{errors.class}</p>}
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                  <select
+                    value={newUser.roles}
+                    onChange={(e) => setNewUser({...newUser, roles: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  >
+                    <option value="user">User</option>
+                    <option value="user-raport">User Raport</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end space-x-4 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowAddUserModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-gradient-to-r from-green-500 to-teal-500 text-white rounded-md hover:from-green-600 hover:to-teal-600 transition-all duration-200 shadow-md"
+                >
+                  Tambah User
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Detail Modal */}
       {showDetailModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
