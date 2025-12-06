@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 
 import Navbar from "./components/Navbar";
 import Dashboard from "./components/Dashboard";
@@ -13,48 +13,18 @@ import Footer from "./components/Footer";
 import Form from "./auth/Form";
 import AdminDashboard from "./admin/AdminDashboard";
 import DapodikDashboard from "./dashboard-user/DapodikDashboard";
-import AdminDapodik from "./admin/dapodik/AdminDapodik";
+import AdminDapodik from "./dapodik/AdminDapodik";
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [userRole, setUserRole] = useState(null);
 
-  // Cek authentication dan role user
+  // Simulate loading delay
   useEffect(() => {
-    const checkAuth = () => {
-      // Simulasi cek authentication (ganti dengan logika asli)
-      const token = localStorage.getItem('auth_token');
-      const role = localStorage.getItem('user_role');
-      
-      setIsAuthenticated(!!token);
-      setUserRole(role);
+    const timer = setTimeout(() => {
       setIsLoading(false);
-    };
-
-    checkAuth();
+    }, 2500); // 2-second delay
+    return () => clearTimeout(timer);
   }, []);
-
-  // Private Route wrapper
-  const PrivateRoute = ({ children, requiredRole }) => {
-    if (isLoading) {
-      return (
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-        </div>
-      );
-    }
-
-    if (!isAuthenticated) {
-      return <Navigate to="/auth" />;
-    }
-
-    if (requiredRole && userRole !== requiredRole) {
-      return <Navigate to="/" />;
-    }
-
-    return children;
-  };
 
   if (isLoading) {
     return (
@@ -136,24 +106,17 @@ function App() {
   }
 
   return (
-    <Routes>
-      {/* Public route untuk auth */}
-      <Route 
-        path="/auth" 
-        element={
-          isAuthenticated ? (
-            <Navigate to={userRole === 'admin' ? '/admin' : '/'} />
-          ) : (
-            <Form />
-          )
-        } 
-      />
-
-      {/* Route untuk dashboard user biasa */}
-      <Route
-        path="/"
-        element={
-          <PrivateRoute>
+    <>
+      <Routes>
+        {/* Route untuk halaman login */}
+        <Route path="/auth" element={<Form />} />
+            <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/dashboard-user" element={<DapodikDashboard />} />
+        <Route path="/dapodik" element={<AdminDapodik />} />
+        {/* Route untuk halaman utama (dashboard) */}
+        <Route
+          path="/"
+          element={
             <>
               <Navbar />
               <Dashboard />
@@ -164,43 +127,10 @@ function App() {
               <Footer />
               <ScrollToTop />
             </>
-          </PrivateRoute>
-        }
-      />
-
-      {/* Route untuk dashboard user dapodik */}
-      <Route
-        path="/dashboard-user"
-        element={
-          <PrivateRoute requiredRole="user-raport">
-            <DapodikDashboard />
-          </PrivateRoute>
-        }
-      />
-
-      {/* Route untuk admin dashboard */}
-      <Route
-        path="/admin"
-        element={
-          <PrivateRoute requiredRole="admin">
-            <AdminDashboard />
-          </PrivateRoute>
-        }
-      />
-
-      {/* Route untuk admin dapodik */}
-      <Route
-        path="/dapodik"
-        element={
-          <PrivateRoute requiredRole="admin">
-            <AdminDapodik />
-          </PrivateRoute>
-        }
-      />
-
-      {/* Fallback route */}
-      <Route path="*" element={<Navigate to="/" />} />
-    </Routes>
+          }
+        />
+      </Routes>
+    </>
   );
 }
 
