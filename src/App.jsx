@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
-import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
-import { supabase } from "./supabaseClient"; // Import supabase client
+import { Routes, Route, useNavigate } from "react-router-dom";
 
 import Navbar from "./components/Navbar";
 import Dashboard from "./components/Dashboard";
@@ -18,116 +17,40 @@ import AdminDapodik from "./dapodik/AdminDapodik";
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
-  const [session, setSession] = useState(null);
-  const [userRole, setUserRole] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const navigate = useNavigate();
 
-  // Setup auth listener dan cek session
+  // Hanya check authentication tanpa loading delay
   useEffect(() => {
-    // Cek session yang sudah ada
-    const checkSession = async () => {
-      try {
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
-        setSession(currentSession);
-        
-        if (currentSession) {
-          // Ambil role user dari profiles
-          const { data: profile, error } = await supabase
-            .from('profiles')
-            .select('roles')
-            .eq('id', currentSession.user.id)
-            .single();
-            
-          if (!error && profile) {
-            setUserRole(profile.roles);
-          }
-        }
-      } catch (error) {
-        console.error('Session check error:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+    // Check authentication status (simple example)
+    const token = localStorage.getItem('auth_token');
+    const userLoggedIn = !!token;
+    
+    setIsAuthenticated(userLoggedIn);
+    
+    // Simulate minimal loading untuk UI
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 500); // Reduced to 500ms hanya untuk UI
+    
+    return () => clearTimeout(timer);
+  }, []);
 
-    checkSession();
-
-    // Setup auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, currentSession) => {
-        console.log('Auth state changed:', event);
-        
-        setSession(currentSession);
-        
-        if (currentSession) {
-          // Ambil role user
-          const { data: profile, error } = await supabase
-            .from('profiles')
-            .select('roles')
-            .eq('id', currentSession.user.id)
-            .single();
-            
-          if (!error && profile) {
-            setUserRole(profile.roles);
-          }
-          
-          // Redirect berdasarkan role setelah login
-          if (event === 'SIGNED_IN') {
-            setTimeout(() => {
-              if (profile?.roles === 'admin') {
-                navigate('/admin');
-              } else if (profile?.roles === 'user-raport') {
-                navigate('/dashboard-user');
-              } else {
-                navigate('/');
-              }
-            }, 100);
-          }
-        } else {
-          setUserRole(null);
-        }
-        
-        setIsLoading(false);
-      }
-    );
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [navigate]);
-
-  // Private Route Component dengan role checking
-  const PrivateRoute = ({ children, allowedRoles = [] }) => {
-    if (isLoading) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
-            <p className="text-gray-600">Memuat...</p>
-          </div>
-        </div>
-      );
-    }
-
-    if (!session) {
-      return <Navigate to="/auth" />;
-    }
-
-    // Jika ada role restriction, cek role user
-    if (allowedRoles.length > 0 && !allowedRoles.includes(userRole)) {
-      // Redirect ke halaman sesuai role
-      if (userRole === 'admin') {
-        return <Navigate to="/admin" />;
-      } else if (userRole === 'user-raport') {
-        return <Navigate to="/dashboard-user" />;
-      } else {
-        return <Navigate to="/" />;
-      }
-    }
-
-    return children;
+  // Handle login success
+  const handleLoginSuccess = () => {
+    localStorage.setItem('auth_token', 'user_token'); // Contoh sederhana
+    setIsAuthenticated(true);
+    navigate('/');
   };
 
-  // Loading skeleton
+  // Handle logout
+  const handleLogout = () => {
+    localStorage.removeItem('auth_token');
+    setIsAuthenticated(false);
+    navigate('/auth');
+  };
+
+  // Jika masih loading, tampilkan skeleton
   if (isLoading) {
     return (
       <div className="min-h-screen bg-white flex flex-col">
@@ -208,75 +131,57 @@ function App() {
   }
 
   return (
-    <Routes>
-      {/* Route untuk halaman login */}
-      <Route 
-        path="/auth" 
-        element={
-          session ? (
-            <Navigate to={
-              userRole === 'admin' ? '/admin' : 
-              userRole === 'user-raport' ? '/dashboard-user' : 
-              '/'
-            } />
-          ) : (
-            <Form />
-          )
-        } 
-      />
-      
-      {/* Route untuk halaman utama (dashboard) */}
-      <Route
-        path="/"
-        element={
-          <PrivateRoute>
-            <>
-              <Navbar />
-              <Dashboard />
-              <Add />
-              <Transactions />
-              <Statistics />
-              <Budget />
-              <Footer />
-              <ScrollToTop />
-            </>
-          </PrivateRoute>
-        }
-      />
-      
-      {/* Route untuk admin dashboard */}
-      <Route
-        path="/admin"
-        element={
-          <PrivateRoute allowedRoles={['admin']}>
-            <AdminDashboard />
-          </PrivateRoute>
-        }
-      />
-      
-      {/* Route untuk dashboard user dapodik */}
-      <Route
-        path="/dashboard-user"
-        element={
-          <PrivateRoute allowedRoles={['user-raport', 'admin']}>
-            <DapodikDashboard />
-          </PrivateRoute>
-        }
-      />
-      
-      {/* Route untuk admin dapodik */}
-      <Route
-        path="/dapodik"
-        element={
-          <PrivateRoute allowedRoles={['admin']}>
-            <AdminDapodik />
-          </PrivateRoute>
-        }
-      />
-      
-      {/* Fallback route */}
-      <Route path="*" element={<Navigate to="/" />} />
-    </Routes>
+    <>
+      <Routes>
+        {/* Route untuk halaman login - pass handleLoginSuccess sebagai prop */}
+        <Route path="/auth" element={<Form onLoginSuccess={handleLoginSuccess} />} />
+        
+        {/* Route untuk admin dashboard */}
+        <Route 
+          path="/admin" 
+          element={
+            isAuthenticated ? <AdminDashboard onLogout={handleLogout} /> : <Form onLoginSuccess={handleLoginSuccess} />
+          } 
+        />
+        
+        {/* Route untuk dashboard user dapodik */}
+        <Route 
+          path="/dashboard-user" 
+          element={
+            isAuthenticated ? <DapodikDashboard onLogout={handleLogout} /> : <Form onLoginSuccess={handleLoginSuccess} />
+          } 
+        />
+        
+        {/* Route untuk admin dapodik */}
+        <Route 
+          path="/dapodik" 
+          element={
+            isAuthenticated ? <AdminDapodik onLogout={handleLogout} /> : <Form onLoginSuccess={handleLoginSuccess} />
+          } 
+        />
+        
+        {/* Route untuk halaman utama (dashboard) */}
+        <Route
+          path="/"
+          element={
+            isAuthenticated ? (
+              <>
+                <Navbar onLogout={handleLogout} />
+                <Dashboard />
+                <Add />
+                <Transactions />
+                <Statistics />
+                <Budget />
+                <Footer />
+                <ScrollToTop />
+              </>
+            ) : (
+              <Form onLoginSuccess={handleLoginSuccess} />
+            )
+          }
+        />
+      </Routes>
+    </>
   );
 }
 
