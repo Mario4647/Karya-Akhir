@@ -1,5 +1,7 @@
+
+
 import { useState, useEffect } from "react";
-import { Routes, Route, useNavigate } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 
 import Navbar from "./components/Navbar";
 import Dashboard from "./components/Dashboard";
@@ -17,40 +19,15 @@ import AdminDapodik from "./dapodik/AdminDapodik";
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const navigate = useNavigate();
 
-  // Hanya check authentication tanpa loading delay
+  // Simulate loading delay
   useEffect(() => {
-    // Check authentication status (simple example)
-    const token = localStorage.getItem('auth_token');
-    const userLoggedIn = !!token;
-    
-    setIsAuthenticated(userLoggedIn);
-    
-    // Simulate minimal loading untuk UI
     const timer = setTimeout(() => {
       setIsLoading(false);
-    }, 500); // Reduced to 500ms hanya untuk UI
-    
+    }, 2500); // 2-second delay
     return () => clearTimeout(timer);
   }, []);
 
-  // Handle login success
-  const handleLoginSuccess = () => {
-    localStorage.setItem('auth_token', 'user_token'); // Contoh sederhana
-    setIsAuthenticated(true);
-    navigate('/');
-  };
-
-  // Handle logout
-  const handleLogout = () => {
-    localStorage.removeItem('auth_token');
-    setIsAuthenticated(false);
-    navigate('/auth');
-  };
-
-  // Jika masih loading, tampilkan skeleton
   if (isLoading) {
     return (
       <div className="min-h-screen bg-white flex flex-col">
@@ -133,51 +110,25 @@ function App() {
   return (
     <>
       <Routes>
-        {/* Route untuk halaman login - pass handleLoginSuccess sebagai prop */}
-        <Route path="/auth" element={<Form onLoginSuccess={handleLoginSuccess} />} />
-        
-        {/* Route untuk admin dashboard */}
-        <Route 
-          path="/admin" 
-          element={
-            isAuthenticated ? <AdminDashboard onLogout={handleLogout} /> : <Form onLoginSuccess={handleLoginSuccess} />
-          } 
-        />
-        
-        {/* Route untuk dashboard user dapodik */}
-        <Route 
-          path="/dashboard-user" 
-          element={
-            isAuthenticated ? <DapodikDashboard onLogout={handleLogout} /> : <Form onLoginSuccess={handleLoginSuccess} />
-          } 
-        />
-        
-        {/* Route untuk admin dapodik */}
-        <Route 
-          path="/dapodik" 
-          element={
-            isAuthenticated ? <AdminDapodik onLogout={handleLogout} /> : <Form onLoginSuccess={handleLoginSuccess} />
-          } 
-        />
-        
+        {/* Route untuk halaman login */}
+        <Route path="/auth" element={<Form />} />
+            <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/dashboard-user" element={<DapodikDashboard />} />
+        <Route path="/dapodik" element={<AdminDapodik />} />
         {/* Route untuk halaman utama (dashboard) */}
         <Route
           path="/"
           element={
-            isAuthenticated ? (
-              <>
-                <Navbar onLogout={handleLogout} />
-                <Dashboard />
-                <Add />
-                <Transactions />
-                <Statistics />
-                <Budget />
-                <Footer />
-                <ScrollToTop />
-              </>
-            ) : (
-              <Form onLoginSuccess={handleLoginSuccess} />
-            )
+            <>
+              <Navbar />
+              <Dashboard />
+              <Add />
+              <Transactions />
+              <Statistics />
+              <Budget />
+              <Footer />
+              <ScrollToTop />
+            </>
           }
         />
       </Routes>
