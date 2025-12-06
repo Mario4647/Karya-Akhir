@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 
 import Navbar from "./components/Navbar";
 import Dashboard from "./components/Dashboard";
@@ -13,17 +13,30 @@ import Footer from "./components/Footer";
 import Form from "./auth/Form";
 import AdminDashboard from "./admin/AdminDashboard";
 import DapodikDashboard from "./dashboard-user/DapodikDashboard";
+import AdminDapodik from "./dapodik/AdminDapodik"; // Import dari dapodik folder
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Simulate loading delay
+  // Simulate loading delay dan cek auth
   useEffect(() => {
     const timer = setTimeout(() => {
+      // Cek jika user sudah login (contoh sederhana)
+      const token = localStorage.getItem('auth_token');
+      setIsAuthenticated(!!token);
       setIsLoading(false);
     }, 2500); // 2-second delay
     return () => clearTimeout(timer);
   }, []);
+
+  // Private Route Component
+  const PrivateRoute = ({ children }) => {
+    if (!isAuthenticated && !isLoading) {
+      return <Navigate to="/auth" />;
+    }
+    return children;
+  };
 
   if (isLoading) {
     return (
@@ -108,26 +121,64 @@ function App() {
     <>
       <Routes>
         {/* Route untuk halaman login */}
-        <Route path="/auth" element={<Form />} />
-            <Route path="/admin" element={<AdminDashboard />} />
-        <Route path="/dashboard-user" element={<DapodikDashboard />} />
+        <Route 
+          path="/auth" 
+          element={
+            isAuthenticated ? <Navigate to="/" /> : <Form />
+          } 
+        />
+        
+        {/* Route untuk admin dashboard */}
+        <Route 
+          path="/admin" 
+          element={
+            <PrivateRoute>
+              <AdminDashboard />
+            </PrivateRoute>
+          } 
+        />
+        
+        {/* Route untuk dashboard user dapodik */}
+        <Route 
+          path="/dashboard-user" 
+          element={
+            <PrivateRoute>
+              <DapodikDashboard />
+            </PrivateRoute>
+          } 
+        />
+        
+        {/* Route untuk admin dapodik - TAMBAHKAN INI */}
+        <Route 
+          path="/dapodik" 
+          element={
+            <PrivateRoute>
+              <AdminDapodik />
+            </PrivateRoute>
+          } 
+        />
         
         {/* Route untuk halaman utama (dashboard) */}
         <Route
           path="/"
           element={
-            <>
-              <Navbar />
-              <Dashboard />
-              <Add />
-              <Transactions />
-              <Statistics />
-              <Budget />
-              <Footer />
-              <ScrollToTop />
-            </>
+            <PrivateRoute>
+              <>
+                <Navbar />
+                <Dashboard />
+                <Add />
+                <Transactions />
+                <Statistics />
+                <Budget />
+                <Footer />
+                <ScrollToTop />
+              </>
+            </PrivateRoute>
           }
         />
+        
+        {/* Fallback route untuk handle 404 */}
+        <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </>
   );
