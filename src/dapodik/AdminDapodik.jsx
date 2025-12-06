@@ -353,6 +353,7 @@ const AdminDapodik = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
       {/* Header */}
+      <AdminNavbar />
       <div className="bg-white shadow-lg border-b">
         <div className="container mx-auto px-4 py-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
