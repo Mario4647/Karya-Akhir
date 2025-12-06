@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import AdminNavbar from '../components/AdminNavbar';
 import {
   FiUsers,
   FiCheckCircle,
@@ -511,7 +512,7 @@ const AdminDapodik = () => {
               <table className="w-full">
                 <thead>
                   <tr className="bg-gray-50">
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">SN</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">NISN</th>
                     <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Nama Siswa</th>
                     <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Asal Sekolah</th>
                     <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Status Akses</th>
@@ -572,6 +573,7 @@ const AdminDapodik = () => {
                 </tbody>
               </table>
             </div>
+      
           )}
         </div>
       </div>
