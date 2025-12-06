@@ -1,6 +1,24 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase, supabaseAdmin, uploadRaportPDF } from '../supabaseClient';
+import { supabase } from '../supabaseClient';
+import {
+  FiUsers,
+  FiCheckCircle,
+  FiClock,
+  FiXCircle,
+  FiEdit,
+  FiUpload,
+  FiTrash2,
+  FiDownload,
+  FiArrowLeft,
+  FiSearch,
+  FiFilter,
+  FiEye,
+  FiX,
+  FiSave,
+  FiFileText,
+  FiUserCheck
+} from 'react-icons/fi';
 
 const AdminDapodik = () => {
   const [students, setStudents] = useState([]);
@@ -17,6 +35,8 @@ const AdminDapodik = () => {
   const [userRole, setUserRole] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -55,7 +75,6 @@ const AdminDapodik = () => {
     try {
       setLoading(true);
       
-      // Fetch all user-raport students
       const { data: studentData, error: studentError } = await supabase
         .from('profiles')
         .select('*')
@@ -64,7 +83,6 @@ const AdminDapodik = () => {
 
       if (studentError) throw studentError;
 
-      // Fetch pending access requests
       const { data: pendingData, error: pendingError } = await supabase
         .from('profiles')
         .select('id, email, name, class, akses_raport_status, akses_raport_requested_at')
@@ -147,34 +165,54 @@ const AdminDapodik = () => {
       return;
     }
 
-    if (uploadFile.size > 10 * 1024 * 1024) { // 10MB limit
+    if (uploadFile.size > 10 * 1024 * 1024) {
       setErrorMessage('Ukuran file maksimal 10MB');
       return;
     }
 
     setUploading(true);
     try {
-      const result = await uploadRaportPDF(selectedStudent.id, uploadFile, uploadSemester);
-      
-      if (!result.success) {
-        throw new Error(result.error);
-      }
+      // Convert file to base64
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const base64Data = e.target.result.split(',')[1];
+          
+          const { error } = await supabase
+            .from('profiles')
+            .update({
+              raport_file: base64Data,
+              raport_filename: uploadFile.name,
+              raport_mimetype: uploadFile.type,
+              semester: uploadSemester,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', selectedStudent.id);
 
-      setShowUploadModal(false);
-      setSuccessMessage('Raport berhasil diupload');
-      fetchData();
-      setTimeout(() => setSuccessMessage(''), 3000);
+          if (error) throw error;
+
+          setShowUploadModal(false);
+          setSuccessMessage('Raport berhasil diupload');
+          fetchData();
+          setTimeout(() => setSuccessMessage(''), 3000);
+        } catch (error) {
+          console.error('Error uploading PDF:', error);
+          setErrorMessage('Gagal upload raport: ' + error.message);
+        } finally {
+          setUploading(false);
+        }
+      };
+      
+      reader.readAsDataURL(uploadFile);
     } catch (error) {
-      console.error('Error uploading PDF:', error);
+      console.error('Error in upload:', error);
       setErrorMessage('Gagal upload raport: ' + error.message);
-    } finally {
       setUploading(false);
     }
   };
 
   const handleDeleteStudent = async () => {
     try {
-      // Delete student data except name, email, and class
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -199,7 +237,7 @@ const AdminDapodik = () => {
       if (error) throw error;
 
       setShowDeleteModal(false);
-      setSuccessMessage('Data siswa berhasil dihapus');
+      setSuccessMessage('Data siswa berhasil direset');
       fetchData();
       setTimeout(() => setSuccessMessage(''), 3000);
     } catch (error) {
@@ -208,46 +246,43 @@ const AdminDapodik = () => {
     }
   };
 
-  const handleApproveAccess = async (studentId) => {
+  const handleAccessAction = async (studentId, action) => {
     try {
+      let updateData = {};
+      
+      switch(action) {
+        case 'approve':
+          updateData = {
+            akses_raport_status: 'disetujui',
+            akses_raport_approved_at: new Date().toISOString()
+          };
+          break;
+        case 'revoke':
+          updateData = {
+            akses_raport_status: 'belum_akses',
+            akses_raport_requested_at: null
+          };
+          break;
+        default:
+          return;
+      }
+
       const { error } = await supabase
         .from('profiles')
         .update({
-          akses_raport_status: 'disetujui',
+          ...updateData,
           updated_at: new Date().toISOString()
         })
         .eq('id', studentId);
 
       if (error) throw error;
 
-      setSuccessMessage('Akses berhasil disetujui');
+      setSuccessMessage(action === 'approve' ? 'Akses berhasil disetujui' : 'Akses berhasil dicabut');
       fetchData();
       setTimeout(() => setSuccessMessage(''), 3000);
     } catch (error) {
-      console.error('Error approving access:', error);
-      setErrorMessage('Gagal menyetujui akses: ' + error.message);
-    }
-  };
-
-  const handleRevokeAccess = async (studentId) => {
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          akses_raport_status: 'belum_akses',
-          akses_raport_requested_at: null,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', studentId);
-
-      if (error) throw error;
-
-      setSuccessMessage('Akses berhasil dicabut');
-      fetchData();
-      setTimeout(() => setSuccessMessage(''), 3000);
-    } catch (error) {
-      console.error('Error revoking access:', error);
-      setErrorMessage('Gagal mencabut akses: ' + error.message);
+      console.error('Error updating access:', error);
+      setErrorMessage('Gagal memperbarui akses: ' + error.message);
     }
   };
 
@@ -260,12 +295,43 @@ const AdminDapodik = () => {
     });
   };
 
+  const getStatusBadge = (status) => {
+    switch(status) {
+      case 'disetujui':
+        return (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+            <FiCheckCircle className="mr-1" /> Disetujui
+          </span>
+        );
+      case 'pending':
+        return (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
+            <FiClock className="mr-1" /> Menunggu
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">
+            <FiXCircle className="mr-1" /> Belum Akses
+          </span>
+        );
+    }
+  };
+
+  const filteredStudents = students.filter(student => {
+    const matchesSearch = student.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         student.nisn?.includes(searchTerm) ||
+                         student.asal_sekolah?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = filterStatus === 'all' || student.akses_raport_status === filterStatus;
+    return matchesSearch && matchesStatus;
+  });
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="flex flex-col items-center gap-2">
-          <i className="bx bx-loader-alt text-5xl text-indigo-600 animate-spin"></i>
-          <span className="text-gray-700">Memuat data...</span>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+          <span className="text-blue-700 font-medium">Memuat data...</span>
         </div>
       </div>
     );
@@ -273,32 +339,39 @@ const AdminDapodik = () => {
 
   if (userRole !== 'admin') {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-red-600">Akses Ditolak</h2>
-          <p className="text-gray-700 mt-2">Halaman ini hanya untuk admin</p>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50">
+        <div className="text-center p-8 bg-white rounded-2xl shadow-lg">
+          <FiUserCheck className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-red-600 mb-2">Akses Ditolak</h2>
+          <p className="text-gray-700">Halaman ini hanya untuk administrator</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
       {/* Header */}
-      <div className="bg-white shadow">
-        <div className="container mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-800">Admin Dapodik Raport</h1>
-            <div className="flex gap-4">
+      <div className="bg-white shadow-lg border-b">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <FiUsers className="w-6 h-6 text-indigo-600" />
+                <h1 className="text-2xl font-bold text-gray-800">Admin Dapodik</h1>
+              </div>
+              <p className="text-gray-600 text-sm">Manajemen data siswa dan akses raport</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => navigate('/admin')}
-                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
               >
-                Dashboard Admin
+                <FiArrowLeft /> Dashboard Admin
               </button>
               <button
                 onClick={() => navigate('/')}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
               >
                 Kembali ke Dashboard
               </button>
@@ -308,50 +381,82 @@ const AdminDapodik = () => {
       </div>
 
       <div className="container mx-auto px-4 py-8">
+        {/* Alerts */}
         {successMessage && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-800">
-            {successMessage}
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl shadow-sm flex items-center justify-between">
+            <div className="flex items-center gap-2 text-green-800">
+              <FiCheckCircle className="w-5 h-5" />
+              <span>{successMessage}</span>
+            </div>
+            <button onClick={() => setSuccessMessage('')} className="text-green-600 hover:text-green-800">
+              <FiX />
+            </button>
           </div>
         )}
         
         {errorMessage && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800">
-            {errorMessage}
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl shadow-sm">
+            <div className="flex items-center gap-2 text-red-800">
+              <FiXCircle className="w-5 h-5" />
+              <span>{errorMessage}</span>
+            </div>
           </div>
         )}
 
-        {/* Pending Access Requests */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">Persetujuan Akses Download Raport</h2>
+        {/* Pending Access Requests Card */}
+        <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+              <FiClock className="text-yellow-600" />
+              Persetujuan Akses Download Raport
+            </h2>
+            <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm font-medium">
+              {pendingRequests.length} Permintaan
+            </span>
+          </div>
           
           {pendingRequests.length === 0 ? (
-            <p className="text-gray-600 text-center py-4">Tidak ada permintaan akses yang menunggu</p>
+            <div className="text-center py-8">
+              <FiCheckCircle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-600">Tidak ada permintaan akses yang menunggu</p>
+            </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left text-gray-500">
-                <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+            <div className="overflow-hidden rounded-xl border border-gray-200">
+              <table className="w-full">
+                <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3">Nama</th>
-                    <th className="px-6 py-3">Email</th>
-                    <th className="px-6 py-3">Kelas</th>
-                    <th className="px-6 py-3">Tanggal Permintaan</th>
-                    <th className="px-6 py-3">Aksi</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Nama Siswa</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Kelas</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Tanggal Permintaan</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Aksi</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-gray-200">
                   {pendingRequests.map((request) => (
-                    <tr key={request.id} className="bg-white border-b hover:bg-gray-50">
-                      <td className="px-6 py-4">{request.name || '-'}</td>
-                      <td className="px-6 py-4">{request.email}</td>
-                      <td className="px-6 py-4">{request.class || '-'}</td>
-                      <td className="px-6 py-4">{formatDate(request.akses_raport_requested_at)}</td>
+                    <tr key={request.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4">
-                        <button
-                          onClick={() => handleApproveAccess(request.id)}
-                          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 mr-2"
-                        >
-                          Setujui
-                        </button>
+                        <div>
+                          <p className="font-medium text-gray-900">{request.name || '-'}</p>
+                          <p className="text-sm text-gray-600">{request.email}</p>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                          {request.class || '-'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-gray-600">
+                        {formatDate(request.akses_raport_requested_at)}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleAccessAction(request.id, 'approve')}
+                            className="inline-flex items-center gap-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+                          >
+                            <FiCheckCircle /> Setujui
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -361,81 +466,106 @@ const AdminDapodik = () => {
           )}
         </div>
 
-        {/* All Students */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">Data Dapodik Siswa</h2>
-          
-          {students.length === 0 ? (
-            <p className="text-gray-600 text-center py-4">Tidak ada data siswa</p>
+        {/* All Students Card */}
+        <div className="bg-white rounded-2xl shadow-lg p-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+              <FiUsers className="text-indigo-600" />
+              Data Dapodik Siswa
+            </h2>
+            
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="relative">
+                <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Cari siswa..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                />
+              </div>
+              
+              <div className="flex gap-2">
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                >
+                  <option value="all">Semua Status</option>
+                  <option value="disetujui">Disetujui</option>
+                  <option value="pending">Menunggu</option>
+                  <option value="belum_akses">Belum Akses</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {filteredStudents.length === 0 ? (
+            <div className="text-center py-8">
+              <FiUsers className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-600">Tidak ada data siswa yang ditemukan</p>
+            </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left text-gray-500">
-                <thead className="text-xs text-gray-700 uppercase bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3">Nama</th>
-                    <th className="px-6 py-3">Kelas</th>
-                    <th className="px-6 py-3">NISN</th>
-                    <th className="px-6 py-3">Asal Sekolah</th>
-                    <th className="px-6 py-3">Status Akses</th>
-                    <th className="px-6 py-3">Aksi</th>
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">SN</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Nama Siswa</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Asal Sekolah</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Status Akses</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Aksi</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {students.map((student) => (
-                    <tr key={student.id} className="bg-white border-b hover:bg-gray-50">
-                      <td className="px-6 py-4">{student.name || '-'}</td>
-                      <td className="px-6 py-4">{student.class || '-'}</td>
-                      <td className="px-6 py-4">{student.nisn || '-'}</td>
-                      <td className="px-6 py-4">{student.asal_sekolah || '-'}</td>
+                <tbody className="divide-y divide-gray-200">
+                  {filteredStudents.map((student, index) => (
+                    <tr key={student.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 text-gray-600">{index + 1}</td>
                       <td className="px-6 py-4">
-                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                          student.akses_raport_status === 'disetujui' 
-                            ? 'bg-green-100 text-green-800'
-                            : student.akses_raport_status === 'pending'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {student.akses_raport_status === 'disetujui' 
-                            ? 'Disetujui' 
-                            : student.akses_raport_status === 'pending'
-                            ? 'Pending'
-                            : 'Belum Akses'}
-                        </span>
+                        <div>
+                          <p className="font-medium text-gray-900">{student.name || '-'}</p>
+                          <p className="text-sm text-gray-600">Kelas: {student.class || '-'}</p>
+                        </div>
                       </td>
-                      <td className="px-6 py-4 space-x-2">
-                        <button
-                          onClick={() => openEditModal(student)}
-                          className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => openUploadModal(student)}
-                          className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
-                        >
-                          Upload Raport
-                        </button>
-                        <button
-                          onClick={() => openDeleteModal(student)}
-                          className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600"
-                        >
-                          Hapus
-                        </button>
-                        {student.akses_raport_status === 'disetujui' ? (
+                      <td className="px-6 py-4">
+                        <p className="text-gray-800">{student.asal_sekolah || '-'}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        {getStatusBadge(student.akses_raport_status)}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-wrap gap-2">
                           <button
-                            onClick={() => handleRevokeAccess(student.id)}
-                            className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600"
+                            onClick={() => openEditModal(student)}
+                            className="inline-flex items-center gap-1 px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm"
                           >
-                            Cabut Akses
+                            <FiEdit /> Edit
                           </button>
-                        ) : student.akses_raport_status === 'pending' ? (
+                          
                           <button
-                            onClick={() => handleApproveAccess(student.id)}
-                            className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600"
+                            onClick={() => openUploadModal(student)}
+                            className="inline-flex items-center gap-1 px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm"
                           >
-                            Setujui
+                            <FiUpload /> Upload Raport
                           </button>
-                        ) : null}
+                          
+                          {student.akses_raport_status === 'disetujui' && (
+                            <button
+                              onClick={() => handleAccessAction(student.id, 'revoke')}
+                              className="inline-flex items-center gap-1 px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm"
+                            >
+                              <FiXCircle /> Cabut Akses
+                            </button>
+                          )}
+                          
+                          <button
+                            onClick={() => openDeleteModal(student)}
+                            className="inline-flex items-center gap-1 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+                          >
+                            <FiTrash2 /> Hapus
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -448,135 +578,64 @@ const AdminDapodik = () => {
 
       {/* Edit Modal */}
       {showEditModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-semibold text-gray-800">Edit Data Siswa</h3>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
+              <h3 className="text-xl font-bold text-gray-800">Edit Data Siswa</h3>
               <button
                 onClick={() => setShowEditModal(false)}
                 className="text-gray-500 hover:text-gray-700"
               >
-                <i className="bx bx-x text-2xl"></i>
+                <FiX className="w-6 h-6" />
               </button>
             </div>
             
-            <div className="space-y-4">
+            <div className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nama Lengkap</label>
-                  <input
-                    type="text"
-                    value={editData.name}
-                    onChange={(e) => setEditData({...editData, name: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Kelas</label>
-                  <input
-                    type="text"
-                    value={editData.class}
-                    onChange={(e) => setEditData({...editData, class: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Asal Sekolah</label>
-                  <input
-                    type="text"
-                    value={editData.asal_sekolah}
-                    onChange={(e) => setEditData({...editData, asal_sekolah: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">NISN</label>
-                  <input
-                    type="text"
-                    value={editData.nisn}
-                    onChange={(e) => setEditData({...editData, nisn: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tanggal Lahir</label>
-                  <input
-                    type="date"
-                    value={editData.tanggal_lahir}
-                    onChange={(e) => setEditData({...editData, tanggal_lahir: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nomor Telepon</label>
-                  <input
-                    type="text"
-                    value={editData.nomor_telepon}
-                    onChange={(e) => setEditData({...editData, nomor_telepon: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nama Ayah</label>
-                  <input
-                    type="text"
-                    value={editData.nama_ayah}
-                    onChange={(e) => setEditData({...editData, nama_ayah: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nama Ibu</label>
-                  <input
-                    type="text"
-                    value={editData.nama_ibu}
-                    onChange={(e) => setEditData({...editData, nama_ibu: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tanggal Diterima</label>
-                  <input
-                    type="date"
-                    value={editData.tanggal_diterima}
-                    onChange={(e) => setEditData({...editData, tanggal_diterima: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Semester</label>
-                  <input
-                    type="text"
-                    value={editData.semester}
-                    onChange={(e) => setEditData({...editData, semester: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Alamat</label>
-                <textarea
-                  value={editData.alamat}
-                  onChange={(e) => setEditData({...editData, alamat: e.target.value})}
-                  rows="3"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
+                {Object.keys(editData).map((key) => (
+                  <div key={key}>
+                    <label className="block text-sm font-medium text-gray-700 mb-2 capitalize">
+                      {key.replace(/_/g, ' ')}
+                    </label>
+                    {key === 'alamat' ? (
+                      <textarea
+                        value={editData[key]}
+                        onChange={(e) => setEditData({...editData, [key]: e.target.value})}
+                        rows="3"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      />
+                    ) : key === 'tanggal_lahir' || key === 'tanggal_diterima' ? (
+                      <input
+                        type="date"
+                        value={editData[key]}
+                        onChange={(e) => setEditData({...editData, [key]: e.target.value})}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        value={editData[key]}
+                        onChange={(e) => setEditData({...editData, [key]: e.target.value})}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      />
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
             
-            <div className="flex justify-end space-x-4 mt-6">
+            <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-3">
               <button
                 onClick={() => setShowEditModal(false)}
-                className="px-4 py-2 border border-gray-300 rounded-md"
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Batal
               </button>
               <button
                 onClick={handleEditSubmit}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
               >
-                Simpan Perubahan
+                <FiSave /> Simpan Perubahan
               </button>
             </div>
           </div>
@@ -585,64 +644,88 @@ const AdminDapodik = () => {
 
       {/* Upload Modal */}
       {showUploadModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-lg max-w-md w-full p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-semibold text-gray-800">Upload Raport</h3>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+            <div className="px-6 py-4 border-b flex items-center justify-between">
+              <h3 className="text-xl font-bold text-gray-800">Upload Raport</h3>
               <button
                 onClick={() => setShowUploadModal(false)}
                 className="text-gray-500 hover:text-gray-700"
               >
-                <i className="bx bx-x text-2xl"></i>
+                <FiX className="w-6 h-6" />
               </button>
             </div>
             
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nama Siswa</label>
-                <p className="text-gray-900">{selectedStudent?.name || '-'}</p>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Semester</label>
-                <input
-                  type="text"
-                  value={uploadSemester}
-                  onChange={(e) => setUploadSemester(e.target.value)}
-                  placeholder="Contoh: Semester 1 2024/2025"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">File Raport (PDF)</label>
-                <input
-                  type="file"
-                  accept=".pdf"
-                  onChange={(e) => setUploadFile(e.target.files[0])}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
-                <p className="text-sm text-gray-600 mt-1">Maksimal 10MB, format PDF</p>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Nama Siswa</label>
+                  <p className="text-lg font-medium text-gray-900">{selectedStudent?.name || '-'}</p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Semester</label>
+                  <input
+                    type="text"
+                    value={uploadSemester}
+                    onChange={(e) => setUploadSemester(e.target.value)}
+                    placeholder="Contoh: Semester 1 2024/2025"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <span className="inline-flex items-center gap-1">
+                      <FiFileText /> File Raport (PDF)
+                    </span>
+                  </label>
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                    <input
+                      type="file"
+                      accept=".pdf"
+                      onChange={(e) => setUploadFile(e.target.files[0])}
+                      className="hidden"
+                      id="file-upload"
+                    />
+                    <label htmlFor="file-upload" className="cursor-pointer">
+                      <FiUpload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                      <p className="text-sm text-gray-600">
+                        {uploadFile ? uploadFile.name : 'Klik untuk memilih file'}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">Maksimal 10MB, format PDF</p>
+                    </label>
+                  </div>
+                </div>
               </div>
             </div>
             
-            <div className="flex justify-end space-x-4 mt-6">
+            <div className="px-6 py-4 border-t flex justify-end gap-3">
               <button
                 onClick={() => setShowUploadModal(false)}
-                className="px-4 py-2 border border-gray-300 rounded-md"
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Batal
               </button>
               <button
                 onClick={handleUploadSubmit}
                 disabled={uploading || !uploadFile || !uploadSemester}
-                className={`px-4 py-2 rounded-md text-white ${
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
                   uploading || !uploadFile || !uploadSemester
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : 'bg-indigo-600 hover:bg-indigo-700'
+                    ? 'bg-gray-400 text-white cursor-not-allowed'
+                    : 'bg-indigo-600 text-white hover:bg-indigo-700'
                 }`}
               >
-                {uploading ? 'Mengupload...' : 'Upload Raport'}
+                {uploading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Mengupload...
+                  </>
+                ) : (
+                  <>
+                    <FiUpload /> Upload Raport
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -651,26 +734,39 @@ const AdminDapodik = () => {
 
       {/* Delete Modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-lg max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Konfirmasi Hapus</h3>
-            <p className="text-gray-700 mb-6">
-              Apakah Anda yakin ingin menghapus data siswa {selectedStudent?.name}?
-              <br />
-              <span className="text-sm text-gray-600">(Data yang dihapus kecuali: Nama, Email, Kelas)</span>
-            </p>
-            <div className="flex justify-end space-x-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+            <div className="px-6 py-4 border-b">
+              <h3 className="text-xl font-bold text-gray-800">Konfirmasi Reset Data</h3>
+            </div>
+            
+            <div className="p-6">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="p-2 bg-red-100 rounded-lg">
+                  <FiTrash2 className="w-6 h-6 text-red-600" />
+                </div>
+                <div>
+                  <p className="font-medium text-gray-900 mb-2">Reset data siswa: {selectedStudent?.name}</p>
+                  <p className="text-gray-600 text-sm">
+                    Data yang akan direset kecuali: Nama, Email, dan Kelas.
+                    Apakah Anda yakin?
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="px-6 py-4 border-t flex justify-end gap-3">
               <button
                 onClick={() => setShowDeleteModal(false)}
-                className="px-4 py-2 border border-gray-300 rounded-md"
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Batal
               </button>
               <button
                 onClick={handleDeleteStudent}
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
               >
-                Hapus Data
+                <FiTrash2 /> Reset Data
               </button>
             </div>
           </div>
