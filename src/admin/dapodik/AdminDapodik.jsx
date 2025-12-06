@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase, supabaseAdmin, uploadRaportPDF } from '../supabaseClient';
+import { supabase, supabaseAdmin, uploadRaportPDF } from '../../supabaseClient';
 
 const AdminDapodik = () => {
   const [students, setStudents] = useState([]);
