@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
-import { supabase } from "../supabaseClient";
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
 
 const AdminNavbar = () => {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-    const [userEmail, setUserEmail] = useState('');
+    const navigate = useNavigate();
 
     const toggleMobileMenu = () => {
         setIsMobileMenuOpen(!isMobileMenuOpen);
@@ -16,51 +16,60 @@ const AdminNavbar = () => {
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
-        closeMobileMenu();
+        navigate('/auth');
     };
 
-    useEffect(() => {
-        const getSession = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user?.email) {
-                setUserEmail(session.user.email);
-            }
-        };
-        getSession();
-    }, []);
-
     return (
-        <nav className="bg-white shadow-lg w-full fixed z-50 p-4">
+        <nav className="bg-gradient-to-r from-indigo-700 to-purple-800 shadow-lg w-full fixed z-50 p-4">
             <div className="container">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-2 text-xl font-bold text-gray-800 leading-none tracking-wide">
-                            <i className="bx bx-money"></i>
-                            <span>Admin Dashboard</span>
+                        <div className="flex items-center gap-2 text-xl font-bold text-white leading-none tracking-wide">
+                            <i className="bx bx-shield-quarter"></i>
+                            <span className="hidden sm:inline">Admin Panel</span>
+                            <span className="sm:hidden">Admin</span>
                         </div>
-                        <ul className="hidden md:flex gap-6 items-center">
+                        <ul className="hidden md:flex gap-4 items-center">
                             <li>
-                                <Link
-                                    to="/admin"
-                                    className="flex items-center gap-2 text-sm lg:text-base px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer text-white bg-gradient-to-r from-blue-500 to-purple-500"
+                                <button
+                                    onClick={() => navigate('/admin')}
+                                    className="flex items-center gap-2 px-4 py-2 bg-white text-indigo-700 rounded-lg hover:bg-gray-100 transition-all duration-300"
                                 >
-                                    <i className="bx bx-dashboard text-lg"></i>
+                                    <i className="bx bx-dashboard"></i>
                                     <span>Dashboard</span>
-                                </Link>
+                                </button>
+                            </li>
+                            <li>
+                                <button
+                                    onClick={() => navigate('/dapodik')}
+                                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all duration-300"
+                                >
+                                    <i className="bx bx-file"></i>
+                                    <span>Dapodik</span>
+                                </button>
+                            </li>
+                            <li>
+                                <button
+                                    onClick={() => navigate('/')}
+                                    className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-all duration-300"
+                                >
+                                    <i className="bx bx-home"></i>
+                                    <span>Main Dashboard</span>
+                                </button>
                             </li>
                             <li>
                                 <button
                                     onClick={handleLogout}
-                                    className="flex items-center gap-2 text-sm lg:text-base px-4 py-2 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-lg shadow-lg hover:from-red-600 hover:to-pink-600 transition-all duration-300"
+                                    className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all duration-300"
                                 >
-                                    <i className="bx bx-log-out text-lg"></i>
+                                    <i className="bx bx-log-out"></i>
                                     <span>Logout</span>
                                 </button>
                             </li>
                         </ul>
                         <button
                             onClick={toggleMobileMenu}
-                            className="md:hidden flex items-center justify-center w-10 h-10 text-gray-800 hover:text-indigo-500 transition-colors duration-200"
+                            className="md:hidden flex items-center justify-center w-10 h-10 text-white hover:text-gray-300 transition-colors duration-200"
                             aria-label="Toggle mobile menu"
                         >
                             <i className={`bx ${isMobileMenuOpen ? 'bx-x' : 'bx-menu'} text-2xl`}></i>
@@ -68,18 +77,19 @@ const AdminNavbar = () => {
                     </div>
                 </div>
             </div>
+            
             {/* Mobile Menu */}
-            <div className={`fixed top-0 right-0 h-full w-70 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out z-50 md:hidden flex flex-col ${
+            <div className={`fixed top-0 right-0 h-full w-64 bg-indigo-800 shadow-2xl transform transition-transform duration-300 ease-in-out z-50 md:hidden flex flex-col ${
                 isMobileMenuOpen ? 'translate-x-0' : 'translate-x-full'
             }`}>
-                <div className="flex justify-between items-center p-6 border-b border-gray-200">
-                    <div className="flex items-center gap-2 text-lg font-bold text-gray-800">
-                        <i className="bx bx-money"></i>
+                <div className="flex justify-between items-center p-6 border-b border-indigo-700">
+                    <div className="flex items-center gap-2 text-lg font-bold text-white">
+                        <i className="bx bx-shield-quarter"></i>
                         Admin Menu
                     </div>
                     <button
                         onClick={closeMobileMenu}
-                        className="flex items-center justify-center w-8 h-8 text-gray-800 hover:text-indigo-500 transition-colors duration-200"
+                        className="flex items-center justify-center w-8 h-8 text-white hover:text-gray-300 transition-colors duration-200"
                         aria-label="Close mobile menu"
                     >
                         <i className="bx bx-x text-xl"></i>
@@ -88,19 +98,36 @@ const AdminNavbar = () => {
                 <div className="flex-1 p-6">
                     <ul className="space-y-2">
                         <li>
-                            <Link
-                                to="/admin"
-                                onClick={closeMobileMenu}
-                                className="flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group cursor-pointer text-white bg-gradient-to-r from-blue-500 to-purple-500"
+                            <button
+                                onClick={() => { navigate('/admin'); closeMobileMenu(); }}
+                                className="flex items-center gap-3 p-3 w-full text-white bg-indigo-700 rounded-lg border-l-4 border-blue-400 hover:bg-indigo-600 transition-all duration-200 group"
                             >
                                 <i className="bx bx-dashboard text-xl"></i>
-                                <span className="text-base font-medium">Dashboard</span>
-                            </Link>
+                                <span className="text-base font-medium">Admin Dashboard</span>
+                            </button>
                         </li>
                         <li>
                             <button
-                                onClick={handleLogout}
-                                className="flex items-center gap-3 p-3 w-full text-white bg-gradient-to-r from-red-500 to-pink-500 rounded-lg hover:from-red-600 hover:to-pink-600 transition-all duration-200 group"
+                                onClick={() => { navigate('/dapodik'); closeMobileMenu(); }}
+                                className="flex items-center gap-3 p-3 w-full text-white bg-purple-700 rounded-lg border-l-4 border-purple-400 hover:bg-purple-600 transition-all duration-200 group"
+                            >
+                                <i className="bx bx-file text-xl"></i>
+                                <span className="text-base font-medium">Dapodik</span>
+                            </button>
+                        </li>
+                        <li>
+                            <button
+                                onClick={() => { navigate('/'); closeMobileMenu(); }}
+                                className="flex items-center gap-3 p-3 w-full text-white bg-gray-700 rounded-lg border-l-4 border-gray-400 hover:bg-gray-600 transition-all duration-200 group"
+                            >
+                                <i className="bx bx-home text-xl"></i>
+                                <span className="text-base font-medium">Main Dashboard</span>
+                            </button>
+                        </li>
+                        <li>
+                            <button
+                                onClick={() => { handleLogout(); closeMobileMenu(); }}
+                                className="flex items-center gap-3 p-3 w-full text-white bg-red-600 rounded-lg border-l-4 border-red-400 hover:bg-red-700 transition-all duration-200 group"
                             >
                                 <i className="bx bx-log-out text-xl"></i>
                                 <span className="text-base font-medium">Logout</span>
