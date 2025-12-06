@@ -13,7 +13,7 @@ import Footer from "./components/Footer";
 import Form from "./auth/Form";
 import AdminDashboard from "./admin/AdminDashboard";
 import DapodikDashboard from "./dashboard-user/DapodikDashboard";
-import DapodikAdminDashboard from "./admin/dapodik-admin-settings/DapodikAdmimDashboard";
+import DapodikAdminDashboard from "./admin/AdminDapodik";
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -112,7 +112,7 @@ function App() {
         <Route path="/auth" element={<Form />} />
             <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/dashboard-user" element={<DapodikDashboard />} />
-        <Route path="/admin/dapodik-admin-settings" element={<DapodikAdminDashboard />} />
+        <Route path="/admin/dapodik" element={<AdminDapodik />} />
         {/* Route untuk halaman utama (dashboard) */}
         <Route
           path="/"
