@@ -13,7 +13,7 @@ import Footer from "./components/Footer";
 import Form from "./auth/Form";
 import AdminDashboard from "./admin/AdminDashboard";
 import DapodikDashboard from "./dashboard-user/DapodikDashboard";
-import DapodikAdminDashboard from "./admin/AdminDapodik";
+import DapodikAdminDashboard from "./admin/dapodik/AdminDapodik";
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
