@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { supabase } from "./supabaseClient"; // Import supabase client
 
 import Navbar from "./components/Navbar";
 import Dashboard from "./components/Dashboard";
@@ -13,31 +14,120 @@ import Footer from "./components/Footer";
 import Form from "./auth/Form";
 import AdminDashboard from "./admin/AdminDashboard";
 import DapodikDashboard from "./dashboard-user/DapodikDashboard";
-import AdminDapodik from "./dapodik/AdminDapodik"; // Import dari dapodik folder
+import AdminDapodik from "./dapodik/AdminDapodik";
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [session, setSession] = useState(null);
+  const [userRole, setUserRole] = useState(null);
+  const navigate = useNavigate();
 
-  // Simulate loading delay dan cek auth
+  // Setup auth listener dan cek session
   useEffect(() => {
-    const timer = setTimeout(() => {
-      // Cek jika user sudah login (contoh sederhana)
-      const token = localStorage.getItem('auth_token');
-      setIsAuthenticated(!!token);
-      setIsLoading(false);
-    }, 2500); // 2-second delay
-    return () => clearTimeout(timer);
-  }, []);
+    // Cek session yang sudah ada
+    const checkSession = async () => {
+      try {
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        setSession(currentSession);
+        
+        if (currentSession) {
+          // Ambil role user dari profiles
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('roles')
+            .eq('id', currentSession.user.id)
+            .single();
+            
+          if (!error && profile) {
+            setUserRole(profile.roles);
+          }
+        }
+      } catch (error) {
+        console.error('Session check error:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-  // Private Route Component
-  const PrivateRoute = ({ children }) => {
-    if (!isAuthenticated && !isLoading) {
+    checkSession();
+
+    // Setup auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, currentSession) => {
+        console.log('Auth state changed:', event);
+        
+        setSession(currentSession);
+        
+        if (currentSession) {
+          // Ambil role user
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('roles')
+            .eq('id', currentSession.user.id)
+            .single();
+            
+          if (!error && profile) {
+            setUserRole(profile.roles);
+          }
+          
+          // Redirect berdasarkan role setelah login
+          if (event === 'SIGNED_IN') {
+            setTimeout(() => {
+              if (profile?.roles === 'admin') {
+                navigate('/admin');
+              } else if (profile?.roles === 'user-raport') {
+                navigate('/dashboard-user');
+              } else {
+                navigate('/');
+              }
+            }, 100);
+          }
+        } else {
+          setUserRole(null);
+        }
+        
+        setIsLoading(false);
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [navigate]);
+
+  // Private Route Component dengan role checking
+  const PrivateRoute = ({ children, allowedRoles = [] }) => {
+    if (isLoading) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <p className="text-gray-600">Memuat...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (!session) {
       return <Navigate to="/auth" />;
     }
+
+    // Jika ada role restriction, cek role user
+    if (allowedRoles.length > 0 && !allowedRoles.includes(userRole)) {
+      // Redirect ke halaman sesuai role
+      if (userRole === 'admin') {
+        return <Navigate to="/admin" />;
+      } else if (userRole === 'user-raport') {
+        return <Navigate to="/dashboard-user" />;
+      } else {
+        return <Navigate to="/" />;
+      }
+    }
+
     return children;
   };
 
+  // Loading skeleton
   if (isLoading) {
     return (
       <div className="min-h-screen bg-white flex flex-col">
@@ -118,69 +208,75 @@ function App() {
   }
 
   return (
-    <>
-      <Routes>
-        {/* Route untuk halaman login */}
-        <Route 
-          path="/auth" 
-          element={
-            isAuthenticated ? <Navigate to="/" /> : <Form />
-          } 
-        />
-        
-        {/* Route untuk admin dashboard */}
-        <Route 
-          path="/admin" 
-          element={
-            <PrivateRoute>
-              <AdminDashboard />
-            </PrivateRoute>
-          } 
-        />
-        
-        {/* Route untuk dashboard user dapodik */}
-        <Route 
-          path="/dashboard-user" 
-          element={
-            <PrivateRoute>
-              <DapodikDashboard />
-            </PrivateRoute>
-          } 
-        />
-        
-        {/* Route untuk admin dapodik - TAMBAHKAN INI */}
-        <Route 
-          path="/dapodik" 
-          element={
-            <PrivateRoute>
-              <AdminDapodik />
-            </PrivateRoute>
-          } 
-        />
-        
-        {/* Route untuk halaman utama (dashboard) */}
-        <Route
-          path="/"
-          element={
-            <PrivateRoute>
-              <>
-                <Navbar />
-                <Dashboard />
-                <Add />
-                <Transactions />
-                <Statistics />
-                <Budget />
-                <Footer />
-                <ScrollToTop />
-              </>
-            </PrivateRoute>
-          }
-        />
-        
-        {/* Fallback route untuk handle 404 */}
-        <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
-    </>
+    <Routes>
+      {/* Route untuk halaman login */}
+      <Route 
+        path="/auth" 
+        element={
+          session ? (
+            <Navigate to={
+              userRole === 'admin' ? '/admin' : 
+              userRole === 'user-raport' ? '/dashboard-user' : 
+              '/'
+            } />
+          ) : (
+            <Form />
+          )
+        } 
+      />
+      
+      {/* Route untuk halaman utama (dashboard) */}
+      <Route
+        path="/"
+        element={
+          <PrivateRoute>
+            <>
+              <Navbar />
+              <Dashboard />
+              <Add />
+              <Transactions />
+              <Statistics />
+              <Budget />
+              <Footer />
+              <ScrollToTop />
+            </>
+          </PrivateRoute>
+        }
+      />
+      
+      {/* Route untuk admin dashboard */}
+      <Route
+        path="/admin"
+        element={
+          <PrivateRoute allowedRoles={['admin']}>
+            <AdminDashboard />
+          </PrivateRoute>
+        }
+      />
+      
+      {/* Route untuk dashboard user dapodik */}
+      <Route
+        path="/dashboard-user"
+        element={
+          <PrivateRoute allowedRoles={['user-raport', 'admin']}>
+            <DapodikDashboard />
+          </PrivateRoute>
+        }
+      />
+      
+      {/* Route untuk admin dapodik */}
+      <Route
+        path="/dapodik"
+        element={
+          <PrivateRoute allowedRoles={['admin']}>
+            <AdminDapodik />
+          </PrivateRoute>
+        }
+      />
+      
+      {/* Fallback route */}
+      <Route path="*" element={<Navigate to="/" />} />
+    </Routes>
   );
 }
 
