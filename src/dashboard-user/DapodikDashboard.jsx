@@ -505,33 +505,6 @@ const DapodikDashboard = () => {
                         </button>
                       )}
 
-  {/* Info Section */}
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-blue-600 text-xl">💡</span>
-                <h4 className="font-medium text-blue-800">Informasi Akses Raport</h4>
-              </div>
-              <p className="text-sm text-blue-700">
-                Status akses menunjukkan apakah Anda dapat mendownload raport. 
-                Jika belum disetujui, klik "Minta Akses" untuk mengirim permintaan ke admin.
-              </p>
-            </div>
-            
-            <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-purple-600 text-xl">🏆</span>
-                <h4 className="font-medium text-purple-800">Informasi Ranking</h4>
-              </div>
-              <p className="text-sm text-purple-700">
-                Ranking dan nilai rata-rata dapat di-review oleh admin. 
-                Jika ingin meminta perubahan ranking, klik "Minta Naikan Ranking".
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    
                       {/* Tombol Permintaan Naikan Ranking */}
                       {userData.permintaan_ranking_status === 'belum_disetujui' || 
                        !userData.permintaan_ranking_status ? (
@@ -568,6 +541,33 @@ const DapodikDashboard = () => {
         </div>
       </div>
 
+{/* Info Section */}
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-blue-600 text-xl">💡</span>
+                <h4 className="font-medium text-blue-800">Informasi Akses Raport</h4>
+              </div>
+              <p className="text-sm text-blue-700">
+                Status akses menunjukkan apakah Anda dapat mendownload raport. 
+                Jika belum disetujui, klik "Minta Akses" untuk mengirim permintaan ke admin.
+              </p>
+            </div>
+            
+            <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-purple-600 text-xl">🏆</span>
+                <h4 className="font-medium text-purple-800">Informasi Ranking</h4>
+              </div>
+              <p className="text-sm text-purple-700">
+                Ranking dan nilai rata-rata dapat di-review oleh admin. 
+                Jika ingin meminta perubahan ranking, klik "Minta Naikan Ranking".
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+      
       {/* Detail Modal - Tetap sama */}
       {showDetailModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
