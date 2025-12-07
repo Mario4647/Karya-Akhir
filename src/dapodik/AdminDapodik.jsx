@@ -139,69 +139,73 @@ const AdminDapodik = () => {
   };
 
   const handleEditSubmit = async () => {
-    try {
-      // Validasi data numerik
-      if (editData.ranking && editData.ranking.trim() !== '') {
-        const rankingNum = parseInt(editData.ranking);
-        if (isNaN(rankingNum)) {
-          setErrorMessage('Ranking harus berupa angka (contoh: 1, 2, 3)');
-          return;
-        }
+  try {
+    // Validasi data numerik
+    if (editData.ranking !== undefined && editData.ranking !== null && editData.ranking !== '') {
+      const rankingStr = String(editData.ranking);
+      const rankingNum = parseInt(rankingStr);
+      if (isNaN(rankingNum)) {
+        setErrorMessage('Ranking harus berupa angka (contoh: 1, 2, 3)');
+        return;
       }
-
-      if (editData.nilai_rata_rata && editData.nilai_rata_rata.trim() !== '') {
-        const nilaiNum = parseFloat(editData.nilai_rata_rata);
-        if (isNaN(nilaiNum)) {
-          setErrorMessage('Nilai rata-rata harus berupa angka (contoh: 85.5, 90.0)');
-          return;
-        }
-      }
-
-      // Prepare data untuk update
-      const updateData = {
-        name: editData.name || null,
-        class: editData.class || null,
-        asal_sekolah: editData.asal_sekolah || null,
-        nisn: editData.nisn || null,
-        tanggal_lahir: editData.tanggal_lahir || null,
-        nomor_telepon: editData.nomor_telepon || null,
-        nama_ayah: editData.nama_ayah || null,
-        nama_ibu: editData.nama_ibu || null,
-        alamat: editData.alamat || null,
-        tanggal_diterima: editData.tanggal_diterima || null,
-        semester: editData.semester || null,
-        updated_at: new Date().toISOString()
-      };
-
-      // Handle numeric fields
-      if (editData.ranking && editData.ranking.trim() !== '') {
-        updateData.ranking = parseInt(editData.ranking);
-      } else {
-        updateData.ranking = null;
-      }
-
-      if (editData.nilai_rata_rata && editData.nilai_rata_rata.trim() !== '') {
-        updateData.nilai_rata_rata = parseFloat(editData.nilai_rata_rata);
-      } else {
-        updateData.nilai_rata_rata = null;
-      }
-
-      const { error } = await supabase
-        .from('profiles')
-        .update(updateData)
-        .eq('id', selectedStudent.id);
-
-      if (error) throw error;
-
-      setShowEditModal(false);
-      setSuccessMessage('Data siswa berhasil diperbarui');
-      fetchData();
-      setTimeout(() => setSuccessMessage(''), 3000);
-    } catch (error) {
-      console.error('Error updating student:', error);
-      setErrorMessage('Gagal memperbarui data: ' + error.message);
     }
-  };
+
+    if (editData.nilai_rata_rata !== undefined && editData.nilai_rata_rata !== null && editData.nilai_rata_rata !== '') {
+      const nilaiStr = String(editData.nilai_rata_rata);
+      const nilaiNum = parseFloat(nilaiStr);
+      if (isNaN(nilaiNum)) {
+        setErrorMessage('Nilai rata-rata harus berupa angka (contoh: 85.5, 90.0)');
+        return;
+      }
+    }
+
+    // Prepare data untuk update
+    const updateData = {
+      name: editData.name || null,
+      class: editData.class || null,
+      asal_sekolah: editData.asal_sekolah || null,
+      nisn: editData.nisn || null,
+      tanggal_lahir: editData.tanggal_lahir || null,
+      nomor_telepon: editData.nomor_telepon || null,
+      nama_ayah: editData.nama_ayah || null,
+      nama_ibu: editData.nama_ibu || null,
+      alamat: editData.alamat || null,
+      tanggal_diterima: editData.tanggal_diterima || null,
+      semester: editData.semester || null,
+      updated_at: new Date().toISOString()
+    };
+
+    // Handle numeric fields
+    if (editData.ranking !== undefined && editData.ranking !== null && editData.ranking !== '') {
+      const rankingStr = String(editData.ranking);
+      updateData.ranking = rankingStr.trim() === '' ? null : parseInt(rankingStr);
+    } else {
+      updateData.ranking = null;
+    }
+
+    if (editData.nilai_rata_rata !== undefined && editData.nilai_rata_rata !== null && editData.nilai_rata_rata !== '') {
+      const nilaiStr = String(editData.nilai_rata_rata);
+      updateData.nilai_rata_rata = nilaiStr.trim() === '' ? null : parseFloat(nilaiStr);
+    } else {
+      updateData.nilai_rata_rata = null;
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update(updateData)
+      .eq('id', selectedStudent.id);
+
+    if (error) throw error;
+
+    setShowEditModal(false);
+    setSuccessMessage('Data siswa berhasil diperbarui');
+    fetchData();
+    setTimeout(() => setSuccessMessage(''), 3000);
+  } catch (error) {
+    console.error('Error updating student:', error);
+    setErrorMessage('Gagal memperbarui data: ' + error.message);
+  }
+};
 
   const handleUploadSubmit = async () => {
     if (!uploadFile || !uploadSemester) {
