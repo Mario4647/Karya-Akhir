@@ -102,6 +102,7 @@ const Form = () => {
             console.error("Sign Up Error:", error);
         }
     };
+
     const handleSignIn = async (e) => {
         e.preventDefault();
         if (!validateSignIn()) return;
@@ -118,12 +119,37 @@ const Form = () => {
             }
 
             if (data.user) {
-                setSubmitSuccess(true);
-                setSignInData({ email: "", password: "" });
-                setTimeout(() => {
-                    setSubmitSuccess(false);
-                    navigate("/");
-                }, 3000);
+                // Get user role
+                const { data: profile, error: profileError } = await supabase
+                    .from('profiles')
+                    .select('roles')
+                    .eq('id', data.user.id)
+                    .single();
+
+                if (!profileError && profile) {
+                    setSubmitSuccess(true);
+                    setSignInData({ email: "", password: "" });
+                    
+                    // Redirect berdasarkan role
+                    setTimeout(() => {
+                        setSubmitSuccess(false);
+                        if (profile.roles === 'admin') {
+                            navigate("/admin");
+                        } else if (profile.roles === 'user-raport') {
+                            navigate("/dashboard-user");
+                        } else {
+                            navigate("/");
+                        }
+                    }, 1500);
+                } else {
+                    // Default redirect jika tidak ada profile
+                    setSubmitSuccess(true);
+                    setSignInData({ email: "", password: "" });
+                    setTimeout(() => {
+                        setSubmitSuccess(false);
+                        navigate("/");
+                    }, 1500);
+                }
             }
         } catch (error) {
             setErrors({ submit: "Terjadi kesalahan, coba lagi nanti" });
