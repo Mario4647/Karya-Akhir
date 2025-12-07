@@ -156,6 +156,7 @@ export const updateAccessStatus = async (userId, status, keterangan = null) => {
       updateData.akses_raport_approved_at = new Date().toISOString();
     } else if (status === 'belum_disetujui') {
       updateData.akses_raport_requested_at = null;
+      updateData.akses_raport_approved_at = null;
     }
     
     const { data, error } = await supabaseAdmin
@@ -169,6 +170,29 @@ export const updateAccessStatus = async (userId, status, keterangan = null) => {
     return { success: true, data };
   } catch (error) {
     console.error('Error updating access status:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Helper untuk cabut akses
+export const revokeAccess = async (userId) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .update({
+        akses_raport_status: 'belum_disetujui',
+        akses_raport_approved_at: null,
+        keterangan_ditolak: 'Akses dicabut oleh admin',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error revoking access:', error);
     return { success: false, error: error.message };
   }
 };
@@ -268,12 +292,43 @@ export const updateRankingStatus = async (userId, status, keterangan = null) => 
   }
 };
 
+// Helper untuk mengatur timer ranking (admin)
+export const setRankingTimer = async (userId, days, hours, minutes) => {
+  try {
+    const totalMs = (days * 24 * 60 * 60 * 1000) + 
+                   (hours * 60 * 60 * 1000) + 
+                   (minutes * 60 * 1000);
+    
+    if (totalMs <= 0) {
+      return { success: false, error: 'Waktu timer harus lebih dari 0' };
+    }
+    
+    const timerEnd = new Date(Date.now() + totalMs);
+    
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .update({
+        ranking_timer_end: timerEnd.toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error setting ranking timer:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 // Helper untuk mendapatkan permintaan ranking pending
 export const getPendingRankingRequests = async () => {
   try {
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, email, name, class, ranking, nilai_rata_rata, semester, permintaan_ranking_status, permintaan_ranking_tanggal')
+      .select('id, email, name, class, ranking, nilai_rata_rata, semester, permintaan_ranking_status, permintaan_ranking_tanggal, ranking_timer_end')
       .eq('roles', 'user-raport')
       .eq('permintaan_ranking_status', 'pending')
       .order('permintaan_ranking_tanggal', { ascending: true });
@@ -308,8 +363,10 @@ export const resetStudentData = async (userId) => {
         raport_mimetype: null,
         akses_raport_status: 'belum_disetujui',
         akses_raport_requested_at: null,
+        akses_raport_approved_at: null,
         permintaan_ranking_status: 'belum_disetujui',
         permintaan_ranking_tanggal: null,
+        ranking_timer_end: null,
         keterangan_ditolak: null,
         updated_at: new Date().toISOString()
       })
@@ -411,6 +468,37 @@ export const updateProfileImage = async (userId, imageData) => {
     return { success: true, data };
   } catch (error) {
     console.error('Error updating profile image:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Helper untuk cek timer ranking
+export const checkRankingTimer = async (userId) => {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('ranking_timer_end')
+      .eq('id', userId)
+      .single();
+    
+    if (error) throw error;
+    
+    if (!data.ranking_timer_end) {
+      return { success: true, timerActive: false };
+    }
+    
+    const timerEnd = new Date(data.ranking_timer_end);
+    const now = new Date();
+    const timerActive = timerEnd > now;
+    
+    return { 
+      success: true, 
+      timerActive,
+      timerEnd: data.ranking_timer_end,
+      timeRemaining: timerEnd - now
+    };
+  } catch (error) {
+    console.error('Error checking ranking timer:', error);
     return { success: false, error: error.message };
   }
 };
