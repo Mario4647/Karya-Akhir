@@ -16,6 +16,7 @@ import Form from "./auth/Form";
 import AdminDashboard from "./admin/AdminDashboard";
 import DapodikDashboard from "./dashboard-user/DapodikDashboard";
 import AdminDapodik from "./dapodik/AdminDapodik";
+import MLAccountChecker from "./mlbb/MLAccountChecker";
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -115,6 +116,8 @@ function App() {
             <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/dashboard-user" element={<DapodikDashboard />} />
         <Route path="/dapodik" element={<AdminDapodik />} />
+        <Route path="/mlbb" element={<MLAccountChecker />} />
+        
         {/* Route untuk halaman utama (dashboard) */}
         <Route
           path="/"
