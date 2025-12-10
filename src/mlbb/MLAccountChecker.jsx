@@ -515,7 +515,7 @@ const MLAccountChecker = () => {
         <div className="text-center p-8 bg-gray-800 rounded-2xl shadow-lg border border-gray-700">
           <div className="w-16 h-16 text-red-500 mx-auto mb-4 text-4xl">🚫</div>
           <h2 className="text-2xl font-bold text-red-400 mb-2">Access Denied</h2>
-          <p className="text-gray-300">This page is for administrators only</p>
+          <p className="text-gray-300">This pages is for administrators only</p>
         </div>
       </div>
     );
