@@ -20,7 +20,7 @@ const AdminNavbar = () => {
     };
 
     return (
-        <nav className="bg-gradient-to-r from-indigo-700 to-purple-800 shadow-lg w-full fixed z-50 p-4">
+        <nav className="bg-gradient-to-r from-white-700 to-white-800 shadow-lg w-full fixed z-50 p-4">
             <div className="container">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex justify-between items-center">
@@ -46,6 +46,24 @@ const AdminNavbar = () => {
                                 >
                                     <i className="bx bx-file"></i>
                                     <span>Dapodik</span>
+                                </button>
+                            </li>
+                            <li>
+                                <button
+                                    onClick={() => navigate('/dataguru')}
+                                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all duration-300"
+                                >
+                                    <i className="bx bx-file"></i>
+                                    <span>Dapodik Data Guru</span>
+                                </button>
+                            </li>
+                            <li>
+                                <button
+                                    onClick={() => navigate('/datasiswa')}
+                                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all duration-300"
+                                >
+                                    <i className="bx bx-file"></i>
+                                    <span>Dapodik Data Siswa</span>
                                 </button>
                             </li>
                             <li>
