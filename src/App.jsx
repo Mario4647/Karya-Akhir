@@ -18,6 +18,7 @@ import DapodikDashboard from "./dashboard-user/DapodikDashboard";
 import AdminDapodik from "./dapodik/AdminDapodik";
 import MLAccountChecker from "./mlbb/MLAccountChecker";
 import AdminGuru from "./dataguru/AdminGuru";
+import AdminSiswa from "./datasiswa/AdminSiswa";
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -116,6 +117,7 @@ function App() {
         <Route path="/auth" element={<Form />} />
             <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/dataguru" element={<AdminGuru />} />
+        <Route path="/datasiswa" element={<AdminSiswa />} />
         <Route path="/dashboard-user" element={<DapodikDashboard />} />
         <Route path="/dapodik" element={<AdminDapodik />} />
         <Route path="/mlbb" element={<MLAccountChecker />} />
