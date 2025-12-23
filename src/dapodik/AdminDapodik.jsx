@@ -1153,7 +1153,7 @@ const AdminDapodik = () => {
             <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
               <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                 <span className="text-red-600">📊</span>
-                Data Nilai TKA (Try Out / Ujian Nasional)
+                Data Nilai TKA
               </h2>
               
               <div className="flex items-center gap-2">
@@ -1462,7 +1462,7 @@ const AdminDapodik = () => {
                     <option value="Try Out 1">Try Out 1</option>
                     <option value="Try Out 2">Try Out 2</option>
                     <option value="Try Out 3">Try Out 3</option>
-                    <option value="Ujian Nasional">Ujian Nasional</option>
+                    <option value="Ujian Nasional">TKA</option>
                     <option value="Simulasi UTBK">Simulasi UTBK</option>
                     <option value="Tes Diagnostik">Tes Diagnostik</option>
                   </select>
