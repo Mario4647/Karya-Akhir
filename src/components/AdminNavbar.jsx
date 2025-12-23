@@ -20,7 +20,7 @@ const AdminNavbar = () => {
     };
 
     return (
-        <nav className="bg-gradient-to-r from-white-700 to-white-800 shadow-lg w-full fixed z-50 p-4">
+        <nav className="bg-gradient-to-r from-indigo-700 to-purple-800 shadow-lg w-full fixed z-50 p-4">
             <div className="container">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex justify-between items-center">
@@ -131,6 +131,24 @@ const AdminNavbar = () => {
                             >
                                 <i className="bx bx-file text-xl"></i>
                                 <span className="text-base font-medium">Dapodik</span>
+                            </button>
+                        </li>
+                        <li>
+                            <button
+                                onClick={() => { navigate('/dataguru'); closeMobileMenu(); }}
+                                className="flex items-center gap-3 p-3 w-full text-white bg-purple-700 rounded-lg border-l-4 border-purple-400 hover:bg-purple-600 transition-all duration-200 group"
+                            >
+                                <i className="bx bx-file text-xl"></i>
+                                <span className="text-base font-medium">Dapodik Data Guru</span>
+                            </button>
+                        </li>
+                        <li>
+                            <button
+                                onClick={() => { navigate('/datasiswa'); closeMobileMenu(); }}
+                                className="flex items-center gap-3 p-3 w-full text-white bg-purple-700 rounded-lg border-l-4 border-purple-400 hover:bg-purple-600 transition-all duration-200 group"
+                            >
+                                <i className="bx bx-file text-xl"></i>
+                                <span className="text-base font-medium">Dapodik Data Siswa</span>
                             </button>
                         </li>
                         <li>
