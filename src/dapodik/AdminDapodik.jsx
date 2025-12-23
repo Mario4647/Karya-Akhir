@@ -1462,7 +1462,7 @@ const AdminDapodik = () => {
                     <option value="Try Out 1">Try Out 1</option>
                     <option value="Try Out 2">Try Out 2</option>
                     <option value="Try Out 3">Try Out 3</option>
-                    <option value="Ujian Nasional">TKA</option>
+                    <option value="TKA">TKA</option>
                     <option value="Simulasi UTBK">Simulasi UTBK</option>
                     <option value="Tes Diagnostik">Tes Diagnostik</option>
                   </select>
