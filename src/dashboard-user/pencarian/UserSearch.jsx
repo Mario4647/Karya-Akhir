@@ -355,9 +355,7 @@ const UserSearch = () => {
                         }`}
                       >
                         <div className="font-medium text-gray-900">{siswa.nama}</div>
-                        <div className="text-sm text-gray-600 mt-1">
-                          NISN: {siswa.nisn || '-'}
-                        </div>
+                        
                       </div>
                     ))}
                   </div>
