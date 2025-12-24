@@ -133,7 +133,6 @@ const AdminSiswa = () => {
         .from('siswa')
         .select('*')
         .order('no', { ascending: true })
-        .limit(1300); // Maksimal sesuai data Excel
 
       if (error) throw error;
 
@@ -186,7 +185,7 @@ const AdminSiswa = () => {
           const siswaList = [];
           
           // Proses data dengan batas 1298 baris
-          const maxRows = 1298; // Sesuai data Excel Anda
+          const maxRows = 2000; // Sesuai data Excel Anda
           for (let i = startRow; i < Math.min(jsonData.length, startRow + maxRows); i++) {
             const row = jsonData[i];
             if (!row[0] || row[0] === '' || isNaN(row[0])) continue;
