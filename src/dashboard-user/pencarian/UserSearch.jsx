@@ -359,7 +359,6 @@ const UserSearch = () => {
                         <div className="text-sm text-gray-600 mt-1">
                           Kelas: {siswa.rombel || '-'}
                         </div>
-                    ))}
                   </div>
                 )}
               </div>
