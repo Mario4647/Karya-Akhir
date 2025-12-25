@@ -341,29 +341,36 @@ const UserSearch = () => {
 
                 {/* Search Results Dropdown */}
                 {searchResults.length > 0 && (
-                  <div className="mt-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto z-10">
-                    {searchResults.map((siswa) => (
-                      <div
-                        key={siswa.id}
-                        onClick={() => {
-                          setSelectedSiswa(siswa);
-                          setSearchResults([]);
-                          setSearchTerm(siswa.nama);
-                        }}
-                        className={`px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0 ${
-                          selectedSiswa?.id === siswa.id ? 'bg-blue-50' : ''
-                        }`}
-                      >
-                        <div className="font-medium text-gray-900">{siswa.nama}</div>
-                        <div className="font-medium text-gray-900">{siswa.jk}</div>
-                        <div className="text-sm text-gray-600 mt-1">
-                          Kelas: {siswa.rombel || '-'}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+  <div className="mt-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto z-10">
+    {searchResults.map((siswa) => (
+      <div
+        key={siswa.id}
+        onClick={() => {
+          setSelectedSiswa(siswa);
+          setSearchResults([]);
+          setSearchTerm(siswa.nama);
+        }}
+        className={`px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0 ${
+          selectedSiswa?.id === siswa.id ? 'bg-blue-50' : ''
+        }`}
+      >
+        <div className="font-medium text-gray-900">{siswa.nama}</div>
+        <div className="text-sm text-gray-600 mt-1 flex items-center gap-3">
+          <span className="flex items-center gap-1">
+            <span className="text-xs font-medium">Kelas:</span>
+            <span className="font-medium">{siswa.rombel || '-'}</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="text-xs font-medium">JK:</span>
+            <span className={`font-medium ${siswa.jk === 'L' ? 'text-blue-600' : 'text-pink-600'}`}>
+              {siswa.jk === 'L' ? 'Laki-laki' : siswa.jk === 'P' ? 'Perempuan' : '-'}
+            </span>
+          </span>
+        </div>
+      </div>
+    ))}
+  </div>
+)}
 
               {/* Selected Student Info */}
               {selectedSiswa && (
