@@ -355,8 +355,9 @@ const UserSearch = () => {
                         }`}
                       >
                         <div className="font-medium text-gray-900">{siswa.nama}</div>
+                        <div className="font-medium text-gray-900">{siswa.jk}</div>
                         <div className="text-sm text-gray-600 mt-1">
-                          Kelas: {siswa.kelas || '-'}
+                          Kelas: {siswa.rombel || '-'}
                         </div>
                     ))}
                   </div>
