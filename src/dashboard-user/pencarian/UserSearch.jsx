@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../supabaseClient';
-import Navbar from '../components/Navbar';
+import { supabase } from '../../supabaseClient';
+import Navbar from '../../components/Navbar';
 
 const UserSearch = () => {
   const [userRole, setUserRole] = useState('');
