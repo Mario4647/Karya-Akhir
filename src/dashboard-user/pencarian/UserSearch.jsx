@@ -340,7 +340,7 @@ const UserSearch = () => {
                 </div>
 
                 {/* Search Results Dropdown */}
-                {searchResults.length > 0 && (
+                 {searchResults.length > 0 && (
   <div className="mt-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto z-10">
     {searchResults.map((siswa) => (
       <div
