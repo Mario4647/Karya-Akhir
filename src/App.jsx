@@ -11,6 +11,7 @@ import Statistics from "./components/Statistics";
 import Budget from "./components/Budget";
 import ScrollToTop from "./components/ScrollToTop";
 import Footer from "./components/Footer";
+import ResetPassword from "./components/ResetPassword";
 
 import Form from "./auth/Form";
 import UserSearch from "./dashboard-user/pencarian/UserSearch";
@@ -125,6 +126,8 @@ function App() {
         <Route path="/mlbb" element={<MLAccountChecker />} />
         <Route path="/dashboard-user/pencarian" element={<UserSearch />} />
         <Route path="/pencarian" element={<AdminSearchLog />} />
+      
+<Route path="/reset-password" element={<ResetPassword />} />
         {/* Route untuk halaman utama (dashboard) */}
         <Route
           path="/"
