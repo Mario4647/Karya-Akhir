@@ -93,10 +93,17 @@ const Form = () => {
 
         setLoading(true);
         try {
+            // PERBAIKAN DISINI: Redirect ke halaman yang benar
+            const siteUrl = window.location.origin; // Misal: https://yourdomain.com
+            const redirectUrl = `${siteUrl}/reset-password`; // Arahkan ke halaman reset password
+            
+            console.log("Mengirim reset password ke:", forgotPasswordEmail);
+            console.log("Redirect ke:", redirectUrl);
+
             const { error } = await supabase.auth.resetPasswordForEmail(
                 forgotPasswordEmail,
                 {
-                    redirectTo: `${window.location.origin}/reset-password`,
+                    redirectTo: redirectUrl,
                 }
             );
 
@@ -106,11 +113,21 @@ const Form = () => {
 
             setIsResetLinkSent(true);
             setErrors({});
+            
+            // Reset form setelah 5 detik
+            setTimeout(() => {
+                setIsForgotPassword(false);
+                setIsResetLinkSent(false);
+                setForgotPasswordEmail("");
+            }, 5000);
+            
         } catch (error) {
             console.error("Forgot Password Error:", error);
             setErrors({ 
                 forgotPassword: error.message === "User not found" 
                     ? "Email tidak terdaftar" 
+                    : error.message === "rate limit exceeded"
+                    ? "Terlalu banyak percobaan. Coba lagi nanti."
                     : "Terjadi kesalahan, coba lagi nanti"
             });
         } finally {
@@ -127,6 +144,9 @@ const Form = () => {
             const { data, error } = await supabase.auth.signUp({
                 email: signUpData.email,
                 password: signUpData.password,
+                options: {
+                    emailRedirectTo: `${window.location.origin}/auth`, // Redirect setelah konfirmasi email
+                }
             });
 
             if (error) {
@@ -236,7 +256,11 @@ const Form = () => {
                                 <i className="bx bx-check-circle text-xl text-blue-500"></i>
                                 <div>
                                     <p className="font-medium">Link reset password telah dikirim!</p>
-                                    <p className="text-sm mt-1">Silakan periksa email <span className="font-semibold">{forgotPasswordEmail}</span> untuk melanjutkan.</p>
+                                    <p className="text-sm mt-1">
+                                        Silakan periksa email <span className="font-semibold">{forgotPasswordEmail}</span>.
+                                        <br />
+                                        <span className="text-xs text-gray-600">Link akan mengarah ke halaman reset password.</span>
+                                    </p>
                                 </div>
                             </div>
                         )}
@@ -517,8 +541,9 @@ const Form = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => setIsForgotPassword(true)}
-                                                className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                                                className="text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 ml-auto"
                                             >
+                                                <i className="bx bx-key"></i>
                                                 Lupa password?
                                             </button>
                                         </div>
