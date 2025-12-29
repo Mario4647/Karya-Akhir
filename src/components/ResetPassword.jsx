@@ -8,16 +8,28 @@ const ResetPassword = () => {
     const [errors, setErrors] = useState({});
     const [success, setSuccess] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [sessionChecked, setSessionChecked] = useState(false);
     const navigate = useNavigate();
 
     useEffect(() => {
-        // Check if user has a valid session for password reset
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            if (!session) {
-                navigate('/login');
+        // Cek apakah user datang dari link reset password
+        const checkHash = () => {
+            const hash = window.location.hash;
+            // Supabase menggunakan access_token di URL fragment
+            if (hash.includes('access_token') && hash.includes('type=recovery')) {
+                console.log("Reset password link detected");
             }
-        });
-    }, [navigate]);
+        };
+        
+        checkHash();
+        
+        // Cek session setelah 1 detik
+        const timer = setTimeout(() => {
+            setSessionChecked(true);
+        }, 1000);
+        
+        return () => clearTimeout(timer);
+    }, []);
 
     const validateForm = () => {
         const newErrors = {};
@@ -55,17 +67,36 @@ const ResetPassword = () => {
             setSuccess(true);
             setErrors({});
             
-            // Redirect to login after 3 seconds
-            setTimeout(() => {
-                navigate('/login');
+            // Logout dan redirect ke login setelah 3 detik
+            setTimeout(async () => {
+                await supabase.auth.signOut();
+                navigate('/auth');
             }, 3000);
             
         } catch (error) {
-            setErrors({ submit: error.message });
+            console.error("Reset Password Error:", error);
+            setErrors({ 
+                submit: error.message.includes('expired') 
+                    ? "Link reset password sudah kadaluarsa"
+                    : error.message.includes('Invalid')
+                    ? "Sesi tidak valid. Silakan request link reset password baru."
+                    : "Terjadi kesalahan. Silakan coba lagi."
+            });
         } finally {
             setLoading(false);
         }
     };
+
+    if (!sessionChecked) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+                    <p className="mt-4 text-gray-600">Memeriksa sesi...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
@@ -94,6 +125,9 @@ const ResetPassword = () => {
                                     <p className="mt-2 text-sm text-green-700">
                                         Anda akan diarahkan ke halaman login...
                                     </p>
+                                    <p className="mt-1 text-xs text-gray-600">
+                                        Silakan login dengan password baru Anda.
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -109,6 +143,9 @@ const ResetPassword = () => {
                                             <h3 className="text-sm font-medium text-red-800">
                                                 {errors.submit}
                                             </h3>
+                                            <p className="mt-1 text-xs text-red-700">
+                                                Kembali ke halaman login dan klik "Lupa password?" untuk request link baru.
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
@@ -128,10 +165,14 @@ const ResetPassword = () => {
                                             if (errors.password) setErrors({ ...errors, password: '' });
                                         }}
                                         className={`appearance-none block w-full pl-10 px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${errors.password ? 'border-red-300' : 'border-gray-300'}`}
+                                        placeholder="Minimal 6 karakter"
                                     />
                                 </div>
                                 {errors.password && (
-                                    <p className="mt-2 text-sm text-red-600">{errors.password}</p>
+                                    <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
+                                        <i className="bx bx-error-circle"></i>
+                                        {errors.password}
+                                    </p>
                                 )}
                             </div>
 
@@ -149,23 +190,33 @@ const ResetPassword = () => {
                                             if (errors.confirmPassword) setErrors({ ...errors, confirmPassword: '' });
                                         }}
                                         className={`appearance-none block w-full pl-10 px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${errors.confirmPassword ? 'border-red-300' : 'border-gray-300'}`}
+                                        placeholder="Ketik ulang password baru"
                                     />
                                 </div>
                                 {errors.confirmPassword && (
-                                    <p className="mt-2 text-sm text-red-600">{errors.confirmPassword}</p>
+                                    <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
+                                        <i className="bx bx-error-circle"></i>
+                                        {errors.confirmPassword}
+                                    </p>
                                 )}
                             </div>
 
-                            <div>
+                            <div className="flex space-x-3">
+                                <button
+                                    type="button"
+                                    onClick={() => navigate('/auth')}
+                                    className="flex-1 py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                                >
+                                    Kembali ke Login
+                                </button>
                                 <button
                                     type="submit"
                                     disabled={loading}
-                                    className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                    className={`flex-1 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
                                 >
                                     {loading ? (
                                         <>
-                                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                                            Memproses...
+                                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mx-auto"></div>
                                         </>
                                     ) : (
                                         'Reset Password'
