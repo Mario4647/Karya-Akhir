@@ -54,7 +54,7 @@ const AdminNavbar = () => {
                                     className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all duration-300"
                                 >
                                     <i className="bx bx-file"></i>
-                                    <span>Dapodik Data Guru</span>
+                                    <span>Data Guru</span>
                                 </button>
                             </li>
                             <li>
@@ -63,7 +63,7 @@ const AdminNavbar = () => {
                                     className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all duration-300"
                                 >
                                     <i className="bx bx-file"></i>
-                                    <span>Dapodik Data Siswa</span>
+                                    <span>Data Siswa</span>
                                 </button>
                             </li>
                             <li>
@@ -72,7 +72,7 @@ const AdminNavbar = () => {
                                     className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-all duration-300"
                                 >
                                     <i className="bx bx-home"></i>
-                                    <span>Riwayat Pencarian Data</span>
+                                    <span>Riwayat Pencarian</span>
                                 </button>
                             </li>
                             <li>
