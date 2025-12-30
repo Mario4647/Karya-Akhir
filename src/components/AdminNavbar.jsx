@@ -26,7 +26,7 @@ const AdminNavbar = () => {
                     <div className="flex justify-between items-center">
                         <div className="flex items-center gap-2 text-xl font-bold text-white leading-none tracking-wide">
                             <i className="bx bx-shield-quarter"></i>
-                            <span className="hidden sm:inline">Admin Panel</span>
+                            <span className="hidden sm:inline">Admin Dashboard</span>
                             <span className="sm:hidden">Admin</span>
                         </div>
                         <ul className="hidden md:flex gap-4 items-center">
@@ -68,11 +68,11 @@ const AdminNavbar = () => {
                             </li>
                             <li>
                                 <button
-                                    onClick={() => navigate('/')}
+                                    onClick={() => navigate('/pencarian')}
                                     className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-all duration-300"
                                 >
                                     <i className="bx bx-home"></i>
-                                    <span>Main Dashboard</span>
+                                    <span>Riwayat Pencarian Data</span>
                                 </button>
                             </li>
                             <li>
