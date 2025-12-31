@@ -22,7 +22,7 @@ import AdminDapodik from "./dapodik/AdminDapodik";
 import MLAccountChecker from "./mlbb/MLAccountChecker";
 import AdminGuru from "./dataguru/AdminGuru";
 import AdminSiswa from "./datasiswa/AdminSiswa";
-import Dashboard from "./admin/tripsetting/Dasboard";
+import Trip from "./admin/tripsetting/Trip";
 import UserTripDashboard from "./triplist/UserTripDashboard";
 
 
@@ -129,7 +129,7 @@ function App() {
         <Route path="/mlbb" element={<MLAccountChecker />} />
         <Route path="/dashboard-user/pencarian" element={<UserSearch />} />
         <Route path="/pencarian" element={<AdminSearchLog />} />
-        <Route path="/tripsettings" element={<Dashboard />} />
+        <Route path="/tripsettings" element={<Trip />} />
         <Route path="/triplist" element={<UserTripDashboard />} />
       
 <Route path="/reset-password" element={<ResetPassword />} />
