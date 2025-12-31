@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../../supabaseClient';
 import { format, addMonths, parseISO, isValid } from 'date-fns';
 import { id } from 'date-fns/locale';
 
