@@ -22,6 +22,9 @@ import AdminDapodik from "./dapodik/AdminDapodik";
 import MLAccountChecker from "./mlbb/MLAccountChecker";
 import AdminGuru from "./dataguru/AdminGuru";
 import AdminSiswa from "./datasiswa/AdminSiswa";
+import AdminDashboard from "./admin/tripsetting/AdminDasboard";
+import UserTripDashboard from "./triplist/UserTripDashboard";
+
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -126,6 +129,8 @@ function App() {
         <Route path="/mlbb" element={<MLAccountChecker />} />
         <Route path="/dashboard-user/pencarian" element={<UserSearch />} />
         <Route path="/pencarian" element={<AdminSearchLog />} />
+        <Route path="/tripsettings" element={<AdminDashboard />} />
+        <Route path="/triplist" element={<UserTripDashboard />} />
       
 <Route path="/reset-password" element={<ResetPassword />} />
         {/* Route untuk halaman utama (dashboard) */}
