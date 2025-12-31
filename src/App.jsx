@@ -1,5 +1,3 @@
-
-
 import { useState, useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
 
@@ -22,7 +20,7 @@ import AdminDapodik from "./dapodik/AdminDapodik";
 import MLAccountChecker from "./mlbb/MLAccountChecker";
 import AdminGuru from "./dataguru/AdminGuru";
 import AdminSiswa from "./datasiswa/AdminSiswa";
-import Trip from "./admin/tripsetting/Trip";
+import Trip from "./admin/tripsettings/Trip";
 import UserTripDashboard from "./triplist/UserTripDashboard";
 
 
