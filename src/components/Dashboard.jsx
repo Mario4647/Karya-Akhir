@@ -211,11 +211,11 @@ const Dashboard = ({ user }) => {
     };
 
     const handleAdminTripDashboardClick = () => {
-        navigate("/admin-trips");
+        navigate("/admin/tripsettings");
     };
 
     const handleUserTripDashboardClick = () => {
-        navigate("/user-trips");
+        navigate("/triplist");
     };
 
     if (loading) {
