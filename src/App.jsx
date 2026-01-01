@@ -127,7 +127,7 @@ function App() {
         <Route path="/mlbb" element={<MLAccountChecker />} />
         <Route path="/dashboard-user/pencarian" element={<UserSearch />} />
         <Route path="/pencarian" element={<AdminSearchLog />} />
-        <Route path="/tripsettings" element={<Trip />} />
+        <Route path="/admin/tripsettings" element={<Trip />} />
         <Route path="/triplist" element={<UserTripDashboard />} />
       
 <Route path="/reset-password" element={<ResetPassword />} />
