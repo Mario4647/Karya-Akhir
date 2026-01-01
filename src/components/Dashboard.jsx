@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { withAuth } from "../authMiddleware";
+import { format } from "date-fns";
 
 const Dashboard = ({ user }) => {
     const [namaUser, setNamaUser] = useState("Tamu");
@@ -20,6 +21,8 @@ const Dashboard = ({ user }) => {
     const [activeTab, setActiveTab] = useState("edit");
     const [newEmail, setNewEmail] = useState("");
     const [confirmDelete, setConfirmDelete] = useState("");
+    const [partnerStatus, setPartnerStatus] = useState(false);
+    const [partnerInfo, setPartnerInfo] = useState(null);
     const navigate = useNavigate();
 
     const today = new Date().toLocaleDateString("id-ID", {
@@ -37,7 +40,7 @@ const Dashboard = ({ user }) => {
         return () => clearInterval(interval);
     }, []);
 
-    // Fetch user profile and financial data
+    // Fetch user profile, financial data, and partner status
     useEffect(() => {
         const fetchData = async () => {
             try {
@@ -47,7 +50,7 @@ const Dashboard = ({ user }) => {
                 // Fetch user profile
                 const { data: profileData, error: profileError } = await supabase
                     .from("profiles")
-                    .select("email, roles")
+                    .select("email, roles, name, trip_access_granted, trip_access_granted_at")
                     .eq("id", user.id)
                     .single();
 
@@ -58,13 +61,39 @@ const Dashboard = ({ user }) => {
                     setNamaUser(user.email || "Tamu");
                     setNewEmail(user.email || "");
                     setUserRole("user");
+                    setPartnerStatus(false);
                 } else {
-                    setNamaUser(profileData.email || "Tamu");
+                    setNamaUser(profileData.name || profileData.email || "Tamu");
                     setNewEmail(profileData.email || "");
                     setUserRole(profileData.roles || "user");
+                    setPartnerStatus(profileData.trip_access_granted || false);
+                    
+                    // Fetch partner info if partner status is true
+                    if (profileData.trip_access_granted) {
+                        const { data: partnerData, error: partnerError } = await supabase
+                            .from("trip_access")
+                            .select(`
+                                *,
+                                owner:owner_id (
+                                    name,
+                                    email
+                                ),
+                                partner:partner_id (
+                                    name,
+                                    email
+                                )
+                            `)
+                            .or(`owner_id.eq.${user.id},partner_id.eq.${user.id}`)
+                            .eq('status', 'active')
+                            .single();
+
+                        if (!partnerError && partnerData) {
+                            setPartnerInfo(partnerData);
+                        }
+                    }
                 }
 
-                // Rest of the fetchData logic remains the same
+                // Fetch financial data
                 const { data: transactionsData, error: transactionsError } = await supabase
                     .from("transactions")
                     .select("type, amount, category, date")
@@ -115,6 +144,7 @@ const Dashboard = ({ user }) => {
                 console.error("Fetch error:", err);
                 setNamaUser(user.email || "Tamu");
                 setUserRole("user");
+                setPartnerStatus(false);
             } finally {
                 setLoading(false);
             }
@@ -180,6 +210,14 @@ const Dashboard = ({ user }) => {
         navigate("/admin");
     };
 
+    const handleAdminTripDashboardClick = () => {
+        navigate("/admin-trips");
+    };
+
+    const handleUserTripDashboardClick = () => {
+        navigate("/user-trips");
+    };
+
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center">
@@ -194,7 +232,7 @@ const Dashboard = ({ user }) => {
     return (
         <section
             id="dashboard"
-            className="min-h-screen pt-24 overflow-hidden pb-6 bg-white"
+            className="min-h-screen pt-24 overflow-hidden pb-6 bg-gradient-to-br from-blue-50 to-indigo-50"
             data-aos-duration="1000"
             data-aos="fade-down"
         >
@@ -207,7 +245,7 @@ const Dashboard = ({ user }) => {
                                 <span>{error}</span>
                             </div>
                         )}
-                        <div className="relative bg-white backdrop-blur-xl shadow-xl border border-white text-gray-800 p-10 md:p-12 rounded-2xl transition-all duration-500">
+                        <div className="relative bg-white backdrop-blur-xl shadow-2xl border border-white/50 text-gray-800 p-10 md:p-12 rounded-3xl transition-all duration-500">
                             <div
                                 className="flex items-start gap-4 mb-8"
                                 data-aos-delay="600"
@@ -231,7 +269,7 @@ const Dashboard = ({ user }) => {
                                     </div>
 
                                     {/* Nama user + Tombol edit */}
-                                    <div className="flex flex-wrap items-center gap-2">
+                                    <div className="flex flex-wrap items-center gap-2 mb-3">
                                         <h3 className="text-xl sm:text-2xl md:text-3xl font-semibold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent truncate">
                                             {namaUser}
                                         </h3>
@@ -244,21 +282,17 @@ const Dashboard = ({ user }) => {
                                             <span>Edit Profile</span>
                                         </button>
                                         
-                                        {/* Admin Dashboard Button - Only visible for admin users */}
-                                        {userRole === "admin" && (
-                                            <button
-                                                onClick={handleAdminDashboardClick}
-                                                className="flex items-center gap-1 text-gray-600 hover:text-blue-600 transition-colors duration-200 text-base sm:text-lg ml-2"
-                                                aria-label="Admin Dashboard"
-                                            >
-                                                <i className="bx bx-dashboard text-xl sm:text-2xl md:text-3xl"></i>
-                                                <span>Admin Dashboard</span>
-                                            </button>
+                                        {/* Partner Status Badge */}
+                                        {partnerStatus && (
+                                            <div className="ml-2 px-3 py-1 bg-gradient-to-r from-purple-100 to-pink-100 text-purple-800 rounded-full text-sm font-medium flex items-center">
+                                                <i className="bx bx-heart mr-1 text-purple-600"></i>
+                                                Status Pasangan
+                                            </div>
                                         )}
                                     </div>
                                     
                                     {/* Role badge */}
-                                    <div className="mt-2">
+                                    <div className="mb-4">
                                         <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
                                             userRole === "admin" 
                                                 ? "bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 border border-blue-200" 
@@ -270,6 +304,73 @@ const Dashboard = ({ user }) => {
                                             {userRole === "admin" ? "Administrator" : "Pengguna"}
                                         </span>
                                     </div>
+
+                                    {/* Dashboard Navigation Buttons */}
+                                    <div className="flex flex-wrap gap-2 mt-4">
+                                        {/* Admin Dashboard Button - Only visible for admin users */}
+                                        {userRole === "admin" && (
+                                            <button
+                                                onClick={handleAdminDashboardClick}
+                                                className="flex items-center gap-1 text-gray-600 hover:text-blue-600 transition-colors duration-200 text-base px-3 py-1.5 bg-blue-50 hover:bg-blue-100 rounded-lg"
+                                                aria-label="Admin Dashboard"
+                                            >
+                                                <i className="bx bx-dashboard text-lg"></i>
+                                                <span>Admin Dashboard</span>
+                                            </button>
+                                        )}
+
+                                        {/* Admin Trip Dashboard Button - Only for admin */}
+                                        {userRole === "admin" && (
+                                            <button
+                                                onClick={handleAdminTripDashboardClick}
+                                                className="flex items-center gap-1 text-gray-600 hover:text-blue-600 transition-colors duration-200 text-base px-3 py-1.5 bg-blue-50 hover:bg-blue-100 rounded-lg"
+                                                aria-label="Trip Dashboard"
+                                            >
+                                                <i className="bx bx-train text-lg"></i>
+                                                <span>Trip Dashboard</span>
+                                            </button>
+                                        )}
+
+                                        {/* User Trip Dashboard Button - For all users */}
+                                        <button
+                                            onClick={handleUserTripDashboardClick}
+                                            className="flex items-center gap-1 text-gray-600 hover:text-green-600 transition-colors duration-200 text-base px-3 py-1.5 bg-green-50 hover:bg-green-100 rounded-lg"
+                                            aria-label="My Trips"
+                                        >
+                                            <i className="bx bx-map text-lg"></i>
+                                            <span>My Trips</span>
+                                        </button>
+
+                                        {/* List Trip Pasangan Button - Only for partner status */}
+                                        {partnerStatus && (
+                                            <button
+                                                onClick={handleUserTripDashboardClick}
+                                                className="flex items-center gap-1 text-gray-600 hover:text-purple-600 transition-colors duration-200 text-base px-3 py-1.5 bg-purple-50 hover:bg-purple-100 rounded-lg"
+                                                aria-label="List Trip Pasangan"
+                                            >
+                                                <i className="bx bx-list-check text-lg"></i>
+                                                <span>List Trip Pasangan</span>
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {/* Partner Info */}
+                                    {partnerStatus && partnerInfo && (
+                                        <div className="mt-3 p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-200">
+                                            <p className="text-sm text-purple-700">
+                                                <i className="bx bx-info-circle mr-1"></i>
+                                                Anda memiliki akses trip dari: 
+                                                <span className="font-semibold ml-1">
+                                                    {partnerInfo.owner_id === user.id 
+                                                        ? partnerInfo.partner?.name || partnerInfo.partner?.email 
+                                                        : partnerInfo.owner?.name || partnerInfo.owner?.email}
+                                                </span>
+                                            </p>
+                                            <p className="text-xs text-purple-600 mt-1">
+                                                Akses diberikan: {format(new Date(partnerInfo.granted_at), 'dd MMM yyyy HH:mm')}
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div
@@ -280,7 +381,7 @@ const Dashboard = ({ user }) => {
                                 <div className="flex items-center gap-3 text-sm md:text-base text-gray-600">
                                     <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
                                     <span className="font-medium">Hari ini</span>
-                                    <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+                                    <span className="px-3 py-1 bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-700 rounded-full text-sm font-medium">
                                         {today} {currentTime}
                                     </span>
                                 </div>
@@ -355,6 +456,50 @@ const Dashboard = ({ user }) => {
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Quick Stats Section */}
+                            <div className="mt-8 pt-8 border-t border-gray-200">
+                                <h3 className="text-lg font-semibold text-gray-800 mb-4">Status Akun</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-4 rounded-lg">
+                                        <div className="flex items-center">
+                                            <div className="p-2 bg-indigo-100 rounded-lg mr-3">
+                                                <i className="bx bx-user-check text-indigo-600"></i>
+                                            </div>
+                                            <div>
+                                                <p className="text-sm text-gray-600">Role</p>
+                                                <p className="font-medium text-gray-900">{userRole === "admin" ? "Administrator" : "Pengguna"}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-4 rounded-lg">
+                                        <div className="flex items-center">
+                                            <div className={`p-2 ${partnerStatus ? 'bg-green-100' : 'bg-gray-100'} rounded-lg mr-3`}>
+                                                <i className={`bx ${partnerStatus ? 'bx-heart text-green-600' : 'bx-user-x text-gray-600'}`}></i>
+                                            </div>
+                                            <div>
+                                                <p className="text-sm text-gray-600">Status Pasangan</p>
+                                                <p className={`font-medium ${partnerStatus ? 'text-green-600' : 'text-gray-600'}`}>
+                                                    {partnerStatus ? "Aktif" : "Tidak Aktif"}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-4 rounded-lg">
+                                        <div className="flex items-center">
+                                            <div className="p-2 bg-blue-100 rounded-lg mr-3">
+                                                <i className="bx bx-calendar text-blue-600"></i>
+                                            </div>
+                                            <div>
+                                                <p className="text-sm text-gray-600">Terdaftar Sejak</p>
+                                                <p className="font-medium text-gray-900">
+                                                    {user.created_at ? format(new Date(user.created_at), 'dd MMM yyyy') : '-'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -362,13 +507,13 @@ const Dashboard = ({ user }) => {
 
             {/* Modal for Edit and Delete */}
             {isModalOpen && (
-                <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50">
-                    <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
+                <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-lg font-semibold text-gray-800">Kelola Profil</h3>
                             <button
                                 onClick={closeModal}
-                                className="text-gray-600 hover:text-gray-800"
+                                className="text-gray-600 hover:text-gray-800 transition-colors"
                                 aria-label="Close modal"
                             >
                                 <i className="bx bx-x text-xl"></i>
@@ -413,13 +558,13 @@ const Dashboard = ({ user }) => {
                                     <button
                                         type="button"
                                         onClick={closeModal}
-                                        className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-200 rounded-lg hover:bg-gray-300"
+                                        className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
                                     >
                                         Batal
                                     </button>
                                     <button
                                         type="submit"
-                                        className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 shadow-lg rounded-lg hover:bg-indigo-700 flex items-center gap-2"
+                                        className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-purple-600 shadow-lg rounded-lg hover:from-indigo-700 hover:to-purple-700 flex items-center gap-2 transition-all duration-200"
                                     >
                                         <i className="bx bx-save text-base"></i>
                                         Simpan
@@ -445,16 +590,16 @@ const Dashboard = ({ user }) => {
                                     <button
                                         type="button"
                                         onClick={closeModal}
-                                        className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-200 rounded-lg hover:bg-gray-300"
+                                        className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
                                     >
                                         Batal
                                     </button>
                                     <button
                                         onClick={handleDeleteProfile}
                                         disabled={confirmDelete !== "HAPUS"}
-                                        className={`px-4 py-2 text-sm font-medium text-white shadow-lg rounded-lg flex items-center gap-2 ${confirmDelete === "HAPUS"
-                                            ? "bg-red-600 hover:bg-red-700"
-                                            : "bg-red-400 cursor-not-allowed"
+                                        className={`px-4 py-2 text-sm font-medium text-white shadow-lg rounded-lg flex items-center gap-2 transition-all duration-200 ${confirmDelete === "HAPUS"
+                                            ? "bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700"
+                                            : "bg-gradient-to-r from-red-400 to-pink-400 cursor-not-allowed"
                                             }`}
                                     >
                                         <i className="bx bx-trash text-base"></i>
