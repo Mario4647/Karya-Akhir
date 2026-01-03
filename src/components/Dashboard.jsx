@@ -331,15 +331,7 @@ const Dashboard = ({ user }) => {
                                             </button>
                                         )}
 
-                                        {/* User Trip Dashboard Button - For all users */}
-                                        <button
-                                            onClick={handleUserTripDashboardClick}
-                                            className="flex items-center gap-1 text-gray-600 hover:text-green-600 transition-colors duration-200 text-base px-3 py-1.5 bg-green-50 hover:bg-green-100 rounded-lg"
-                                            aria-label="My Trips"
-                                        >
-                                            <i className="bx bx-map text-lg"></i>
-                                            <span>My Trips</span>
-                                        </button>
+                                        
 
                                         {/* List Trip Pasangan Button - Only for partner status */}
                                         {partnerStatus && (
