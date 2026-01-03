@@ -11,10 +11,12 @@ const UserTripDashboard = () => {
     const [showTripDetail, setShowTripDetail] = useState(false);
     const [showBanDetail, setShowBanDetail] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [partnerInfo, setPartnerInfo] = useState(null);
     const [stats, setStats] = useState({
         upcomingTrips: 0,
         totalTrips: 0,
-        activeBans: 0
+        activeBans: 0,
+        partnerTrips: 0
     });
 
     // Train class options
@@ -36,46 +38,136 @@ const UserTripDashboard = () => {
             
             if (!user) return;
 
-            // Fetch user's trips
-            const { data: userTrips } = await supabase
-                .from('train_trips')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('departure_date', { ascending: true });
+            console.log('Fetching data for user:', user.id);
 
-            // Fetch trips shared with user
-            const { data: sharedAccess } = await supabase
+            // 1. Cek apakah user memiliki akses sebagai partner
+            const { data: partnerAccessData, error: partnerError } = await supabase
                 .from('trip_access')
-                .select('owner_id')
+                .select(`
+                    *,
+                    owner:owner_id (
+                        id,
+                        name,
+                        email
+                    )
+                `)
                 .eq('partner_id', user.id)
-                .eq('status', 'active');
+                .eq('status', 'active')
+                .single();
 
-            let sharedTrips = [];
-            if (sharedAccess && sharedAccess.length > 0) {
-                const ownerIds = sharedAccess.map(access => access.owner_id);
-                const { data: sharedTripsData } = await supabase
+            console.log('Partner access data:', partnerAccessData);
+
+            let allTrips = [];
+            let ownerId = null;
+
+            if (partnerAccessData && !partnerError) {
+                // User adalah partner, ambil trip dari owner
+                ownerId = partnerAccessData.owner_id;
+                setPartnerInfo({
+                    name: partnerAccessData.owner?.name || 'Unknown',
+                    email: partnerAccessData.owner?.email || 'Unknown',
+                    granted_at: partnerAccessData.granted_at
+                });
+
+                // Ambil trip dari owner
+                const { data: ownerTrips, error: ownerTripsError } = await supabase
                     .from('train_trips')
                     .select('*')
-                    .in('user_id', ownerIds)
+                    .eq('user_id', ownerId)
                     .order('departure_date', { ascending: true });
-                
-                sharedTrips = sharedTripsData || [];
+
+                console.log('Owner trips:', ownerTrips);
+
+                if (ownerTripsError) {
+                    console.error('Error fetching owner trips:', ownerTripsError);
+                } else {
+                    allTrips = ownerTrips || [];
+                }
+            } else {
+                // User adalah owner, ambil trip sendiri
+                const { data: myTrips, error: myTripsError } = await supabase
+                    .from('train_trips')
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .order('departure_date', { ascending: true });
+
+                console.log('My trips:', myTrips);
+
+                if (myTripsError) {
+                    console.error('Error fetching my trips:', myTripsError);
+                } else {
+                    allTrips = myTrips || [];
+                }
+
+                // Cek juga apakah ada partner yang sudah diberikan akses
+                const { data: givenAccessData } = await supabase
+                    .from('trip_access')
+                    .select(`
+                        *,
+                        partner:partner_id (
+                            id,
+                            name,
+                            email
+                        )
+                    `)
+                    .eq('owner_id', user.id)
+                    .eq('status', 'active');
+
+                if (givenAccessData && givenAccessData.length > 0) {
+                    setPartnerInfo({
+                        name: givenAccessData[0].partner?.name || 'Unknown',
+                        email: givenAccessData[0].partner?.email || 'Unknown',
+                        granted_at: givenAccessData[0].granted_at
+                    });
+                }
             }
 
-            // Combine trips
-            const allTrips = [...(userTrips || []), ...sharedTrips];
+            console.log('All trips before processing:', allTrips);
+
+            // Process trips untuk mendapatkan informasi tambahan
+            let processedTrips = [];
+            if (allTrips.length > 0) {
+                // Ambil user info untuk trips
+                const userIds = [...new Set(allTrips.map(trip => trip.user_id))];
+                let profilesMap = {};
+                
+                if (userIds.length > 0) {
+                    const { data: profilesData, error: profilesError } = await supabase
+                        .from('profiles')
+                        .select('id, name, email')
+                        .in('id', userIds);
+
+                    if (!profilesError && profilesData) {
+                        profilesData.forEach(profile => {
+                            profilesMap[profile.id] = profile;
+                        });
+                    }
+                }
+
+                // Gabungkan trips dengan profiles
+                processedTrips = allTrips.map(trip => ({
+                    ...trip,
+                    profiles: profilesMap[trip.user_id] || { name: '-', email: '-' }
+                }));
+            }
+
+            console.log('Processed trips:', processedTrips);
 
             // Fetch banned regions
-            const { data: banData } = await supabase
+            const { data: banData, error: banError } = await supabase
                 .from('banned_regions')
                 .select('*')
                 .order('banned_date', { ascending: false });
 
-            setTrips(allTrips);
+            if (banError) {
+                console.error('Error fetching banned regions:', banError);
+            }
+
+            setTrips(processedTrips);
             setBannedRegions(banData || []);
 
             // Calculate stats
-            const upcomingTrips = allTrips.filter(trip => 
+            const upcomingTrips = processedTrips.filter(trip => 
                 new Date(trip.departure_date) >= new Date()
             ).length;
 
@@ -83,11 +175,15 @@ const UserTripDashboard = () => {
                 !region.banned_until || new Date(region.banned_until) >= new Date()
             ).length || 0;
 
+            const partnerTrips = partnerAccessData ? processedTrips.length : 0;
+
             setStats({
                 upcomingTrips,
-                totalTrips: allTrips.length,
-                activeBans
+                totalTrips: processedTrips.length,
+                activeBans,
+                partnerTrips
             });
+
         } catch (error) {
             console.error('Error fetching data:', error);
             alert('Gagal memuat data: ' + error.message);
@@ -180,8 +276,34 @@ const UserTripDashboard = () => {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4 md:p-6">
+            {/* Partner Info Banner */}
+            {partnerInfo && (
+                <div className="mb-6 p-4 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl shadow-sm">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                            <div className="p-2 bg-purple-100 rounded-lg">
+                                <i className="bx bx-heart text-purple-600 text-xl"></i>
+                            </div>
+                            <div>
+                                <h3 className="font-medium text-purple-800">Status Pasangan</h3>
+                                <p className="text-sm text-purple-600">
+                                    Anda memiliki akses ke trip dari: <span className="font-semibold">{partnerInfo.name}</span>
+                                </p>
+                                <p className="text-xs text-purple-500">
+                                    Email: {partnerInfo.email} • Akses diberikan: {format(new Date(partnerInfo.granted_at), 'dd MMM yyyy HH:mm')}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-medium">
+                            <i className="bx bx-user-check mr-1"></i>
+                            Status Pasangan
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Header Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
                 <div className="bg-white rounded-xl shadow-lg p-6 transform hover:scale-105 transition-transform duration-200">
                     <div className="flex items-center">
                         <div className="p-3 rounded-full bg-blue-100 text-blue-600 mr-4">
@@ -217,19 +339,43 @@ const UserTripDashboard = () => {
                         </div>
                     </div>
                 </div>
+                
+                <div className="bg-white rounded-xl shadow-lg p-6 transform hover:scale-105 transition-transform duration-200">
+                    <div className="flex items-center">
+                        <div className="p-3 rounded-full bg-purple-100 text-purple-600 mr-4">
+                            <i className="bx bx-user-check text-2xl"></i>
+                        </div>
+                        <div>
+                            <p className="text-sm text-gray-600">Trip dari Pasangan</p>
+                            <p className="text-2xl font-bold text-gray-800">{stats.partnerTrips}</p>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Trip Table */}
                 <div className="bg-white rounded-xl shadow-lg overflow-hidden">
                     <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
-                        <h2 className="text-xl font-bold text-gray-800 flex items-center">
-                            <i className="bx bx-train mr-2 text-blue-600"></i>
-                            Perjalanan Kereta Anda
-                        </h2>
-                        <p className="text-sm text-gray-600 mt-1">
-                            Data perjalanan kereta api Anda dan pasangan
-                        </p>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h2 className="text-xl font-bold text-gray-800 flex items-center">
+                                    <i className="bx bx-train mr-2 text-blue-600"></i>
+                                    {partnerInfo ? 'Perjalanan dari Pasangan' : 'Perjalanan Kereta Anda'}
+                                </h2>
+                                <p className="text-sm text-gray-600 mt-1">
+                                    {partnerInfo 
+                                        ? `Data perjalanan dari ${partnerInfo.name}` 
+                                        : 'Data perjalanan kereta api Anda'}
+                                </p>
+                            </div>
+                            {partnerInfo && (
+                                <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-medium">
+                                    <i className="bx bx-user-check mr-1"></i>
+                                    Mode Pasangan
+                                </span>
+                            )}
+                        </div>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="min-w-full divide-y divide-gray-200">
@@ -248,8 +394,19 @@ const UserTripDashboard = () => {
                                 {trips.length === 0 ? (
                                     <tr>
                                         <td colSpan="7" className="px-6 py-12 text-center">
-                                            <i className="bx bx-train text-4xl text-gray-300 mb-3"></i>
-                                            <p className="text-gray-500">Belum ada data perjalanan</p>
+                                            {partnerInfo ? (
+                                                <>
+                                                    <i className="bx bx-train text-4xl text-gray-300 mb-3"></i>
+                                                    <p className="text-gray-500">{partnerInfo.name} belum memiliki data perjalanan</p>
+                                                    <p className="text-sm text-gray-400 mt-1">Data akan muncul ketika {partnerInfo.name} menambahkan perjalanan</p>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <i className="bx bx-train text-4xl text-gray-300 mb-3"></i>
+                                                    <p className="text-gray-500">Belum ada data perjalanan</p>
+                                                    <p className="text-sm text-gray-400 mt-1">Tambahkan perjalanan dari halaman admin</p>
+                                                </>
+                                            )}
                                         </td>
                                     </tr>
                                 ) : (
@@ -260,6 +417,12 @@ const UserTripDashboard = () => {
                                                 <div className="text-xs text-gray-500">
                                                     {trip.departure_station} → {trip.arrival_station}
                                                 </div>
+                                                {partnerInfo && (
+                                                    <div className="text-xs text-purple-600 mt-1">
+                                                        <i className="bx bx-user mr-1"></i>
+                                                        {trip.profiles.name || 'Pemilik'}
+                                                    </div>
+                                                )}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <div className="text-sm text-gray-900">{formatDate(trip.departure_date)}</div>
@@ -398,6 +561,20 @@ const UserTripDashboard = () => {
                             </div>
                             
                             <div className="space-y-4">
+                                {partnerInfo && (
+                                    <div className="bg-purple-50 p-3 rounded-lg mb-4">
+                                        <div className="flex items-center">
+                                            <i className="bx bx-user-check text-purple-600 mr-2"></i>
+                                            <div>
+                                                <p className="text-sm font-medium text-purple-700">Perjalanan dari Pasangan</p>
+                                                <p className="text-xs text-purple-600">
+                                                    Dari: {selectedTrip.profiles.name || 'Pemilik'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="flex items-start space-x-3">
                                     <div className="p-2 bg-blue-100 rounded-lg">
                                         <i className="bx bx-map text-blue-600 text-xl"></i>
@@ -469,6 +646,11 @@ const UserTripDashboard = () => {
                                             {selectedTrip.train_class}
                                         </span>
                                     </div>
+                                    {!partnerInfo && selectedTrip.profiles.name && (
+                                        <p className="text-xs text-gray-600 mt-2">
+                                            Pemilik: {selectedTrip.profiles.name}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 
