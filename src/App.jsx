@@ -130,7 +130,7 @@ function App() {
         <Route path="/pencarian" element={<AdminSearchLog />} />
         <Route path="/admin/tripsettings" element={<Trip />} />
         <Route path="/triplist" element={<UserTripDashboard />} />
-      <Route path="/admin/pesan" element={<AdminMessage />}
+      <Route path="/admin/pesan" element={<AdminMessage />} />
 <Route path="/reset-password" element={<ResetPassword />} />
         {/* Route untuk halaman utama (dashboard) */}
         <Route
