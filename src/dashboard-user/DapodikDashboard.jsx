@@ -945,7 +945,7 @@ const DapodikDashboard = () => {
                 <div>
                   <h4 className="text-lg font-semibold text-teal-800 flex items-center gap-2">
                     <span className="text-teal-600">📜</span>
-                    Sertifikat Hasil TKA (SHTK)
+                    Sertifikat Hasil TKA (SHTKA)
                   </h4>
                   <p className="text-sm text-teal-700 mt-1">
                     Sertifikat resmi hasil Tes Kemampuan Akademik yang dikeluarkan oleh Dinas Pendidikan atau Kanwil Kemenag
@@ -984,9 +984,9 @@ const DapodikDashboard = () => {
                     <div className="flex items-start gap-2">
                       <span className="text-yellow-600">⚠️</span>
                       <div>
-                        <p className="text-sm text-yellow-800 font-medium">Sertifikat Batal Rilis</p>
+                        <p className="text-sm text-yellow-800 font-medium">Sertifikat Hasil TKA(SHTKA)</p>
                         <p className="text-xs text-yellow-700 mt-1">
-                          Sertifikat Hasil TKA (SHTK) Batal di rilis oleh Pusmendik dikarenakan Data telah di Riset oleh Nasrullah selaku Administrator Posko Pusat TKA.
+                          Sertifikat Hasil TKA (SHTK) telah dirilis oleh Dinas Pendidikan Kabupaten/Kota, Silahkan menunggu Admin untuk meng-upload Sertifikat Hasil TKA(SHTKA).
                           Silakan hubungi admin untuk informasi lebih lanjut.
                         </p>
                       </div>
