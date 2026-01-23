@@ -21,6 +21,7 @@ import MLAccountChecker from "./mlbb/MLAccountChecker";
 import AdminGuru from "./dataguru/AdminGuru";
 import AdminSiswa from "./datasiswa/AdminSiswa";
 import Trip from "./admin/tripsettings/Trip";
+import AdminMessage from "./admin/pesan/AdminMessage";
 import UserTripDashboard from "./triplist/UserTripDashboard";
 
 
@@ -129,7 +130,7 @@ function App() {
         <Route path="/pencarian" element={<AdminSearchLog />} />
         <Route path="/admin/tripsettings" element={<Trip />} />
         <Route path="/triplist" element={<UserTripDashboard />} />
-      
+      <Route path="/admin/pesan" element={<AdminMessage />}
 <Route path="/reset-password" element={<ResetPassword />} />
         {/* Route untuk halaman utama (dashboard) */}
         <Route
