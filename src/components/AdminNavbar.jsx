@@ -87,7 +87,7 @@ const AdminNavbar = () => {
                             <p className="text-xs text-gray-500">Sistem Manajemen Sekolah</p>
                         </div>
                         <div className="md:hidden">
-                            <h1 className="text-lg font-bold text-gray-900">Admin</h1>
+                            <h1 className="text-lg font-bold text-gray-900">Admin Dashboard</h1>
                         </div>
                     </div>
 
@@ -230,7 +230,7 @@ const AdminNavbar = () => {
                         </div>
                         <div>
                             <h3 className="text-base font-semibold text-gray-900">{userName}</h3>
-                            <p className="text-sm text-gray-500">Dashboard User</p>
+                            <p className="text-sm text-gray-500">Profile</p>
                         </div>
                     </div>
                 </div>
