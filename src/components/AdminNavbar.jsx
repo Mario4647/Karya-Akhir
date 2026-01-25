@@ -369,18 +369,18 @@ const AdminNavbar = () => {
                     </div>
                 </div>
 
-                {/* Overlay for mobile menu - Transparent with blur */}
+                {/* Overlay for mobile menu - TRANSPARAN TANPA BLUR */}
                 {isMobileMenuOpen && (
                     <div 
-                        className="fixed inset-0 bg-black bg-opacity-30 z-40 md:hidden backdrop-blur-sm"
+                        className="fixed inset-0 z-40 md:hidden bg-transparent"
                         onClick={closeAllMenus}
                     />
                 )}
 
-                {/* Overlay for desktop menu - Transparent with blur */}
+                {/* Overlay for desktop menu - TRANSPARAN TANPA BLUR */}
                 {isDesktopMenuOpen && (
                     <div 
-                        className="fixed inset-0 bg-black bg-opacity-30 z-40 backdrop-blur-sm"
+                        className="fixed inset-0 z-40 bg-transparent"
                         onClick={closeAllMenus}
                     />
                 )}
