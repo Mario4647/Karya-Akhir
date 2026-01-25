@@ -50,6 +50,15 @@ const AdminNavbar = () => {
                             </li>
                             <li>
                                 <button
+                                    onClick={() => navigate('/admin/pesan')}
+                                    className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-all duration-300"
+                                >
+                                    <i className="bx bx-home"></i>
+                                    <span>Pesan Admin</span>
+                                </button>
+                            </li>
+                            <li>
+                                <button
                                     onClick={() => navigate('/dataguru')}
                                     className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all duration-300"
                                 >
@@ -73,6 +82,15 @@ const AdminNavbar = () => {
                                 >
                                     <i className="bx bx-home"></i>
                                     <span>Riwayat Pencarian</span>
+                                </button>
+                            </li>
+                            <li>
+                                <button
+                                    onClick={() => navigate('/admin/tripsettings')}
+                                    className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-all duration-300"
+                                >
+                                    <i className="bx bx-home"></i>
+                                    <span>Pengaturan Perjalanan</span>
                                 </button>
                             </li>
                             <li>
@@ -135,6 +153,15 @@ const AdminNavbar = () => {
                         </li>
                         <li>
                             <button
+                                onClick={() => { navigate('/admin/pesan'); closeMobileMenu(); }}
+                                className="flex items-center gap-3 p-3 w-full text-white bg-gray-700 rounded-lg border-l-4 border-gray-400 hover:bg-gray-600 transition-all duration-200 group"
+                            >
+                                <i className="bx bx-home text-xl"></i>
+                                <span className="text-base font-medium">Pesan Admin</span>
+                            </button>
+                        </li>
+                        <li>
+                            <button
                                 onClick={() => { navigate('/dataguru'); closeMobileMenu(); }}
                                 className="flex items-center gap-3 p-3 w-full text-white bg-purple-700 rounded-lg border-l-4 border-purple-400 hover:bg-purple-600 transition-all duration-200 group"
                             >
@@ -153,11 +180,20 @@ const AdminNavbar = () => {
                         </li>
                         <li>
                             <button
-                                onClick={() => { navigate('/'); closeMobileMenu(); }}
+                                onClick={() => { navigate('/pencarian'); closeMobileMenu(); }}
                                 className="flex items-center gap-3 p-3 w-full text-white bg-gray-700 rounded-lg border-l-4 border-gray-400 hover:bg-gray-600 transition-all duration-200 group"
                             >
                                 <i className="bx bx-home text-xl"></i>
-                                <span className="text-base font-medium">Main Dashboard</span>
+                                <span className="text-base font-medium">Riwayat Pencarian</span>
+                            </button>
+                        </li>
+                        <li>
+                            <button
+                                onClick={() => { navigate('/admin/tripsettings'); closeMobileMenu(); }}
+                                className="flex items-center gap-3 p-3 w-full text-white bg-gray-700 rounded-lg border-l-4 border-gray-400 hover:bg-gray-600 transition-all duration-200 group"
+                            >
+                                <i className="bx bx-home text-xl"></i>
+                                <span className="text-base font-medium">Pengaturan Perjalanan</span>
                             </button>
                         </li>
                         <li>
