@@ -230,6 +230,12 @@ const AdminNavbar = () => {
                                 active={location.pathname === '/datasiswa'}
                             />
                             <MobileNavItem
+                                icon="bx-user-pin"
+                                label="Data PIP Siswa"
+                                onClick={() => { navigate('/admin/pip'); closeAllMenus(); }}
+                                active={location.pathname === '/admin/pip'}
+                            />
+                            <MobileNavItem
                                 icon="bx-message-detail"
                                 label="Pesan Admin"
                                 onClick={() => { navigate('/admin/pesan'); closeAllMenus(); }}
@@ -338,6 +344,12 @@ const AdminNavbar = () => {
                                 label="Data Siswa"
                                 onClick={() => { navigate('/datasiswa'); closeAllMenus(); }}
                                 active={location.pathname === '/datasiswa'}
+                            />
+                            <MobileNavItem
+                                icon="bx-user-pin"
+                                label="Data PIP Siswa"
+                                onClick={() => { navigate('/admin/pip'); closeAllMenus(); }}
+                                active={location.pathname === '/admin/pip'}
                             />
                             <MobileNavItem
                                 icon="bx-message-detail"
