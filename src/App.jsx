@@ -134,9 +134,9 @@ function App() {
         <Route path="/admin/tripsettings" element={<Trip />} />
         <Route path="/triplist" element={<UserTripDashboard />} />
       <Route path="/admin/pesan" element={<AdminMessage />} />
-        <Route path="/admin/pip" element={<AdminMessage />} />
-        <Route path="/pencarian/pip" element={<AdminMessage />} />
-        <Route path="/user/pip" element={<AdminMessage />} />
+        <Route path="/admin/pip" element={<AdminPIP />} />
+        <Route path="/pencarian/pip" element={<AdminSearchHistory />} />
+        <Route path="/user/pip" element={<CekPIP />} />
 <Route path="/reset-password" element={<ResetPassword />} />
         {/* Route untuk halaman utama (dashboard) */}
         <Route
