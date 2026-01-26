@@ -237,6 +237,12 @@ const AdminNavbar = () => {
                             />
                             <MobileNavItem
                                 icon="bx-search-alt"
+                                label="Riwayat Pencarian PIP"
+                                onClick={() => { navigate('/pencarian/pip'); closeAllMenus(); }}
+                                active={location.pathname === '/pencarian/pip'}
+                            />
+                            <MobileNavItem
+                                icon="bx-search-alt"
                                 label="Riwayat Pencarian"
                                 onClick={() => { navigate('/pencarian'); closeAllMenus(); }}
                                 active={location.pathname === '/pencarian'}
@@ -338,6 +344,12 @@ const AdminNavbar = () => {
                                 label="Pesan Admin"
                                 onClick={() => { navigate('/admin/pesan'); closeAllMenus(); }}
                                 active={location.pathname === '/admin/pesan'}
+                            />
+                            <MobileNavItem
+                                icon="bx-search-alt"
+                                label="Riwayat Pencarian PIP"
+                                onClick={() => { navigate('/pencarian/pip'); closeAllMenus(); }}
+                                active={location.pathname === '/pencarian/pip'}
                             />
                             <MobileNavItem
                                 icon="bx-search-alt"
