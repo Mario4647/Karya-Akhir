@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../supabaseClient';
-import AdminNavbar from '../components/AdminNavbar';
+import { supabase } from '../../supabaseClient';
+import AdminNavbar from '../../components/AdminNavbar';
 import * as XLSX from 'xlsx';
 
 const AdminPIP = () => {
