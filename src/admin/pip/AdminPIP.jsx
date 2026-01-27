@@ -4,7 +4,7 @@ import { supabase } from '../../supabaseClient';
 import AdminNavbar from '../../components/AdminNavbar';
 import * as XLSX from 'xlsx';
 
-// Import icon dari react-icons (install terlebih dahulu: npm install react-icons)
+// Import icon dari react-icons
 import { 
   FiUpload, FiSearch, FiDownload, FiEdit, FiTrash2, FiEye,
   FiChevronLeft, FiChevronRight, FiX, FiSave, FiUser, FiDollarSign,
@@ -203,7 +203,7 @@ const AdminPIP = () => {
           const data = new Uint8Array(e.target.result);
           const workbook = XLSX.read(data, { 
             type: 'array',
-            cellDates: true, // Handle Excel dates
+            cellDates: true,
             cellNF: false,
             cellText: false
           });
@@ -215,15 +215,22 @@ const AdminPIP = () => {
             dateNF: 'yyyy-mm-dd'
           });
 
-          // Cari baris header (baris ke-3 dari file Excel)
-          const headerRow = jsonData[2];
-          const pipList = [];
+          console.log('Excel data loaded, total rows:', jsonData.length);
 
-          // Mulai dari baris 4 (indeks 3)
+          // Cari baris header (biasanya baris ke-3 dari file Excel)
+          const headerRow = jsonData[2] || [];
+          console.log('Header row:', headerRow);
+
+          const pipList = [];
+          const batchId = `batch_${Date.now()}`;
+
+          // Mulai dari baris 4 (indeks 3) - sesuaikan dengan struktur Excel Anda
           for (let i = 3; i < jsonData.length; i++) {
             const row = jsonData[i];
             if (!row || !row[0]) continue;
 
+            // Map kolom Excel ke struktur database
+            // Sesuaikan indeks array dengan struktur file Excel Anda
             const pip = {
               peserta_didik_id: String(row[0] || ''),
               sekolah_id: String(row[1] || ''),
@@ -247,9 +254,9 @@ const AdminPIP = () => {
               nama_rekening: String(row[19] || ''),
               tanggal_cair: parseExcelDate(row[20]),
               status_cair: String(row[21] || 'Belum Cair'),
-              no_KIP: String(row[22] || ''),
-              no_KKS: String(row[23] || ''),
-              no_KPS: String(row[24] || ''),
+              no_kip: String(row[22] || ''),       // Perbaikan: no_kip bukan no_KIP
+              no_kks: String(row[23] || ''),       // Perbaikan: no_kks bukan no_KKS
+              no_kps: String(row[24] || ''),       // Perbaikan: no_kps bukan no_KPS
               virtual_acc: String(row[25] || ''),
               nama_kartu: String(row[26] || ''),
               semester_id: String(row[27] || ''),
@@ -257,41 +264,54 @@ const AdminPIP = () => {
               keterangan_pencairan: String(row[29] || ''),
               confirmation_text: String(row[30] || ''),
               tahap_keterangan: String(row[31] || ''),
-              nama_pengusul: String(row[32] || '')
+              nama_pengusul: String(row[32] || ''),
+              imported_at: new Date().toISOString(),
+              import_batch: batchId
             };
 
             pipList.push(pip);
           }
 
-          // Clear existing data first
-          const { error: deleteError } = await supabase
-            .from('pip_data')
-            .delete()
-            .gte('peserta_didik_id', '');
+          console.log(`Processed ${pipList.length} rows from Excel`);
 
-          if (deleteError) console.warn('Warning clearing data:', deleteError.message);
+          if (pipList.length === 0) {
+            throw new Error('Tidak ada data yang ditemukan dalam file Excel');
+          }
 
-          // Insert new data in batches
-          const batchSize = 100;
+          // Insert data dalam batch
+          const batchSize = 50; // Ukuran batch lebih kecil untuk menghindari timeout
+          let totalInserted = 0;
+          
           for (let i = 0; i < pipList.length; i += batchSize) {
             const batch = pipList.slice(i, i + batchSize);
-            const { error: insertError } = await supabase
-              .from('pip_data')
-              .upsert(batch);
-
-            if (insertError) {
-              console.error('Error inserting batch:', insertError);
-              throw insertError;
-            }
             
-            console.log(`Inserted batch ${Math.floor(i/batchSize) + 1}: ${batch.length} records`);
+            // Validasi batch sebelum insert
+            const validBatch = batch.filter(item => item.nama_pd && item.peserta_didik_id);
+            
+            if (validBatch.length > 0) {
+              const { error: insertError } = await supabase
+                .from('pip_data')
+                .upsert(validBatch, {
+                  onConflict: 'peserta_didik_id',
+                  ignoreDuplicates: false
+                });
+
+              if (insertError) {
+                console.error('Error inserting batch:', insertError);
+                throw new Error(`Gagal menyimpan data: ${insertError.message}`);
+              }
+              
+              totalInserted += validBatch.length;
+              console.log(`Inserted batch ${Math.floor(i/batchSize) + 1}: ${validBatch.length} records`);
+            }
           }
 
           setShowImportModal(false);
           setExcelFile(null);
-          setSuccessMessage(`Berhasil mengimport ${pipList.length} data PIP`);
+          setSuccessMessage(`Berhasil mengimport ${totalInserted} data PIP dari total ${pipList.length} data`);
           fetchPIPData();
           fetchStats();
+          
           setTimeout(() => setSuccessMessage(''), 5000);
         } catch (error) {
           console.error('Error processing Excel:', error);
@@ -299,6 +319,12 @@ const AdminPIP = () => {
         } finally {
           setUploading(false);
         }
+      };
+      
+      reader.onerror = (error) => {
+        console.error('Error reading file:', error);
+        setErrorMessage('Gagal membaca file Excel');
+        setUploading(false);
       };
       
       reader.readAsArrayBuffer(excelFile);
@@ -388,10 +414,13 @@ const AdminPIP = () => {
 
   // Filter data berdasarkan pencarian
   const filteredData = pipData.filter(item => {
-    return item.nama_pd?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           item.nisn?.includes(searchTerm) ||
-           item.kelas?.includes(searchTerm) ||
-           item.no_rekening?.includes(searchTerm);
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      item.nama_pd?.toLowerCase().includes(searchLower) ||
+      item.nisn?.toLowerCase().includes(searchLower) ||
+      item.kelas?.toLowerCase().includes(searchLower) ||
+      item.no_rekening?.includes(searchTerm)
+    );
   });
 
   // Pagination logic
@@ -451,6 +480,32 @@ const AdminPIP = () => {
     }
 
     return <div className="text-gray-700">{String(value)}</div>;
+  };
+
+  // Fungsi untuk export data ke Excel
+  const exportToExcel = async () => {
+    try {
+      const worksheet = XLSX.utils.json_to_sheet(pipData.map(item => {
+        const { no, ...rest } = item;
+        return rest;
+      }));
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Data PIP");
+      
+      const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+      const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `data-pip-${new Date().toISOString().split('T')[0]}.xlsx`;
+      link.click();
+      
+      setSuccessMessage('Data berhasil diexport ke Excel');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      setErrorMessage('Gagal mengexport data: ' + error.message);
+    }
   };
 
   if (loading) {
@@ -516,7 +571,14 @@ const AdminPIP = () => {
               <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
                 <FiX className="text-red-600" size={18} />
               </div>
-              <span className="text-red-800 font-medium">{errorMessage}</span>
+              <div>
+                <span className="text-red-800 font-medium">{errorMessage}</span>
+                {errorMessage.includes('schema cache') && (
+                  <p className="text-sm text-red-600 mt-1">
+                    Periksa struktur tabel pip_data di database
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
@@ -540,13 +602,22 @@ const AdminPIP = () => {
                 </div>
               </div>
               
-              <button
-                onClick={() => setShowImportModal(true)}
-                className="inline-flex items-center gap-3 px-6 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-xl hover:from-blue-700 hover:to-indigo-800 transition-all shadow-lg hover:shadow-xl font-medium"
-              >
-                <FiUpload size={20} />
-                <span>Import Excel</span>
-              </button>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={() => setShowImportModal(true)}
+                  className="inline-flex items-center gap-3 px-6 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-xl hover:from-blue-700 hover:to-indigo-800 transition-all shadow-lg hover:shadow-xl font-medium"
+                >
+                  <FiUpload size={20} />
+                  <span>Import Excel</span>
+                </button>
+                <button
+                  onClick={exportToExcel}
+                  className="inline-flex items-center gap-3 px-6 py-3.5 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-medium"
+                >
+                  <FiDownload size={20} />
+                  <span>Export Excel</span>
+                </button>
+              </div>
             </div>
 
             {/* Stats Grid */}
@@ -573,7 +644,7 @@ const AdminPIP = () => {
                 </div>
                 <h3 className="text-sm font-semibold text-gray-700 mb-1">Sudah Cair</h3>
                 <p className="text-xs text-emerald-600 font-medium">
-                  {((stats.sudahCair / stats.total) * 100 || 0).toFixed(1)}% dari total
+                  {stats.total > 0 ? `${((stats.sudahCair / stats.total) * 100).toFixed(1)}% dari total` : '0% dari total'}
                 </p>
               </div>
 
@@ -587,7 +658,7 @@ const AdminPIP = () => {
                 </div>
                 <h3 className="text-sm font-semibold text-gray-700 mb-1">Belum Cair</h3>
                 <p className="text-xs text-amber-600 font-medium">
-                  {((stats.belumCair / stats.total) * 100 || 0).toFixed(1)}% dari total
+                  {stats.total > 0 ? `${((stats.belumCair / stats.total) * 100).toFixed(1)}% dari total` : '0% dari total'}
                 </p>
               </div>
 
@@ -638,11 +709,6 @@ const AdminPIP = () => {
                   <option value="50">50 per halaman</option>
                   <option value="100">100 per halaman</option>
                 </select>
-                
-                <button className="px-5 py-3.5 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors shadow-sm flex items-center gap-2">
-                  <FiDownload size={18} />
-                  <span className="hidden sm:inline">Export</span>
-                </button>
               </div>
             </div>
           </div>
@@ -874,6 +940,17 @@ const AdminPIP = () => {
                   </p>
                 </label>
               </div>
+              
+              {/* Petunjuk Import */}
+              <div className="mt-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
+                <h4 className="font-medium text-amber-800 mb-2">Petunjuk Import:</h4>
+                <ul className="text-sm text-amber-700 space-y-1">
+                  <li>• Pastikan file Excel sesuai template PIP</li>
+                  <li>• Data akan dimulai dari baris ke-4</li>
+                  <li>• Header berada di baris ke-3</li>
+                  <li>• Data yang sama akan diupdate (upsert)</li>
+                </ul>
+              </div>
             </div>
             
             {/* Footer */}
@@ -1071,15 +1148,15 @@ const AdminPIP = () => {
                     <div className="space-y-5">
                       <div>
                         <div className="text-sm text-gray-600 mb-1">No KIP</div>
-                        <div className="font-medium text-gray-900">{selectedData.no_KIP || '-'}</div>
+                        <div className="font-medium text-gray-900">{selectedData.no_kip || '-'}</div>
                       </div>
                       <div>
                         <div className="text-sm text-gray-600 mb-1">No KKS</div>
-                        <div className="font-medium text-gray-900">{selectedData.no_KKS || '-'}</div>
+                        <div className="font-medium text-gray-900">{selectedData.no_kks || '-'}</div>
                       </div>
                       <div>
                         <div className="text-sm text-gray-600 mb-1">No KPS</div>
-                        <div className="font-medium text-gray-900">{selectedData.no_KPS || '-'}</div>
+                        <div className="font-medium text-gray-900">{selectedData.no_kps || '-'}</div>
                       </div>
                       <div>
                         <div className="text-sm text-gray-600 mb-1">Nama Pengusul</div>
