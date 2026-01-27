@@ -408,7 +408,8 @@ const CekPIP = () => {
                   <p>Data ini untuk keperluan informasi resmi</p>
                 </div>
                 <div className="flex gap-3">
-                  
+                  <div>
+                  <button>
                     <span>🔍</span>
                     <span>Cari Lagi</span>
                   </button>
