@@ -187,6 +187,21 @@ const AdminPIP = () => {
     }
   };
 
+  // Fungsi untuk memeriksa apakah kolom ada di tabel
+  const checkColumnExists = async (columnName) => {
+    try {
+      // Coba query kecil untuk memeriksa kolom
+      const { error } = await supabase
+        .from('pip_data')
+        .select(columnName)
+        .limit(1);
+      
+      return !error;
+    } catch (error) {
+      return false;
+    }
+  };
+
   const importExcelToDatabase = async () => {
     if (!excelFile) {
       setErrorMessage('Pilih file Excel terlebih dahulu');
@@ -224,6 +239,10 @@ const AdminPIP = () => {
           const pipList = [];
           const batchId = `batch_${Date.now()}`;
 
+          // Periksa apakah kolom imported_at ada di database
+          const hasImportedAtColumn = await checkColumnExists('imported_at');
+          const hasImportBatchColumn = await checkColumnExists('import_batch');
+
           // Mulai dari baris 4 (indeks 3) - sesuaikan dengan struktur Excel Anda
           for (let i = 3; i < jsonData.length; i++) {
             const row = jsonData[i];
@@ -254,9 +273,9 @@ const AdminPIP = () => {
               nama_rekening: String(row[19] || ''),
               tanggal_cair: parseExcelDate(row[20]),
               status_cair: String(row[21] || 'Belum Cair'),
-              no_kip: String(row[22] || ''),       // Perbaikan: no_kip bukan no_KIP
-              no_kks: String(row[23] || ''),       // Perbaikan: no_kks bukan no_KKS
-              no_kps: String(row[24] || ''),       // Perbaikan: no_kps bukan no_KPS
+              no_kip: String(row[22] || ''),
+              no_kks: String(row[23] || ''),
+              no_kps: String(row[24] || ''),
               virtual_acc: String(row[25] || ''),
               nama_kartu: String(row[26] || ''),
               semester_id: String(row[27] || ''),
@@ -265,8 +284,9 @@ const AdminPIP = () => {
               confirmation_text: String(row[30] || ''),
               tahap_keterangan: String(row[31] || ''),
               nama_pengusul: String(row[32] || ''),
-              imported_at: new Date().toISOString(),
-              import_batch: batchId
+              // Hanya tambah kolom berikut jika ada di database
+              ...(hasImportedAtColumn && { imported_at: new Date().toISOString() }),
+              ...(hasImportBatchColumn && { import_batch: batchId })
             };
 
             pipList.push(pip);
@@ -281,6 +301,7 @@ const AdminPIP = () => {
           // Insert data dalam batch
           const batchSize = 50; // Ukuran batch lebih kecil untuk menghindari timeout
           let totalInserted = 0;
+          let errors = [];
           
           for (let i = 0; i < pipList.length; i += batchSize) {
             const batch = pipList.slice(i, i + batchSize);
@@ -289,26 +310,54 @@ const AdminPIP = () => {
             const validBatch = batch.filter(item => item.nama_pd && item.peserta_didik_id);
             
             if (validBatch.length > 0) {
-              const { error: insertError } = await supabase
-                .from('pip_data')
-                .upsert(validBatch, {
-                  onConflict: 'peserta_didik_id',
-                  ignoreDuplicates: false
-                });
+              try {
+                const { error: insertError } = await supabase
+                  .from('pip_data')
+                  .upsert(validBatch, {
+                    onConflict: 'peserta_didik_id',
+                    ignoreDuplicates: false
+                  });
 
-              if (insertError) {
-                console.error('Error inserting batch:', insertError);
-                throw new Error(`Gagal menyimpan data: ${insertError.message}`);
+                if (insertError) {
+                  console.error('Error inserting batch:', insertError);
+                  errors.push(insertError.message);
+                  
+                  // Coba insert tanpa kolom yang mungkin bermasalah
+                  const cleanBatch = validBatch.map(item => {
+                    const { imported_at, import_batch, ...cleanItem } = item;
+                    return cleanItem;
+                  });
+                  
+                  const { error: retryError } = await supabase
+                    .from('pip_data')
+                    .upsert(cleanBatch, {
+                      onConflict: 'peserta_didik_id',
+                      ignoreDuplicates: false
+                    });
+                  
+                  if (retryError) {
+                    throw new Error(`Gagal menyimpan data: ${retryError.message}`);
+                  }
+                }
+                
+                totalInserted += validBatch.length;
+                console.log(`Inserted batch ${Math.floor(i/batchSize) + 1}: ${validBatch.length} records`);
+              } catch (batchError) {
+                console.error('Batch error:', batchError);
+                errors.push(batchError.message);
               }
-              
-              totalInserted += validBatch.length;
-              console.log(`Inserted batch ${Math.floor(i/batchSize) + 1}: ${validBatch.length} records`);
             }
           }
 
           setShowImportModal(false);
           setExcelFile(null);
-          setSuccessMessage(`Berhasil mengimport ${totalInserted} data PIP dari total ${pipList.length} data`);
+          
+          if (errors.length > 0) {
+            setSuccessMessage(`Berhasil mengimport ${totalInserted} data dari ${pipList.length} data. Beberapa error: ${errors.slice(0, 3).join(', ')}`);
+          } else {
+            setSuccessMessage(`Berhasil mengimport ${totalInserted} data PIP dari total ${pipList.length} data`);
+          }
+          
           fetchPIPData();
           fetchStats();
           
@@ -486,7 +535,7 @@ const AdminPIP = () => {
   const exportToExcel = async () => {
     try {
       const worksheet = XLSX.utils.json_to_sheet(pipData.map(item => {
-        const { no, ...rest } = item;
+        const { no, imported_at, import_batch, ...rest } = item;
         return rest;
       }));
       const workbook = XLSX.utils.book_new();
@@ -574,9 +623,17 @@ const AdminPIP = () => {
               <div>
                 <span className="text-red-800 font-medium">{errorMessage}</span>
                 {errorMessage.includes('schema cache') && (
-                  <p className="text-sm text-red-600 mt-1">
-                    Periksa struktur tabel pip_data di database
-                  </p>
+                  <div className="mt-2">
+                    <p className="text-sm text-red-600">
+                      Periksa struktur tabel pip_data di database
+                    </p>
+                    <button
+                      onClick={() => window.open('https://supabase.com/dashboard/project/_/editor', '_blank')}
+                      className="text-sm text-blue-600 hover:text-blue-800 underline mt-1"
+                    >
+                      Buka Supabase Table Editor →
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -949,7 +1006,29 @@ const AdminPIP = () => {
                   <li>• Data akan dimulai dari baris ke-4</li>
                   <li>• Header berada di baris ke-3</li>
                   <li>• Data yang sama akan diupdate (upsert)</li>
+                  <li>• Jika error, periksa struktur tabel pip_data di database</li>
                 </ul>
+              </div>
+              
+              {/* Database Structure Info */}
+              <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <h4 className="font-medium text-blue-800 mb-2">Struktur Tabel pip_data:</h4>
+                <p className="text-sm text-blue-700 mb-2">
+                  Pastikan tabel memiliki kolom berikut minimal:
+                </p>
+                <ul className="text-xs text-blue-600 space-y-1">
+                  <li>• peserta_didik_id (text, primary key)</li>
+                  <li>• nama_pd (text)</li>
+                  <li>• nisn (text)</li>
+                  <li>• nominal (integer)</li>
+                  <li>• status_cair (text)</li>
+                </ul>
+                <button
+                  onClick={() => window.open('https://supabase.com/dashboard/project/_/editor', '_blank')}
+                  className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
+                >
+                  Periksa tabel di Supabase →
+                </button>
               </div>
             </div>
             
