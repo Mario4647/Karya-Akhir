@@ -4,6 +4,18 @@ import { supabase } from '../../supabaseClient';
 import AdminNavbar from '../../components/AdminNavbar';
 import * as XLSX from 'xlsx';
 
+// Import icon dari react-icons (install terlebih dahulu: npm install react-icons)
+import { 
+  FiUpload, FiSearch, FiDownload, FiEdit, FiTrash2, FiEye,
+  FiChevronLeft, FiChevronRight, FiX, FiSave, FiUser, FiDollarSign,
+  FiCheckCircle, FiClock, FiUsers, FiFileText, FiDatabase, FiHome,
+  FiPercent, FiCalendar, FiCreditCard, FiBook, FiMapPin, FiGrid
+} from 'react-icons/fi';
+import { 
+  MdSchool, MdAttachMoney, MdAccountBalance, MdDescription,
+  MdPerson, MdEmail, MdPhone, MdLocationOn, MdDateRange
+} from 'react-icons/md';
+
 const AdminPIP = () => {
   const [pipData, setPipData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,21 +42,20 @@ const AdminPIP = () => {
   
   const navigate = useNavigate();
 
-  // Kolom dari Excel PIP
+  // Kolom dari Excel PIP dengan icon
   const columns = [
-    { key: 'no', header: 'No', width: '60px' },
-    { key: 'nama_pd', header: 'Nama Peserta Didik', width: '200px' },
-    { key: 'nisn', header: 'NISN', width: '120px' },
-    { key: 'kelas', header: 'Kelas', width: '80px' },
-    { key: 'rombel', header: 'Rombel', width: '100px' },
-    { key: 'tanggal_lahir', header: 'Tanggal Lahir', width: '120px' },
-    { key: 'nominal', header: 'Nominal', width: '120px' },
-    { key: 'no_rekening', header: 'No Rekening', width: '140px' },
-    { key: 'status_cair', header: 'Status Cair', width: '100px' },
-    { key: 'nomor_sk', header: 'Nomor SK', width: '180px' },
-    { key: 'tanggal_sk', header: 'Tanggal SK', width: '120px' },
-    { key: 'layak_pip', header: 'Layak PIP', width: '100px' },
-    { key: 'keterangan_pencairan', header: 'Keterangan', width: '200px' }
+    { key: 'no', header: 'No', width: '70px', icon: <FiGrid size={14} /> },
+    { key: 'nama_pd', header: 'Nama Siswa', width: '220px', icon: <FiUser size={14} /> },
+    { key: 'nisn', header: 'NISN', width: '130px', icon: <MdSchool size={14} /> },
+    { key: 'kelas', header: 'Kelas', width: '90px', icon: <FiBook size={14} /> },
+    { key: 'rombel', header: 'Rombel', width: '110px', icon: <FiUsers size={14} /> },
+    { key: 'tanggal_lahir', header: 'Tgl Lahir', width: '120px', icon: <FiCalendar size={14} /> },
+    { key: 'nominal', header: 'Nominal', width: '140px', icon: <FiDollarSign size={14} /> },
+    { key: 'no_rekening', header: 'No Rekening', width: '150px', icon: <FiCreditCard size={14} /> },
+    { key: 'status_cair', header: 'Status', width: '120px', icon: <FiCheckCircle size={14} /> },
+    { key: 'nomor_sk', header: 'Nomor SK', width: '180px', icon: <FiFileText size={14} /> },
+    { key: 'tanggal_sk', header: 'Tgl SK', width: '120px', icon: <MdDateRange size={14} /> },
+    { key: 'layak_pip', header: 'Layak PIP', width: '110px', icon: <FiPercent size={14} /> }
   ];
 
   useEffect(() => {
@@ -141,6 +152,41 @@ const AdminPIP = () => {
     setExcelFile(file);
   };
 
+  // Fungsi untuk parsing tanggal yang aman
+  const parseExcelDate = (excelDate) => {
+    if (!excelDate) return null;
+    
+    try {
+      // Jika sudah dalam format string ISO
+      if (typeof excelDate === 'string' && excelDate.includes('-')) {
+        const date = new Date(excelDate);
+        if (!isNaN(date.getTime())) {
+          return date.toISOString().split('T')[0];
+        }
+      }
+      
+      // Jika adalah serial Excel date (angka)
+      if (typeof excelDate === 'number') {
+        const date = XLSX.SSF.parse_date_code(excelDate);
+        if (date) {
+          const jsDate = new Date(date.y, date.m - 1, date.d);
+          return jsDate.toISOString().split('T')[0];
+        }
+      }
+      
+      // Coba parsing langsung
+      const date = new Date(excelDate);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().split('T')[0];
+      }
+      
+      return null;
+    } catch (error) {
+      console.warn('Error parsing date:', excelDate, error);
+      return null;
+    }
+  };
+
   const importExcelToDatabase = async () => {
     if (!excelFile) {
       setErrorMessage('Pilih file Excel terlebih dahulu');
@@ -148,14 +194,26 @@ const AdminPIP = () => {
     }
 
     setUploading(true);
+    setErrorMessage('');
+    
     try {
       const reader = new FileReader();
       reader.onload = async (e) => {
         try {
           const data = new Uint8Array(e.target.result);
-          const workbook = XLSX.read(data, { type: 'array' });
+          const workbook = XLSX.read(data, { 
+            type: 'array',
+            cellDates: true, // Handle Excel dates
+            cellNF: false,
+            cellText: false
+          });
+          
           const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
+            header: 1,
+            raw: false,
+            dateNF: 'yyyy-mm-dd'
+          });
 
           // Cari baris header (baris ke-3 dari file Excel)
           const headerRow = jsonData[2];
@@ -164,42 +222,42 @@ const AdminPIP = () => {
           // Mulai dari baris 4 (indeks 3)
           for (let i = 3; i < jsonData.length; i++) {
             const row = jsonData[i];
-            if (!row[0]) continue;
+            if (!row || !row[0]) continue;
 
             const pip = {
-              peserta_didik_id: row[0] || '',
-              sekolah_id: row[1] || '',
-              npsn: row[2] || '',
-              nomenklatur: row[3] || '',
-              kelas: row[4] || '',
-              rombel: row[5] || '',
-              nama_pd: row[6] || '',
-              nama_ibu_kandung: row[7] || '',
-              nama_ayah: row[8] || '',
-              tanggal_lahir: row[9] ? new Date(row[9]).toISOString().split('T')[0] : null,
-              tempat_lahir: row[10] || '',
-              nisn: row[11]?.toString() || '',
-              nik: row[12]?.toString() || '',
-              jenis_kelamin: row[13] || '',
+              peserta_didik_id: String(row[0] || ''),
+              sekolah_id: String(row[1] || ''),
+              npsn: String(row[2] || ''),
+              nomenklatur: String(row[3] || ''),
+              kelas: String(row[4] || ''),
+              rombel: String(row[5] || ''),
+              nama_pd: String(row[6] || ''),
+              nama_ibu_kandung: String(row[7] || ''),
+              nama_ayah: String(row[8] || ''),
+              tanggal_lahir: parseExcelDate(row[9]),
+              tempat_lahir: String(row[10] || ''),
+              nisn: String(row[11] || ''),
+              nik: String(row[12] || ''),
+              jenis_kelamin: String(row[13] || ''),
               nominal: parseInt(row[14]) || 0,
-              no_rekening: row[15]?.toString() || '',
+              no_rekening: String(row[15] || ''),
               tahap_id: parseInt(row[16]) || 0,
-              nomor_sk: row[17] || '',
-              tanggal_sk: row[18] ? new Date(row[18]).toISOString().split('T')[0] : null,
-              nama_rekening: row[19] || '',
-              tanggal_cair: row[20] ? new Date(row[20]).toISOString().split('T')[0] : null,
-              status_cair: row[21] || '',
-              no_KIP: row[22] || '',
-              no_KKS: row[23] || '',
-              no_KPS: row[24] || '',
-              virtual_acc: row[25] || '',
-              nama_kartu: row[26] || '',
-              semester_id: row[27] || '',
-              layak_pip: row[28] || '',
-              keterangan_pencairan: row[29] || '',
-              confirmation_text: row[30] || '',
-              tahap_keterangan: row[31] || '',
-              nama_pengusul: row[32] || ''
+              nomor_sk: String(row[17] || ''),
+              tanggal_sk: parseExcelDate(row[18]),
+              nama_rekening: String(row[19] || ''),
+              tanggal_cair: parseExcelDate(row[20]),
+              status_cair: String(row[21] || 'Belum Cair'),
+              no_KIP: String(row[22] || ''),
+              no_KKS: String(row[23] || ''),
+              no_KPS: String(row[24] || ''),
+              virtual_acc: String(row[25] || ''),
+              nama_kartu: String(row[26] || ''),
+              semester_id: String(row[27] || ''),
+              layak_pip: String(row[28] || ''),
+              keterangan_pencairan: String(row[29] || ''),
+              confirmation_text: String(row[30] || ''),
+              tahap_keterangan: String(row[31] || ''),
+              nama_pengusul: String(row[32] || '')
             };
 
             pipList.push(pip);
@@ -310,7 +368,11 @@ const AdminPIP = () => {
   const formatDate = (dateString) => {
     if (!dateString) return '-';
     try {
-      return new Date(dateString).toLocaleDateString('id-ID');
+      return new Date(dateString).toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      });
     } catch {
       return dateString;
     }
@@ -324,11 +386,12 @@ const AdminPIP = () => {
     }).format(amount);
   };
 
-  // Filter data berdasarkan pencarian NAMA
+  // Filter data berdasarkan pencarian
   const filteredData = pipData.filter(item => {
     return item.nama_pd?.toLowerCase().includes(searchTerm.toLowerCase()) ||
            item.nisn?.includes(searchTerm) ||
-           item.kelas?.includes(searchTerm);
+           item.kelas?.includes(searchTerm) ||
+           item.no_rekening?.includes(searchTerm);
   });
 
   // Pagination logic
@@ -343,42 +406,62 @@ const AdminPIP = () => {
     const value = item[column.key];
     
     if (value === null || value === undefined || value === '') {
-      return '-';
+      return <span className="text-gray-400">-</span>;
     }
 
-    if (column.key === 'tanggal_lahir' || column.key === 'tanggal_sk') {
+    if (column.key === 'tanggal_lahir' || column.key === 'tanggal_sk' || column.key === 'tanggal_cair') {
       return formatDate(value);
     }
 
     if (column.key === 'nominal') {
-      return formatCurrency(value);
+      return (
+        <div className="font-semibold text-purple-700">
+          {formatCurrency(value)}
+        </div>
+      );
     }
 
     if (column.key === 'status_cair') {
       return (
-        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-          value === 'Sudah Cair' 
-            ? 'bg-green-100 text-green-800' 
-            : 'bg-yellow-100 text-yellow-800'
-        }`}>
-          {value}
-        </span>
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${value === 'Sudah Cair' ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
+          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+            value === 'Sudah Cair' 
+              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' 
+              : 'bg-amber-100 text-amber-800 border border-amber-200'
+          }`}>
+            {value}
+          </span>
+        </div>
       );
     }
 
     if (column.key === 'nama_pd') {
-      return <div className="font-medium text-gray-900">{value}</div>;
+      return (
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center">
+            <FiUser size={14} className="text-blue-600" />
+          </div>
+          <div>
+            <div className="font-semibold text-gray-900">{value}</div>
+            <div className="text-xs text-gray-500">{item.jenis_kelamin === 'L' ? 'Laki-laki' : 'Perempuan'}</div>
+          </div>
+        </div>
+      );
     }
 
-    return String(value);
+    return <div className="text-gray-700">{String(value)}</div>;
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
-          <span className="text-blue-700 font-medium">Memuat data PIP...</span>
+          <div className="relative">
+            <div className="w-16 h-16 border-4 border-blue-100 rounded-full"></div>
+            <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin absolute top-0"></div>
+          </div>
+          <span className="text-gray-700 font-medium">Memuat data PIP...</span>
         </div>
       </div>
     );
@@ -386,202 +469,272 @@ const AdminPIP = () => {
 
   if (userRole !== 'admin') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50">
-        <div className="text-center p-8 bg-white rounded-2xl shadow-lg">
-          <div className="w-16 h-16 text-red-500 mx-auto mb-4 text-4xl">🚫</div>
-          <h2 className="text-2xl font-bold text-red-600 mb-2">Akses Ditolak</h2>
-          <p className="text-gray-700">Halaman ini hanya untuk administrator</p>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-blue-50">
+        <div className="text-center p-8 bg-white rounded-2xl shadow-xl border border-gray-100 max-w-md">
+          <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <FiX size={32} className="text-red-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Akses Ditolak</h2>
+          <p className="text-gray-600 mb-6">Halaman ini hanya untuk administrator</p>
+          <button
+            onClick={() => navigate('/')}
+            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all font-medium"
+          >
+            Kembali ke Beranda
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
       <AdminNavbar />
       
       <div className="pt-16">
         <div className="container mx-auto px-4 py-8">
           {/* Messages */}
           {successMessage && (
-            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl shadow-sm flex items-center justify-between animate-fadeIn">
-              <div className="flex items-center gap-2 text-green-800">
-                <span className="text-lg">✅</span>
-                <span>{successMessage}</span>
+            <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-xl shadow-sm flex items-center justify-between animate-fadeIn">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center">
+                  <FiCheckCircle className="text-emerald-600" size={18} />
+                </div>
+                <span className="text-emerald-800 font-medium">{successMessage}</span>
               </div>
-              <button onClick={() => setSuccessMessage('')} className="text-green-600 hover:text-green-800">
-                ✕
+              <button 
+                onClick={() => setSuccessMessage('')}
+                className="text-emerald-600 hover:text-emerald-800 p-1 rounded-full hover:bg-emerald-100"
+              >
+                <FiX size={20} />
               </button>
             </div>
           )}
           
           {errorMessage && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl shadow-sm animate-fadeIn">
-              <div className="flex items-center gap-2 text-red-800">
-                <span className="text-lg">❌</span>
-                <span>{errorMessage}</span>
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl shadow-sm flex items-center gap-3 animate-fadeIn">
+              <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <FiX className="text-red-600" size={18} />
               </div>
+              <span className="text-red-800 font-medium">{errorMessage}</span>
             </div>
           )}
 
           {/* Header Section */}
-          <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
-            <div className="flex flex-col md:flex-row md:items-center justify-between mb-6">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-800 mb-2">
-                  Data Penerima PIP SMAN 1 REJOTANGAN
-                </h1>
-                <p className="text-gray-600">
-                  Program Indonesia Pintar Tahun 2025
-                </p>
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 mb-8">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between mb-8">
+              <div className="flex items-center gap-4 mb-6 lg:mb-0">
+                <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl flex items-center justify-center shadow-lg">
+                  <MdSchool size={28} className="text-white" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-900 mb-1">
+                    Data Penerima PIP
+                  </h1>
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <FiHome size={16} />
+                    <span className="font-medium">SMAN 1 REJOTANGAN</span>
+                    <span className="text-gray-400">•</span>
+                    <span>Program Indonesia Pintar 2025</span>
+                  </div>
+                </div>
               </div>
               
               <button
                 onClick={() => setShowImportModal(true)}
-                className="mt-4 md:mt-0 inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all shadow-md hover:shadow-lg"
+                className="inline-flex items-center gap-3 px-6 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-xl hover:from-blue-700 hover:to-indigo-800 transition-all shadow-lg hover:shadow-xl font-medium"
               >
-                <span className="text-lg">📊</span>
+                <FiUpload size={20} />
                 <span>Import Excel</span>
               </button>
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
-                <div className="text-sm text-blue-600 mb-1">Total Penerima</div>
-                <div className="text-2xl font-bold text-blue-700">{stats.total}</div>
-                <div className="text-xs text-blue-500 mt-1">Seluruh Kelas</div>
-              </div>
-              <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 border border-green-200">
-                <div className="text-sm text-green-600 mb-1">Sudah Cair</div>
-                <div className="text-2xl font-bold text-green-700">{stats.sudahCair}</div>
-                <div className="text-xs text-green-500 mt-1">
-                  {((stats.sudahCair / stats.total) * 100 || 0).toFixed(1)}%
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              {/* Total Penerima */}
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100 hover:border-blue-200 transition-all hover:shadow-md">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg flex items-center justify-center">
+                    <FiUsers size={24} className="text-blue-600" />
+                  </div>
+                  <span className="text-3xl font-bold text-blue-700">{stats.total}</span>
                 </div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-1">Total Penerima</h3>
+                <p className="text-xs text-gray-500">Seluruh Kelas</p>
               </div>
-              <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-xl p-4 border border-yellow-200">
-                <div className="text-sm text-yellow-600 mb-1">Belum Cair</div>
-                <div className="text-2xl font-bold text-yellow-700">{stats.belumCair}</div>
-                <div className="text-xs text-yellow-500 mt-1">
-                  {((stats.belumCair / stats.total) * 100 || 0).toFixed(1)}%
+
+              {/* Sudah Cair */}
+              <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl p-6 border border-emerald-100 hover:border-emerald-200 transition-all hover:shadow-md">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-emerald-100 to-emerald-200 rounded-lg flex items-center justify-center">
+                    <FiCheckCircle size={24} className="text-emerald-600" />
+                  </div>
+                  <span className="text-3xl font-bold text-emerald-700">{stats.sudahCair}</span>
                 </div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-1">Sudah Cair</h3>
+                <p className="text-xs text-emerald-600 font-medium">
+                  {((stats.sudahCair / stats.total) * 100 || 0).toFixed(1)}% dari total
+                </p>
               </div>
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 border border-purple-200">
-                <div className="text-sm text-purple-600 mb-1">Total Dana</div>
-                <div className="text-2xl font-bold text-purple-700">
-                  {formatCurrency(stats.totalNominal)}
+
+              {/* Belum Cair */}
+              <div className="bg-gradient-to-br from-amber-50 to-yellow-50 rounded-xl p-6 border border-amber-100 hover:border-amber-200 transition-all hover:shadow-md">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-amber-100 to-amber-200 rounded-lg flex items-center justify-center">
+                    <FiClock size={24} className="text-amber-600" />
+                  </div>
+                  <span className="text-3xl font-bold text-amber-700">{stats.belumCair}</span>
                 </div>
-                <div className="text-xs text-purple-500 mt-1">Seluruh penerima</div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-1">Belum Cair</h3>
+                <p className="text-xs text-amber-600 font-medium">
+                  {((stats.belumCair / stats.total) * 100 || 0).toFixed(1)}% dari total
+                </p>
+              </div>
+
+              {/* Total Dana */}
+              <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-xl p-6 border border-purple-100 hover:border-purple-200 transition-all hover:shadow-md">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-purple-100 to-purple-200 rounded-lg flex items-center justify-center">
+                    <FiDollarSign size={24} className="text-purple-600" />
+                  </div>
+                  <span className="text-2xl font-bold text-purple-700">
+                    {formatCurrency(stats.totalNominal).replace('Rp', '')}
+                  </span>
+                </div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-1">Total Dana</h3>
+                <p className="text-xs text-gray-500">Seluruh penerima</p>
               </div>
             </div>
 
             {/* Search and Controls */}
-            <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex flex-col lg:flex-row gap-4">
               <div className="flex-1 relative">
-                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">🔍</span>
+                <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400">
+                  <FiSearch size={20} />
+                </div>
                 <input
                   type="text"
-                  placeholder="Cari berdasarkan Nama, NISN, atau Kelas..."
+                  placeholder="Cari berdasarkan Nama, NISN, Kelas, atau No Rekening..."
                   value={searchTerm}
                   onChange={(e) => {
                     setSearchTerm(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                  className="w-full pl-12 pr-4 py-3.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white shadow-sm"
                 />
               </div>
               
-              <div className="flex gap-2">
+              <div className="flex gap-3">
                 <select
                   value={itemsPerPage}
                   onChange={(e) => {
                     setItemsPerPage(parseInt(e.target.value));
                     setCurrentPage(1);
                   }}
-                  className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                  className="px-4 py-3.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm"
                 >
                   <option value="10">10 per halaman</option>
                   <option value="20">20 per halaman</option>
                   <option value="50">50 per halaman</option>
                   <option value="100">100 per halaman</option>
                 </select>
+                
+                <button className="px-5 py-3.5 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors shadow-sm flex items-center gap-2">
+                  <FiDownload size={18} />
+                  <span className="hidden sm:inline">Export</span>
+                </button>
               </div>
             </div>
           </div>
 
           {/* Table Section */}
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <div className="mb-4 flex justify-between items-center">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-800">Daftar Penerima PIP</h2>
-                <p className="text-sm text-gray-600">
-                  Menampilkan {columns.length} kolom data
-                </p>
-              </div>
-              <div className="text-sm text-gray-600">
-                {filteredData.length} data ditemukan (dari total {stats.total})
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+            {/* Table Header */}
+            <div className="px-6 py-5 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-blue-50">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Daftar Penerima PIP</h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {filteredData.length} data ditemukan dari total {stats.total}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium">
+                    {columns.length} Kolom
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="w-full min-w-max">
+            {/* Table Container */}
+            <div className="overflow-x-auto">
+              <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
                     {columns.map((column) => (
                       <th 
                         key={column.key}
-                        className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap border-r border-gray-200 last:border-r-0"
+                        className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap border-r border-gray-200 last:border-r-0"
                         style={{ minWidth: column.width }}
                       >
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-2">
+                          {column.icon}
                           <span>{column.header}</span>
                         </div>
                       </th>
                     ))}
                     <th 
-                      className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-50 border-l border-gray-200"
-                      style={{ minWidth: '140px' }}
+                      className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap bg-gray-50"
+                      style={{ minWidth: '160px' }}
                     >
-                      Aksi
+                      <div className="flex items-center gap-2">
+                        <FiGrid size={14} />
+                        <span>Aksi</span>
+                      </div>
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
+                <tbody className="divide-y divide-gray-100">
                   {currentItems.map((item) => (
-                    <tr key={item.peserta_didik_id} className="hover:bg-gray-50 transition-colors group">
+                    <tr 
+                      key={item.peserta_didik_id} 
+                      className="hover:bg-blue-50/30 transition-colors group"
+                    >
                       {columns.map((column) => (
                         <td 
                           key={`${item.peserta_didik_id}-${column.key}`}
-                          className="px-4 py-2.5 text-sm text-gray-800 whitespace-nowrap border-r border-gray-100 last:border-r-0 group-hover:bg-gray-50"
+                          className="px-6 py-4 text-sm border-r border-gray-100 last:border-r-0 group-hover:bg-blue-50/30"
                         >
-                          <div className="truncate" style={{ maxWidth: column.width }} title={renderCell(item, column)}>
+                          <div className="truncate" style={{ maxWidth: column.width }} title={item[column.key]}>
                             {renderCell(item, column)}
                           </div>
                         </td>
                       ))}
-                      <td className="px-4 py-2.5 bg-white group-hover:bg-gray-50 border-l border-gray-100">
-                        <div className="flex flex-col gap-1.5 min-w-[140px]">
+                      <td className="px-6 py-4 group-hover:bg-blue-50/30">
+                        <div className="flex flex-col gap-2 min-w-[160px]">
                           <button
                             onClick={() => openDetailModal(item)}
-                            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-md hover:from-blue-600 hover:to-blue-700 transition-all text-xs shadow-sm hover:shadow"
+                            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-100 to-blue-50 text-blue-700 rounded-lg hover:from-blue-200 hover:to-blue-100 transition-all text-sm font-medium border border-blue-200 hover:border-blue-300"
                           >
-                            <span className="text-sm">👁️</span>
+                            <FiEye size={16} />
                             <span>Detail</span>
                           </button>
-                          <button
-                            onClick={() => openEditModal(item)}
-                            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-md hover:from-green-600 hover:to-green-700 transition-all text-xs shadow-sm hover:shadow"
-                          >
-                            <span className="text-sm">✏️</span>
-                            <span>Edit</span>
-                          </button>
-                          <button
-                            onClick={() => openDeleteModal(item)}
-                            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-md hover:from-red-600 hover:to-red-700 transition-all text-xs shadow-sm hover:shadow"
-                          >
-                            <span className="text-sm">🗑️</span>
-                            <span>Hapus</span>
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => openEditModal(item)}
+                              className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-emerald-100 to-emerald-50 text-emerald-700 rounded-lg hover:from-emerald-200 hover:to-emerald-100 transition-all text-sm font-medium border border-emerald-200 hover:border-emerald-300"
+                            >
+                              <FiEdit size={14} />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              onClick={() => openDeleteModal(item)}
+                              className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-red-100 to-red-50 text-red-700 rounded-lg hover:from-red-200 hover:to-red-100 transition-all text-sm font-medium border border-red-200 hover:border-red-300"
+                            >
+                              <FiTrash2 size={14} />
+                              <span>Hapus</span>
+                            </button>
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -591,10 +744,12 @@ const AdminPIP = () => {
               
               {filteredData.length === 0 && (
                 <div className="text-center py-16">
-                  <div className="text-5xl text-gray-300 mb-4">📋</div>
-                  <p className="text-gray-600 text-lg mb-2">Tidak ada data PIP</p>
-                  <p className="text-sm text-gray-500">
-                    {searchTerm ? `Tidak ditemukan data dengan pencarian "${searchTerm}"` : 'Klik tombol "Import Excel" untuk menambahkan data'}
+                  <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <FiDatabase size={32} className="text-gray-400" />
+                  </div>
+                  <p className="text-gray-700 text-lg font-medium mb-2">Tidak ada data PIP</p>
+                  <p className="text-sm text-gray-500 max-w-md mx-auto">
+                    {searchTerm ? `Tidak ditemukan data dengan pencarian "${searchTerm}"` : 'Klik tombol "Import Excel" untuk menambahkan data PIP'}
                   </p>
                 </div>
               )}
@@ -602,22 +757,24 @@ const AdminPIP = () => {
 
             {/* Pagination */}
             {filteredData.length > 0 && (
-              <div className="mt-6 flex flex-col md:flex-row items-center justify-between gap-4 pt-4 border-t border-gray-200">
+              <div className="px-6 py-5 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="text-sm text-gray-600">
-                  Menampilkan <span className="font-semibold">{indexOfFirstItem + 1}</span> - <span className="font-semibold">{Math.min(indexOfLastItem, filteredData.length)}</span> dari <span className="font-semibold">{filteredData.length}</span> data
+                  Menampilkan <span className="font-semibold text-gray-900">{indexOfFirstItem + 1}</span> -{' '}
+                  <span className="font-semibold text-gray-900">{Math.min(indexOfLastItem, filteredData.length)}</span> dari{' '}
+                  <span className="font-semibold text-gray-900">{filteredData.length}</span> data
                 </div>
                 
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-2">
                   <button
                     onClick={() => paginate(currentPage - 1)}
                     disabled={currentPage === 1}
-                    className={`px-3 py-1.5 rounded-md transition-all ${
+                    className={`p-2.5 rounded-lg transition-all ${
                       currentPage === 1 
                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 hover:text-gray-900 shadow-sm'
+                        : 'bg-white text-gray-700 hover:bg-gray-50 hover:text-gray-900 border border-gray-200 hover:border-gray-300'
                     }`}
                   >
-                    ← Prev
+                    <FiChevronLeft size={20} />
                   </button>
                   
                   {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
@@ -636,10 +793,10 @@ const AdminPIP = () => {
                       <button
                         key={pageNum}
                         onClick={() => paginate(pageNum)}
-                        className={`px-3 py-1.5 rounded-md transition-all ${
+                        className={`w-10 h-10 rounded-lg transition-all font-medium ${
                           currentPage === pageNum
-                            ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 hover:text-gray-900 shadow-sm'
+                            ? 'bg-gradient-to-r from-blue-600 to-indigo-700 text-white shadow-md'
+                            : 'bg-white text-gray-700 hover:bg-gray-50 hover:text-gray-900 border border-gray-200 hover:border-gray-300'
                         }`}
                       >
                         {pageNum}
@@ -650,13 +807,13 @@ const AdminPIP = () => {
                   <button
                     onClick={() => paginate(currentPage + 1)}
                     disabled={currentPage === totalPages}
-                    className={`px-3 py-1.5 rounded-md transition-all ${
+                    className={`p-2.5 rounded-lg transition-all ${
                       currentPage === totalPages
                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 hover:text-gray-900 shadow-sm'
+                        : 'bg-white text-gray-700 hover:bg-gray-50 hover:text-gray-900 border border-gray-200 hover:border-gray-300'
                     }`}
                   >
-                    Next →
+                    <FiChevronRight size={20} />
                   </button>
                 </div>
               </div>
@@ -667,26 +824,33 @@ const AdminPIP = () => {
 
       {/* Import Modal */}
       {showImportModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
-            <div className="px-6 py-4 border-b flex items-center justify-between bg-gradient-to-r from-green-50 to-emerald-50 rounded-t-2xl">
-              <div>
-                <h3 className="text-xl font-bold text-gray-800">Import Data PIP</h3>
-                <p className="text-sm text-gray-600 mt-1">Dari file Excel SK PIP SMA 2025</p>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-gray-200">
+            {/* Header */}
+            <div className="px-8 py-6 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg flex items-center justify-center">
+                  <FiUpload size={20} className="text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">Import Data PIP</h3>
+                  <p className="text-sm text-gray-600">Dari file Excel SK PIP SMA 2025</p>
+                </div>
               </div>
               <button
                 onClick={() => {
                   setShowImportModal(false);
                   setExcelFile(null);
                 }}
-                className="text-gray-500 hover:text-gray-700 hover:bg-gray-100 p-1 rounded-full transition-colors"
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 hover:text-gray-700"
               >
-                <span className="text-xl">✕</span>
+                <FiX size={24} />
               </button>
             </div>
             
-            <div className="p-6">
-              <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-green-400 transition-colors cursor-pointer">
+            {/* Content */}
+            <div className="p-8">
+              <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-blue-400 transition-colors cursor-pointer bg-gradient-to-br from-gray-50 to-blue-50/50">
                 <input
                   type="file"
                   accept=".xlsx,.xls"
@@ -695,44 +859,51 @@ const AdminPIP = () => {
                   id="pip-excel-upload"
                 />
                 <label htmlFor="pip-excel-upload" className="cursor-pointer block">
-                  <span className="text-5xl text-gray-400 mb-3 block">📊</span>
-                  <p className="text-gray-700 font-medium">
-                    {excelFile ? excelFile.name : 'Klik untuk memilih file'}
+                  <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-blue-200 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <FiDatabase size={28} className="text-blue-600" />
+                  </div>
+                  <p className="text-gray-900 font-medium mb-1">
+                    {excelFile ? (
+                      <span className="text-blue-600">{excelFile.name}</span>
+                    ) : (
+                      'Klik untuk memilih file Excel'
+                    )}
                   </p>
-                  <p className="text-sm text-gray-500 mt-2">
-                    File Excel PIP SMAN 1 REJOTANGAN
+                  <p className="text-sm text-gray-500">
+                    Format: .xlsx atau .xls (Template PIP)
                   </p>
                 </label>
               </div>
             </div>
             
-            <div className="px-6 py-4 border-t flex justify-end gap-3 bg-gray-50 rounded-b-2xl">
+            {/* Footer */}
+            <div className="px-8 py-6 border-t border-gray-100 flex justify-end gap-3">
               <button
                 onClick={() => {
                   setShowImportModal(false);
                   setExcelFile(null);
                 }}
-                className="px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700 font-medium"
+                className="px-5 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700 font-medium"
               >
                 Batal
               </button>
               <button
                 onClick={importExcelToDatabase}
                 disabled={!excelFile || uploading}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg transition-all font-medium ${
+                className={`inline-flex items-center gap-3 px-6 py-2.5 rounded-lg transition-all font-medium ${
                   !excelFile || uploading
                     ? 'bg-gray-400 text-white cursor-not-allowed'
-                    : 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 shadow-md hover:shadow-lg'
+                    : 'bg-gradient-to-r from-blue-600 to-indigo-700 text-white hover:from-blue-700 hover:to-indigo-800 shadow-md hover:shadow-lg'
                 }`}
               >
                 {uploading ? (
                   <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                     <span>Mengimport...</span>
                   </>
                 ) : (
                   <>
-                    <span className="text-lg">📊</span>
+                    <FiUpload size={18} />
                     <span>Import Data</span>
                   </>
                 )}
@@ -744,46 +915,55 @@ const AdminPIP = () => {
 
       {/* Detail Modal */}
       {showDetailModal && selectedData && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50">
-              <div>
-                <h3 className="text-xl font-bold text-gray-800">Detail Data PIP</h3>
-                <p className="text-sm text-gray-600 mt-1">SMAN 1 REJOTANGAN</p>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto border border-gray-200">
+            {/* Header */}
+            <div className="sticky top-0 bg-white border-b border-gray-100 px-8 py-6 flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50/50">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl flex items-center justify-center shadow-md">
+                  <FiUser size={24} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900">Detail Data PIP</h3>
+                  <p className="text-sm text-gray-600">SMAN 1 REJOTANGAN • {selectedData.nama_pd}</p>
+                </div>
               </div>
               <button
                 onClick={() => setShowDetailModal(false)}
-                className="text-gray-500 hover:text-gray-700 hover:bg-gray-100 p-2 rounded-full transition-colors"
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 hover:text-gray-700"
               >
-                <span className="text-xl">✕</span>
+                <FiX size={24} />
               </button>
             </div>
             
-            <div className="p-6 space-y-6">
-              {/* Info Utama */}
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-5 border border-blue-200">
-                <div className="flex items-start gap-4">
-                  <div className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-xl p-4 shadow-md">
-                    <span className="text-2xl">🎓</span>
+            {/* Content */}
+            <div className="p-8 space-y-8">
+              {/* Profile Card */}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
+                <div className="flex flex-col md:flex-row md:items-start gap-6">
+                  <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
+                    <FiUser size={32} className="text-white" />
                   </div>
                   <div className="flex-1">
-                    <h4 className="font-bold text-2xl text-gray-800 mb-2">{selectedData.nama_pd}</h4>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                      <div>
-                        <span className="text-gray-600">NISN:</span>
-                        <p className="font-medium">{selectedData.nisn}</p>
+                    <h4 className="font-bold text-2xl text-gray-900 mb-3">{selectedData.nama_pd}</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="bg-white/80 rounded-lg p-3 border border-blue-100">
+                        <div className="text-xs text-gray-500 mb-1">NISN</div>
+                        <div className="font-semibold text-gray-900">{selectedData.nisn}</div>
                       </div>
-                      <div>
-                        <span className="text-gray-600">Kelas:</span>
-                        <p className="font-medium">{selectedData.kelas} {selectedData.rombel}</p>
+                      <div className="bg-white/80 rounded-lg p-3 border border-blue-100">
+                        <div className="text-xs text-gray-500 mb-1">Kelas</div>
+                        <div className="font-semibold text-gray-900">{selectedData.kelas} {selectedData.rombel}</div>
                       </div>
-                      <div>
-                        <span className="text-gray-600">Tanggal Lahir:</span>
-                        <p className="font-medium">{formatDate(selectedData.tanggal_lahir)}</p>
+                      <div className="bg-white/80 rounded-lg p-3 border border-blue-100">
+                        <div className="text-xs text-gray-500 mb-1">Tanggal Lahir</div>
+                        <div className="font-semibold text-gray-900">{formatDate(selectedData.tanggal_lahir)}</div>
                       </div>
-                      <div>
-                        <span className="text-gray-600">Jenis Kelamin:</span>
-                        <p className="font-medium">{selectedData.jenis_kelamin === 'L' ? 'Laki-laki' : 'Perempuan'}</p>
+                      <div className="bg-white/80 rounded-lg p-3 border border-blue-100">
+                        <div className="text-xs text-gray-500 mb-1">Jenis Kelamin</div>
+                        <div className="font-semibold text-gray-900">
+                          {selectedData.jenis_kelamin === 'L' ? 'Laki-laki' : 'Perempuan'}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -791,100 +971,119 @@ const AdminPIP = () => {
               </div>
 
               {/* Grid Data */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Data PIP */}
-                <div className="space-y-4">
-                  <div className="bg-white rounded-xl border border-gray-200 p-5">
-                    <h5 className="font-semibold text-gray-800 mb-3 pb-2 border-b">Data PIP</h5>
-                    <div className="space-y-3">
-                      <div>
-                        <span className="text-gray-600 text-sm">Nominal:</span>
-                        <p className="text-lg font-bold text-purple-700">{formatCurrency(selectedData.nominal)}</p>
+                <div className="space-y-6">
+                  <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-10 h-10 bg-gradient-to-br from-purple-100 to-purple-200 rounded-lg flex items-center justify-center">
+                        <FiDollarSign size={20} className="text-purple-600" />
                       </div>
-                      <div>
-                        <span className="text-gray-600 text-sm">Status Cair:</span>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          selectedData.status_cair === 'Sudah Cair' 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-yellow-100 text-yellow-800'
+                      <h5 className="font-bold text-lg text-gray-900">Data PIP</h5>
+                    </div>
+                    <div className="space-y-5">
+                      <div className="flex justify-between items-center pb-4 border-b border-gray-100">
+                        <div>
+                          <div className="text-sm text-gray-600">Nominal</div>
+                          <div className="text-2xl font-bold text-purple-700">{formatCurrency(selectedData.nominal)}</div>
+                        </div>
+                        <div className={`px-4 py-2 rounded-full font-medium ${
+                          selectedData.status_cair === 'Sudah Cair'
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            : 'bg-amber-100 text-amber-800 border border-amber-200'
                         }`}>
                           {selectedData.status_cair}
-                        </span>
+                        </div>
                       </div>
                       <div>
-                        <span className="text-gray-600 text-sm">Tanggal Cair:</span>
-                        <p className="font-medium">{formatDate(selectedData.tanggal_cair)}</p>
+                        <div className="text-sm text-gray-600 mb-1">Tanggal Cair</div>
+                        <div className="font-medium text-gray-900">{formatDate(selectedData.tanggal_cair)}</div>
                       </div>
                       <div>
-                        <span className="text-gray-600 text-sm">Layak PIP:</span>
-                        <p className="font-medium">{selectedData.layak_pip}</p>
+                        <div className="text-sm text-gray-600 mb-1">Layak PIP</div>
+                        <div className="font-medium text-gray-900">{selectedData.layak_pip}</div>
                       </div>
                     </div>
                   </div>
 
                   {/* Data Rekening */}
-                  <div className="bg-white rounded-xl border border-gray-200 p-5">
-                    <h5 className="font-semibold text-gray-800 mb-3 pb-2 border-b">Data Rekening</h5>
-                    <div className="space-y-3">
+                  <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-10 h-10 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg flex items-center justify-center">
+                        <FiCreditCard size={20} className="text-blue-600" />
+                      </div>
+                      <h5 className="font-bold text-lg text-gray-900">Data Rekening</h5>
+                    </div>
+                    <div className="space-y-5">
                       <div>
-                        <span className="text-gray-600 text-sm">No Rekening:</span>
-                        <p className="font-medium">{selectedData.no_rekening}</p>
+                        <div className="text-sm text-gray-600 mb-1">No Rekening</div>
+                        <div className="font-medium text-gray-900 text-lg">{selectedData.no_rekening}</div>
                       </div>
                       <div>
-                        <span className="text-gray-600 text-sm">Nama Rekening:</span>
-                        <p className="font-medium">{selectedData.nama_rekening}</p>
+                        <div className="text-sm text-gray-600 mb-1">Nama Rekening</div>
+                        <div className="font-medium text-gray-900">{selectedData.nama_rekening}</div>
                       </div>
                       <div>
-                        <span className="text-gray-600 text-sm">Virtual Account:</span>
-                        <p className="font-medium">{selectedData.virtual_acc}</p>
+                        <div className="text-sm text-gray-600 mb-1">Virtual Account</div>
+                        <div className="font-medium text-gray-900">{selectedData.virtual_acc}</div>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Data SK dan Administrasi */}
-                <div className="space-y-4">
-                  <div className="bg-white rounded-xl border border-gray-200 p-5">
-                    <h5 className="font-semibold text-gray-800 mb-3 pb-2 border-b">Data SK</h5>
-                    <div className="space-y-3">
+                <div className="space-y-6">
+                  <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-10 h-10 bg-gradient-to-br from-emerald-100 to-emerald-200 rounded-lg flex items-center justify-center">
+                        <FiFileText size={20} className="text-emerald-600" />
+                      </div>
+                      <h5 className="font-bold text-lg text-gray-900">Data SK</h5>
+                    </div>
+                    <div className="space-y-5">
                       <div>
-                        <span className="text-gray-600 text-sm">Nomor SK:</span>
-                        <p className="font-medium text-sm">{selectedData.nomor_sk}</p>
+                        <div className="text-sm text-gray-600 mb-1">Nomor SK</div>
+                        <div className="font-medium text-gray-900">{selectedData.nomor_sk}</div>
                       </div>
                       <div>
-                        <span className="text-gray-600 text-sm">Tanggal SK:</span>
-                        <p className="font-medium">{formatDate(selectedData.tanggal_sk)}</p>
+                        <div className="text-sm text-gray-600 mb-1">Tanggal SK</div>
+                        <div className="font-medium text-gray-900">{formatDate(selectedData.tanggal_sk)}</div>
                       </div>
                       <div>
-                        <span className="text-gray-600 text-sm">Tahap ID:</span>
-                        <p className="font-medium">{selectedData.tahap_id}</p>
+                        <div className="text-sm text-gray-600 mb-1">Tahap ID</div>
+                        <div className="font-medium text-gray-900">{selectedData.tahap_id}</div>
                       </div>
                       <div>
-                        <span className="text-gray-600 text-sm">Keterangan Tahap:</span>
-                        <p className="font-medium text-sm">{selectedData.tahap_keterangan}</p>
+                        <div className="text-sm text-gray-600 mb-1">Keterangan Tahap</div>
+                        <div className="font-medium text-gray-900">{selectedData.tahap_keterangan}</div>
                       </div>
                     </div>
                   </div>
 
                   {/* Data Bantuan */}
-                  <div className="bg-white rounded-xl border border-gray-200 p-5">
-                    <h5 className="font-semibold text-gray-800 mb-3 pb-2 border-b">Data Bantuan</h5>
-                    <div className="space-y-3">
+                  <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-10 h-10 bg-gradient-to-br from-amber-100 to-amber-200 rounded-lg flex items-center justify-center">
+                        <FiUsers size={20} className="text-amber-600" />
+                      </div>
+                      <h5 className="font-bold text-lg text-gray-900">Data Bantuan</h5>
+                    </div>
+                    <div className="space-y-5">
                       <div>
-                        <span className="text-gray-600 text-sm">No KIP:</span>
-                        <p className="font-medium">{selectedData.no_KIP || '-'}</p>
+                        <div className="text-sm text-gray-600 mb-1">No KIP</div>
+                        <div className="font-medium text-gray-900">{selectedData.no_KIP || '-'}</div>
                       </div>
                       <div>
-                        <span className="text-gray-600 text-sm">No KKS:</span>
-                        <p className="font-medium">{selectedData.no_KKS || '-'}</p>
+                        <div className="text-sm text-gray-600 mb-1">No KKS</div>
+                        <div className="font-medium text-gray-900">{selectedData.no_KKS || '-'}</div>
                       </div>
                       <div>
-                        <span className="text-gray-600 text-sm">No KPS:</span>
-                        <p className="font-medium">{selectedData.no_KPS || '-'}</p>
+                        <div className="text-sm text-gray-600 mb-1">No KPS</div>
+                        <div className="font-medium text-gray-900">{selectedData.no_KPS || '-'}</div>
                       </div>
                       <div>
-                        <span className="text-gray-600 text-sm">Nama Pengusul:</span>
-                        <p className="font-medium">{selectedData.nama_pengusul}</p>
+                        <div className="text-sm text-gray-600 mb-1">Nama Pengusul</div>
+                        <div className="font-medium text-gray-900">{selectedData.nama_pengusul}</div>
                       </div>
                     </div>
                   </div>
@@ -892,16 +1091,24 @@ const AdminPIP = () => {
               </div>
 
               {/* Keterangan */}
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h5 className="font-semibold text-gray-800 mb-3 pb-2 border-b">Keterangan Pencairan</h5>
-                <p className="text-gray-700">{selectedData.keterangan_pencairan}</p>
+              <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-10 h-10 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center">
+                    <MdDescription size={20} className="text-gray-600" />
+                  </div>
+                  <h5 className="font-bold text-lg text-gray-900">Keterangan Pencairan</h5>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-5 border border-gray-200">
+                  <p className="text-gray-700">{selectedData.keterangan_pencairan || 'Tidak ada keterangan'}</p>
+                </div>
               </div>
             </div>
             
-            <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-3">
+            {/* Footer */}
+            <div className="sticky bottom-0 bg-white border-t border-gray-100 px-8 py-6 flex justify-end gap-3">
               <button
                 onClick={() => setShowDetailModal(false)}
-                className="px-5 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700 font-medium"
+                className="px-6 py-3 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors text-gray-700 font-medium"
               >
                 Tutup
               </button>
@@ -912,29 +1119,36 @@ const AdminPIP = () => {
 
       {/* Edit Modal */}
       {showEditModal && selectedData && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between bg-gradient-to-r from-green-50 to-emerald-50">
-              <div>
-                <h3 className="text-xl font-bold text-gray-800">Edit Data PIP</h3>
-                <p className="text-sm text-gray-600 mt-1">{selectedData.nama_pd}</p>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl border border-gray-200">
+            {/* Header */}
+            <div className="px-8 py-6 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-emerald-50 to-emerald-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-emerald-100 to-emerald-200 rounded-lg flex items-center justify-center">
+                  <FiEdit size={20} className="text-emerald-600" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">Edit Data PIP</h3>
+                  <p className="text-sm text-gray-600">{selectedData.nama_pd}</p>
+                </div>
               </div>
               <button
                 onClick={() => setShowEditModal(false)}
-                className="text-gray-500 hover:text-gray-700 hover:bg-gray-100 p-2 rounded-full transition-colors"
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 hover:text-gray-700"
               >
-                <span className="text-xl">✕</span>
+                <FiX size={24} />
               </button>
             </div>
             
-            <div className="p-6">
-              <div className="space-y-4">
+            {/* Form */}
+            <div className="p-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status Cair</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Status Cair</label>
                   <select
                     value={editForm.status_cair || ''}
                     onChange={(e) => setEditForm({...editForm, status_cair: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
                   >
                     <option value="Sudah Cair">Sudah Cair</option>
                     <option value="Belum Cair">Belum Cair</option>
@@ -942,59 +1156,60 @@ const AdminPIP = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tanggal Cair</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Tanggal Cair</label>
                   <input
                     type="date"
                     value={editForm.tanggal_cair || ''}
                     onChange={(e) => setEditForm({...editForm, tanggal_cair: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nominal (Rp)</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Nominal (Rp)</label>
                   <input
                     type="number"
                     value={editForm.nominal || 0}
                     onChange={(e) => setEditForm({...editForm, nominal: parseInt(e.target.value)})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">No Rekening</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">No Rekening</label>
                   <input
                     type="text"
                     value={editForm.no_rekening || ''}
                     onChange={(e) => setEditForm({...editForm, no_rekening: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Keterangan Pencairan</label>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Keterangan Pencairan</label>
                   <textarea
                     value={editForm.keterangan_pencairan || ''}
                     onChange={(e) => setEditForm({...editForm, keterangan_pencairan: e.target.value})}
                     rows="3"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
                   />
                 </div>
               </div>
             </div>
             
-            <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-3">
+            {/* Footer */}
+            <div className="px-8 py-6 border-t border-gray-100 flex justify-end gap-3">
               <button
                 onClick={() => setShowEditModal(false)}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700 font-medium"
+                className="px-5 py-3 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors text-gray-700 font-medium"
               >
                 Batal
               </button>
               <button
                 onClick={handleEditPIP}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all font-medium"
+                className="inline-flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-emerald-600 to-green-600 text-white rounded-xl hover:from-emerald-700 hover:to-green-700 transition-all font-medium"
               >
-                <span>💾</span>
+                <FiSave size={18} />
                 <span>Simpan Perubahan</span>
               </button>
             </div>
@@ -1004,56 +1219,69 @@ const AdminPIP = () => {
 
       {/* Delete Modal */}
       {showDeleteModal && selectedData && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
-            <div className="px-6 py-4 border-b flex items-center justify-between bg-gradient-to-r from-red-50 to-red-100 rounded-t-2xl">
-              <div>
-                <h3 className="text-xl font-bold text-gray-800">Hapus Data PIP</h3>
-                <p className="text-sm text-gray-600 mt-1">Konfirmasi penghapusan</p>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-gray-200">
+            {/* Header */}
+            <div className="px-8 py-6 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-red-50 to-red-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-red-100 to-red-200 rounded-lg flex items-center justify-center">
+                  <FiTrash2 size={20} className="text-red-600" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">Hapus Data PIP</h3>
+                  <p className="text-sm text-gray-600">Konfirmasi penghapusan</p>
+                </div>
               </div>
               <button
                 onClick={() => setShowDeleteModal(false)}
-                className="text-gray-500 hover:text-gray-700 hover:bg-gray-100 p-1 rounded-full transition-colors"
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 hover:text-gray-700"
               >
-                <span className="text-xl">✕</span>
+                <FiX size={24} />
               </button>
             </div>
             
-            <div className="p-6">
+            {/* Content */}
+            <div className="p-8">
               <div className="flex items-start gap-4 mb-6">
                 <div className="p-3 bg-red-100 rounded-full">
-                  <span className="text-red-600 text-2xl">🗑️</span>
+                  <FiTrash2 size={24} className="text-red-600" />
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900 mb-2">Anda akan menghapus data PIP:</p>
-                  <p className="text-lg font-bold text-red-700 mb-1">{selectedData.nama_pd}</p>
-                  <div className="text-sm text-gray-600 space-y-1">
-                    <p>NISN: {selectedData.nisn || '-'}</p>
-                    <p>Kelas: {selectedData.kelas} {selectedData.rombel}</p>
-                    <p>Nominal: {formatCurrency(selectedData.nominal)}</p>
+                  <p className="font-medium text-gray-900 mb-3">Anda akan menghapus data PIP:</p>
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
+                    <p className="text-lg font-bold text-red-700 mb-1">{selectedData.nama_pd}</p>
+                    <div className="text-sm text-gray-700 space-y-1">
+                      <p>NISN: {selectedData.nisn || '-'}</p>
+                      <p>Kelas: {selectedData.kelas} {selectedData.rombel}</p>
+                      <p>Nominal: {formatCurrency(selectedData.nominal)}</p>
+                    </div>
                   </div>
                 </div>
               </div>
               
-              <div className="p-4 bg-red-50 rounded-lg border border-red-200">
-                <p className="text-sm text-red-700">
-                  ⚠️ <span className="font-semibold">Perhatian:</span> Data yang dihapus tidak dapat dikembalikan.
-                </p>
+              <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
+                <div className="flex items-start gap-2">
+                  <FiX size={20} className="text-amber-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-sm text-amber-800">
+                    <span className="font-semibold">Perhatian:</span> Data yang dihapus tidak dapat dikembalikan.
+                  </p>
+                </div>
               </div>
             </div>
             
-            <div className="px-6 py-4 border-t flex justify-end gap-3 bg-gray-50 rounded-b-2xl">
+            {/* Footer */}
+            <div className="px-8 py-6 border-t border-gray-100 flex justify-end gap-3">
               <button
                 onClick={() => setShowDeleteModal(false)}
-                className="px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700 font-medium"
+                className="px-5 py-3 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors text-gray-700 font-medium"
               >
                 Batalkan
               </button>
               <button
                 onClick={handleDeletePIP}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 transition-all font-medium"
+                className="inline-flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-xl hover:from-red-700 hover:to-red-800 transition-all font-medium"
               >
-                <span className="text-lg">🗑️</span>
+                <FiTrash2 size={18} />
                 <span>Hapus Data</span>
               </button>
             </div>
