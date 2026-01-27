@@ -336,20 +336,6 @@ const CekPIP = () => {
                           </p>
                         </div>
                       </div>
-                      
-                      <div>
-                        <span className="text-sm text-gray-600 font-medium">No Rekening</span>
-                        <div className="bg-white border border-gray-200 rounded-lg p-3 mt-1">
-                          <p className="font-medium text-gray-900 font-mono">{result.no_rekening}</p>
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <span className="text-sm text-gray-600 font-medium">Sumber Dana</span>
-                        <div className="bg-white border border-gray-200 rounded-lg p-3 mt-1">
-                          <p className="font-medium text-gray-900">{result.tahap_keterangan}</p>
-                        </div>
-                      </div>
                     </div>
                   </div>
 
@@ -361,13 +347,7 @@ const CekPIP = () => {
                       </div>
                       <h3 className="font-semibold text-lg text-gray-800">Data SK PIP</h3>
                     </div>
-                    <div className="space-y-4">
-                      <div>
-                        <span className="text-sm text-gray-600 font-medium">Nomor SK</span>
-                        <div className="bg-white border border-gray-200 rounded-lg p-3 mt-1">
-                          <p className="font-medium text-gray-900 text-sm">{result.nomor_sk}</p>
-                        </div>
-                      </div>
+                    <div className="space-y-4"></div>
                       
                       <div>
                         <span className="text-sm text-gray-600 font-medium">Tanggal SK</span>
@@ -396,7 +376,7 @@ const CekPIP = () => {
                       <span className="font-medium text-blue-800">Informasi</span>
                     </div>
                     <p className="text-blue-700 text-sm">
-                      Data ini bersumber dari database resmi SMAN 1 Rejotangan
+                      Data ini bersumber resmi dari Web PIP
                     </p>
                   </div>
                   
@@ -428,22 +408,7 @@ const CekPIP = () => {
                   <p>Data ini untuk keperluan informasi resmi</p>
                 </div>
                 <div className="flex gap-3">
-                  <button
-                    onClick={() => window.print()}
-                    className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700 font-medium"
-                  >
-                    <span>🖨️</span>
-                    <span>Cetak</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setResult(null);
-                      setNisn('');
-                      setTanggalLahir('');
-                      setSearchMade(false);
-                    }}
-                    className="inline-flex items-center gap-2 px-4 py-2 border border-blue-300 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors text-blue-700 font-medium"
-                  >
+                  
                     <span>🔍</span>
                     <span>Cari Lagi</span>
                   </button>
