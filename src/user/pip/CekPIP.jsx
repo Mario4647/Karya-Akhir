@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { supabase } from '../../supabaseClient';
+import { supabase } from '../supabaseClient';
 
 const CekPIP = () => {
   const [nisn, setNisn] = useState('');
@@ -16,10 +16,27 @@ const CekPIP = () => {
     setSearchMade(true);
 
     try {
-      // Cari data di database
+      // Cari data di database dengan filter field spesifik
       const { data, error: fetchError } = await supabase
         .from('pip_data')
-        .select('*')
+        .select(`
+          nama_pd,
+          nisn,
+          kelas,
+          rombel,
+          nik,
+          status_cair,
+          nominal,
+          nomor_sk,
+          tanggal_sk,
+          nomenklatur,
+          layak_pip,
+          no_rekening,
+          tahap_keterangan,
+          keterangan_pencairan,
+          created_at,
+          updated_at
+        `)
         .eq('nisn', nisn)
         .eq('tanggal_lahir', tanggalLahir)
         .single();
@@ -68,6 +85,7 @@ const CekPIP = () => {
           kelas: data.kelas,
           rombel: data.rombel,
           nomenklatur: data.nomenklatur,
+          nik: data.nik,
           status_cair: data.status_cair,
           nominal: data.nominal,
           no_rekening: data.no_rekening,
@@ -133,6 +151,9 @@ const CekPIP = () => {
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   required
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  *10 digit angka NISN Anda
+                </p>
               </div>
               
               <div>
@@ -146,6 +167,9 @@ const CekPIP = () => {
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   required
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  *Format: DD/MM/YYYY
+                </p>
               </div>
             </div>
 
@@ -207,59 +231,74 @@ const CekPIP = () => {
 
             {/* Main Result */}
             <div className="p-6 md:p-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* Left Column - Personal Info */}
+              {/* Grid Data PIP (Tampilan Formal seperti Kartu) */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Kolom Kiri: Data Identitas */}
                 <div className="space-y-6">
-                  {/* Personal Card */}
-                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-5">
-                    <div className="flex items-center gap-3 mb-4">
+                  {/* Kartu Data Pribadi */}
+                  <div className="border border-gray-200 rounded-xl p-6 bg-gradient-to-br from-blue-50 to-white">
+                    <div className="flex items-center gap-3 mb-4 pb-3 border-b border-gray-100">
                       <div className="p-2 bg-blue-500 rounded-lg">
                         <span className="text-white text-lg">👤</span>
                       </div>
-                      <h3 className="font-semibold text-gray-800">Data Pribadi</h3>
+                      <h3 className="font-semibold text-lg text-gray-800">Data Identitas</h3>
                     </div>
-                    <div className="space-y-3">
+                    <div className="space-y-4">
                       <div>
-                        <span className="text-sm text-gray-600">Nama Lengkap</span>
-                        <p className="font-bold text-lg text-gray-900">{result.nama_pd}</p>
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="text-sm text-gray-600 font-medium">Nama Lengkap</span>
+                        </div>
+                        <div className="bg-white border border-gray-200 rounded-lg p-3">
+                          <p className="font-bold text-lg text-gray-900">{result.nama_pd}</p>
+                        </div>
                       </div>
+                      
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <span className="text-sm text-gray-600">NISN</span>
-                          <p className="font-medium text-gray-900">{result.nisn}</p>
+                          <span className="text-sm text-gray-600 font-medium">NISN</span>
+                          <div className="bg-white border border-gray-200 rounded-lg p-3 mt-1">
+                            <p className="font-medium text-gray-900 font-mono">{result.nisn}</p>
+                          </div>
                         </div>
                         <div>
-                          <span className="text-sm text-gray-600">Kelas</span>
-                          <p className="font-medium text-gray-900">{result.kelas} {result.rombel}</p>
+                          <span className="text-sm text-gray-600 font-medium">Kelas</span>
+                          <div className="bg-white border border-gray-200 rounded-lg p-3 mt-1">
+                            <p className="font-medium text-gray-900">
+                              {result.kelas} {result.rombel}
+                            </p>
+                          </div>
                         </div>
                       </div>
+
                       <div>
-                        <span className="text-sm text-gray-600">Sekolah</span>
-                        <p className="font-medium text-gray-900">{result.nomenklatur}</p>
+                        <span className="text-sm text-gray-600 font-medium">NIK</span>
+                        <div className="bg-white border border-gray-200 rounded-lg p-3 mt-1">
+                          <p className="font-medium text-gray-900 font-mono">{result.nik}</p>
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* PIP Status Card */}
-                  <div className={`rounded-xl p-5 ${
+                  {/* Kartu Status */}
+                  <div className={`border rounded-xl p-6 ${
                     result.status_cair === 'Sudah Cair' 
-                      ? 'bg-gradient-to-br from-green-50 to-green-100' 
-                      : 'bg-gradient-to-br from-yellow-50 to-yellow-100'
+                      ? 'border-green-200 bg-gradient-to-br from-green-50 to-white' 
+                      : 'border-yellow-200 bg-gradient-to-br from-yellow-50 to-white'
                   }`}>
-                    <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center gap-3 mb-4 pb-3 border-b border-gray-100">
                       <div className={`p-2 rounded-lg ${
                         result.status_cair === 'Sudah Cair' ? 'bg-green-500' : 'bg-yellow-500'
                       }`}>
                         <span className="text-white text-lg">
-                          {result.status_cair === 'Sudah Cair' ? '💰' : '⏳'}
+                          {result.status_cair === 'Sudah Cair' ? '✅' : '⏳'}
                         </span>
                       </div>
                       <div>
-                        <h3 className="font-semibold text-gray-800">Status PIP</h3>
-                        <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        <h3 className="font-semibold text-lg text-gray-800">Status PIP</h3>
+                        <div className={`px-3 py-1 rounded-full text-sm font-medium ${
                           result.status_cair === 'Sudah Cair' 
-                            ? 'bg-green-200 text-green-800' 
-                            : 'bg-yellow-200 text-yellow-800'
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-yellow-100 text-yellow-800'
                         }`}>
                           {result.status_cair}
                         </div>
@@ -270,110 +309,145 @@ const CekPIP = () => {
                         <span className="text-sm text-gray-600">Layak PIP</span>
                         <p className="font-medium text-gray-900">{result.layak_pip}</p>
                       </div>
-                      {result.tanggal_cair && (
-                        <div>
-                          <span className="text-sm text-gray-600">Tanggal Cair</span>
-                          <p className="font-medium text-gray-900">{formatDate(result.tanggal_cair)}</p>
-                        </div>
-                      )}
+                      <div>
+                        <span className="text-sm text-gray-600">Keterangan</span>
+                        <p className="text-gray-700">{result.keterangan_pencairan}</p>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Right Column - PIP Details */}
+                {/* Kolom Kanan: Data PIP dan SK */}
                 <div className="space-y-6">
-                  {/* Financial Card */}
-                  <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-5">
-                    <div className="flex items-center gap-3 mb-4">
+                  {/* Kartu Data PIP */}
+                  <div className="border border-purple-200 rounded-xl p-6 bg-gradient-to-br from-purple-50 to-white">
+                    <div className="flex items-center gap-3 mb-4 pb-3 border-b border-gray-100">
                       <div className="p-2 bg-purple-500 rounded-lg">
-                        <span className="text-white text-lg">💵</span>
+                        <span className="text-white text-lg">💰</span>
                       </div>
-                      <h3 className="font-semibold text-gray-800">Data Keuangan</h3>
+                      <h3 className="font-semibold text-lg text-gray-800">Data PIP</h3>
                     </div>
                     <div className="space-y-4">
-                      <div className="text-center">
-                        <span className="text-sm text-gray-600">Total Dana PIP</span>
-                        <p className="text-2xl font-bold text-purple-700 mt-1">
-                          {formatCurrency(result.nominal)}
-                        </p>
-                      </div>
                       <div>
-                        <span className="text-sm text-gray-600">No Rekening</span>
-                        <p className="font-medium text-gray-900 font-mono">{result.no_rekening}</p>
+                        <span className="text-sm text-gray-600 font-medium">Nominal PIP</span>
+                        <div className="bg-white border border-gray-200 rounded-lg p-4 mt-1 text-center">
+                          <p className="text-2xl md:text-3xl font-bold text-purple-700">
+                            {formatCurrency(result.nominal)}
+                          </p>
+                        </div>
                       </div>
+                      
                       <div>
-                        <span className="text-sm text-gray-600">Nama Rekening</span>
-                        <p className="font-medium text-gray-900">{result.nama_rekening}</p>
+                        <span className="text-sm text-gray-600 font-medium">No Rekening</span>
+                        <div className="bg-white border border-gray-200 rounded-lg p-3 mt-1">
+                          <p className="font-medium text-gray-900 font-mono">{result.no_rekening}</p>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <span className="text-sm text-gray-600 font-medium">Sumber Dana</span>
+                        <div className="bg-white border border-gray-200 rounded-lg p-3 mt-1">
+                          <p className="font-medium text-gray-900">{result.tahap_keterangan}</p>
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* SK Details Card */}
-                  <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-5">
-                    <div className="flex items-center gap-3 mb-4">
+                  {/* Kartu Data SK */}
+                  <div className="border border-gray-300 rounded-xl p-6 bg-gradient-to-br from-gray-50 to-white">
+                    <div className="flex items-center gap-3 mb-4 pb-3 border-b border-gray-100">
                       <div className="p-2 bg-gray-600 rounded-lg">
                         <span className="text-white text-lg">📋</span>
                       </div>
-                      <h3 className="font-semibold text-gray-800">Data SK</h3>
+                      <h3 className="font-semibold text-lg text-gray-800">Data SK PIP</h3>
                     </div>
-                    <div className="space-y-3">
+                    <div className="space-y-4">
                       <div>
-                        <span className="text-sm text-gray-600">Nomor SK</span>
-                        <p className="font-medium text-gray-900 text-sm">{result.nomor_sk}</p>
+                        <span className="text-sm text-gray-600 font-medium">Nomor SK</span>
+                        <div className="bg-white border border-gray-200 rounded-lg p-3 mt-1">
+                          <p className="font-medium text-gray-900 text-sm">{result.nomor_sk}</p>
+                        </div>
                       </div>
+                      
                       <div>
-                        <span className="text-sm text-gray-600">Tanggal SK</span>
-                        <p className="font-medium text-gray-900">{formatDate(result.tanggal_sk)}</p>
+                        <span className="text-sm text-gray-600 font-medium">Tanggal SK</span>
+                        <div className="bg-white border border-gray-200 rounded-lg p-3 mt-1">
+                          <p className="font-medium text-gray-900">{formatDate(result.tanggal_sk)}</p>
+                        </div>
                       </div>
+                      
                       <div>
-                        <span className="text-sm text-gray-600">Keterangan</span>
-                        <p className="text-gray-700 text-sm">{result.tahap_keterangan}</p>
+                        <span className="text-sm text-gray-600 font-medium">Sekolah</span>
+                        <div className="bg-white border border-gray-200 rounded-lg p-3 mt-1">
+                          <p className="font-medium text-gray-900">{result.nomenklatur}</p>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Keterangan Tambahan */}
-              {result.keterangan_pencairan && (
-                <div className="mt-8 pt-6 border-t border-gray-200">
-                  <div className="bg-blue-50 rounded-xl p-4">
+              {/* Informasi Tambahan */}
+              <div className="mt-8 pt-6 border-t border-gray-200">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-blue-600">ℹ️</span>
-                      <span className="font-medium text-blue-800">Informasi Penting</span>
+                      <span className="font-medium text-blue-800">Informasi</span>
                     </div>
-                    <p className="text-blue-700 text-sm">{result.keterangan_pencairan}</p>
+                    <p className="text-blue-700 text-sm">
+                      Data ini bersumber dari database resmi SMAN 1 Rejotangan
+                    </p>
                   </div>
-                </div>
-              )}
-
-              {/* Warning for Belum Cair */}
-              {result.status_cair === 'Belum Cair' && (
-                <div className="mt-8 pt-6 border-t border-gray-200">
-                  <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200">
+                  
+                  <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="text-yellow-600">⚠️</span>
-                      <span className="font-medium text-yellow-800">Perhatian</span>
+                      <span className="text-yellow-600">📅</span>
+                      <span className="font-medium text-yellow-800">Periode</span>
                     </div>
                     <p className="text-yellow-700 text-sm">
-                      Dana PIP Anda belum dicairkan. Silakan hubungi pihak sekolah atau bank penyalur untuk informasi lebih lanjut.
+                      Tahun Ajaran 2024/2025 Semester Ganjil
+                    </p>
+                  </div>
+                  
+                  <div className="bg-green-50 rounded-lg p-4 border border-green-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-green-600">🔄</span>
+                      <span className="font-medium text-green-800">Update Terakhir</span>
+                    </div>
+                    <p className="text-green-700 text-sm">
+                      {formatDate(result.updated_at)}
                     </p>
                   </div>
                 </div>
-              )}
+              </div>
 
               {/* Actions */}
-              <div className="mt-8 pt-6 border-t border-gray-200 flex justify-between items-center">
+              <div className="mt-8 pt-6 border-t border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
                 <div className="text-sm text-gray-500">
-                  Data terakhir diperbarui: {formatDate(result.updated_at)}
+                  <p>Data ini untuk keperluan informasi resmi</p>
                 </div>
-                <button
-                  onClick={() => window.print()}
-                  className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700 font-medium"
-                >
-                  <span>🖨️</span>
-                  <span>Cetak</span>
-                </button>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => window.print()}
+                    className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700 font-medium"
+                  >
+                    <span>🖨️</span>
+                    <span>Cetak</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setResult(null);
+                      setNisn('');
+                      setTanggalLahir('');
+                      setSearchMade(false);
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 border border-blue-300 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors text-blue-700 font-medium"
+                  >
+                    <span>🔍</span>
+                    <span>Cari Lagi</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -431,6 +505,16 @@ const CekPIP = () => {
 
         {/* Footer */}
         <div className="mt-12 pt-8 border-t border-gray-200 text-center">
+          <div className="flex flex-col md:flex-row items-center justify-center gap-4 mb-4">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+              <span className="text-sm text-gray-600">Status: Sudah Cair</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+              <span className="text-sm text-gray-600">Status: Belum Cair</span>
+            </div>
+          </div>
           <p className="text-gray-600 text-sm">
             © 2024 SMAN 1 REJOTANGAN - Sistem Informasi PIP
           </p>
