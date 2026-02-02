@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 import { useNavigate } from "react-router-dom";
+import { useDeviceFingerprint } from "../hooks/useDeviceFingerprint";
+import { banService } from "../services/banService";
+import BanPopup from "../components/bans/BanPopup";
 
 const Form = () => {
     const [activeTab, setActiveTab] = useState('signin');
@@ -19,7 +22,44 @@ const Form = () => {
     const [errors, setErrors] = useState({});
     const [submitSuccess, setSubmitSuccess] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [deviceBan, setDeviceBan] = useState(null);
+    const [showBanPopup, setShowBanPopup] = useState(false);
+    
     const navigate = useNavigate();
+    const { fingerprint, deviceInfo, ipAddress } = useDeviceFingerprint();
+
+    // Check for device ban on component mount
+    useEffect(() => {
+        const checkDeviceBan = async () => {
+            if (fingerprint) {
+                const banCheck = await banService.checkDeviceBan(fingerprint);
+                if (banCheck.isBanned) {
+                    setDeviceBan(banCheck);
+                    setShowBanPopup(true);
+                }
+            }
+        };
+        
+        checkDeviceBan();
+    }, [fingerprint]);
+
+    // Validate device before any action
+    const validateDevice = async (email = null) => {
+        if (!fingerprint) {
+            console.warn('Device fingerprint not available');
+            return true;
+        }
+
+        const banCheck = await banService.checkDeviceBan(fingerprint, email);
+        
+        if (banCheck.isBanned) {
+            setDeviceBan(banCheck);
+            setShowBanPopup(true);
+            return false;
+        }
+        
+        return true;
+    };
 
     const validateSignUp = () => {
         const newErrors = {};
@@ -65,87 +105,30 @@ const Form = () => {
         return Object.keys(newErrors).length === 0;
     };
 
-    const handleSignUpChange = (e) => {
-        const { name, value } = e.target;
-        setSignUpData(prev => ({ ...prev, [name]: value }));
-        if (errors[name]) {
-            setErrors(prev => ({ ...prev, [name]: "" }));
-        }
-        if (submitSuccess) {
-            setSubmitSuccess(false);
-        }
-    };
-
-    const handleSignInChange = (e) => {
-        const { name, value } = e.target;
-        setSignInData(prev => ({ ...prev, [name]: value }));
-        if (errors[name]) {
-            setErrors(prev => ({ ...prev, [name]: "" }));
-        }
-        if (submitSuccess) {
-            setSubmitSuccess(false);
-        }
-    };
-
-    const handleForgotPassword = async (e) => {
-        e.preventDefault();
-        if (!validateForgotPassword()) return;
-
-        setLoading(true);
-        try {
-            // PERBAIKAN DISINI: Redirect ke halaman yang benar
-            const siteUrl = window.location.origin; // Misal: https://yourdomain.com
-            const redirectUrl = `${siteUrl}/reset-password`; // Arahkan ke halaman reset password
-            
-            console.log("Mengirim reset password ke:", forgotPasswordEmail);
-            console.log("Redirect ke:", redirectUrl);
-
-            const { error } = await supabase.auth.resetPasswordForEmail(
-                forgotPasswordEmail,
-                {
-                    redirectTo: redirectUrl,
-                }
-            );
-
-            if (error) {
-                throw error;
-            }
-
-            setIsResetLinkSent(true);
-            setErrors({});
-            
-            // Reset form setelah 5 detik
-            setTimeout(() => {
-                setIsForgotPassword(false);
-                setIsResetLinkSent(false);
-                setForgotPasswordEmail("");
-            }, 5000);
-            
-        } catch (error) {
-            console.error("Forgot Password Error:", error);
-            setErrors({ 
-                forgotPassword: error.message === "User not found" 
-                    ? "Email tidak terdaftar" 
-                    : error.message === "rate limit exceeded"
-                    ? "Terlalu banyak percobaan. Coba lagi nanti."
-                    : "Terjadi kesalahan, coba lagi nanti"
-            });
-        } finally {
-            setLoading(false);
-        }
-    };
-
     const handleSignUp = async (e) => {
         e.preventDefault();
         if (!validateSignUp()) return;
 
+        // Check device ban before registration
+        const isDeviceAllowed = await validateDevice(signUpData.email);
+        if (!isDeviceAllowed) return;
+
         setLoading(true);
         try {
+            // Log registration attempt
+            await banService.logLoginAttempt({
+                email: signUpData.email,
+                deviceFingerprint: fingerprint,
+                ipAddress: ipAddress,
+                userAgent: deviceInfo.userAgent,
+                success: true,
+            });
+
             const { data, error } = await supabase.auth.signUp({
                 email: signUpData.email,
                 password: signUpData.password,
                 options: {
-                    emailRedirectTo: `${window.location.origin}/auth`, // Redirect setelah konfirmasi email
+                    emailRedirectTo: `${window.location.origin}/auth`,
                 }
             });
 
@@ -176,11 +159,24 @@ const Form = () => {
         e.preventDefault();
         if (!validateSignIn()) return;
 
+        // Check device ban before login
+        const isDeviceAllowed = await validateDevice(signInData.email);
+        if (!isDeviceAllowed) return;
+
         setLoading(true);
         try {
             const { data, error } = await supabase.auth.signInWithPassword({
                 email: signInData.email,
                 password: signInData.password
+            });
+
+            // Log login attempt
+            await banService.logLoginAttempt({
+                email: signInData.email,
+                deviceFingerprint: fingerprint,
+                ipAddress: ipAddress,
+                userAgent: deviceInfo.userAgent,
+                success: !error,
             });
 
             if (error) {
@@ -202,7 +198,7 @@ const Form = () => {
                     setTimeout(() => {
                         setSubmitSuccess(false);
                         if (profile.roles === 'admin') {
-                            navigate("/admin");
+                            navigate("/admin/bans");
                         } else if (profile.roles === 'user-raport') {
                             navigate("/dashboard-user");
                         } else {
@@ -226,8 +222,74 @@ const Form = () => {
         }
     };
 
+    const handleForgotPassword = async (e) => {
+        e.preventDefault();
+        if (!validateForgotPassword()) return;
+
+        setLoading(true);
+        try {
+            const siteUrl = window.location.origin;
+            const redirectUrl = `${siteUrl}/reset-password`;
+
+            const { error } = await supabase.auth.resetPasswordForEmail(
+                forgotPasswordEmail,
+                {
+                    redirectTo: redirectUrl,
+                }
+            );
+
+            if (error) {
+                throw error;
+            }
+
+            setIsResetLinkSent(true);
+            setErrors({});
+            
+            setTimeout(() => {
+                setIsForgotPassword(false);
+                setIsResetLinkSent(false);
+                setForgotPasswordEmail("");
+            }, 5000);
+            
+        } catch (error) {
+            console.error("Forgot Password Error:", error);
+            setErrors({ 
+                forgotPassword: error.message === "User not found" 
+                    ? "Email tidak terdaftar" 
+                    : error.message === "rate limit exceeded"
+                    ? "Terlalu banyak percobaan. Coba lagi nanti."
+                    : "Terjadi kesalahan, coba lagi nanti"
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleAppealSubmit = async (appealData) => {
+        const result = await banService.submitAppeal({
+            ...appealData,
+            userId: deviceBan.ban.user_id,
+        });
+
+        if (result.success) {
+            alert('Banding berhasil diajukan. Mohon tunggu respon dari admin.');
+            setShowBanPopup(false);
+        }
+        
+        return result;
+    };
+
     return (
         <section className="min-h-screen bg-white pt-20 flex items-center justify-center">
+            {/* Ban Popup */}
+            {showBanPopup && deviceBan && (
+                <BanPopup
+                    ban={deviceBan.ban}
+                    onClose={() => setShowBanPopup(false)}
+                    onSubmitAppeal={handleAppealSubmit}
+                />
+            )}
+
             <div className="container">
                 <div className="max-w-7xl mx-auto px-4">
                     <div className="text-center mb-8" data-aos="fade-down" data-aos-duration="1000">
