@@ -1,6 +1,6 @@
 // src/pages/AdminBansPage.jsx
 import React, { useState, useEffect } from 'react';
-import { banService } from '../services/banService';
+import { banService } from '../../services/banService';
 import AdminBansTable from '../components/bans/AdminBansTable';
 import UserDevicesTable from '../components/bans/UserDevicesTable'; // Komponen baru
 import { useNavigate } from 'react-router-dom';
