@@ -198,7 +198,7 @@ const Form = () => {
                     setTimeout(() => {
                         setSubmitSuccess(false);
                         if (profile.roles === 'admin') {
-                            navigate("/admin/bans");
+                            navigate("/admin");
                         } else if (profile.roles === 'user-raport') {
                             navigate("/dashboard-user");
                         } else {
