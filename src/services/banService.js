@@ -35,14 +35,21 @@ export const banService = {
       const userId = deviceData.userId || null;
       
       // Cek apakah device sudah pernah terdaftar
-      const { data: existingDevice, error: checkError } = await supabase
+      const query = supabase
         .from('user_devices')
         .select('*')
-        .eq('device_fingerprint', deviceData.deviceFingerprint)
-        .eq('user_id', userId)
-        .maybeSingle();
+        .eq('device_fingerprint', deviceData.deviceFingerprint);
 
-      if (checkError) {
+      // Cari berdasarkan user_id jika ada, jika tidak cari berdasarkan email
+      if (userId) {
+        query.eq('user_id', userId);
+      } else {
+        query.eq('email', deviceData.email);
+      }
+
+      const { data: existingDevice, error: checkError } = await query.maybeSingle();
+
+      if (checkError && checkError.code !== 'PGRST116') { // PGRST116 = no rows returned
         console.error('❌ Error checking existing device:', checkError);
       }
 
@@ -53,6 +60,7 @@ export const banService = {
         result = await supabase
           .from('user_devices')
           .update({
+            user_id: userId || existingDevice.user_id,
             last_seen_at: now,
             login_count: (existingDevice.login_count || 0) + 1,
             is_current: true,
@@ -185,13 +193,12 @@ export const banService = {
       // Query untuk cek active bans
       let query = supabase
         .from('device_bans')
-        .select(`
-          *,
-          ban_appeals(*)
-        `)
-        .or(`device_fingerprint.eq.${deviceFingerprint}${email ? `,email.eq.${email}` : ''}`)
-        .or(`is_permanent.eq.true,and(banned_until.gt.${now},is_permanent.eq.false)`)
-        .limit(1);
+        .select('*')
+        .eq('device_fingerprint', deviceFingerprint);
+
+      if (email) {
+        query = query.or(`device_fingerprint.eq.${deviceFingerprint},email.eq.${email}`);
+      }
 
       const { data, error } = await query;
 
@@ -203,15 +210,27 @@ export const banService = {
       console.log('📊 Ban check result:', data);
       
       if (data && data.length > 0) {
-        const ban = data[0];
-        const isActive = ban.is_permanent || new Date(ban.banned_until) > new Date();
+        // Cari ban yang masih aktif
+        const activeBan = data.find(ban => {
+          if (ban.is_permanent) return true;
+          if (!ban.banned_until) return false;
+          return new Date(ban.banned_until) > new Date();
+        });
         
-        if (isActive) {
+        if (activeBan) {
+          // Cek apakah ada appeal untuk ban ini
+          const { data: appeals } = await supabase
+            .from('ban_appeals')
+            .select('*')
+            .eq('device_ban_id', activeBan.id)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
           return {
             isBanned: true,
-            ban: ban,
-            hasAppeal: ban.ban_appeals && ban.ban_appeals.length > 0,
-            appeal: ban.ban_appeals?.[0],
+            ban: activeBan,
+            hasAppeal: appeals && appeals.length > 0,
+            appeal: appeals?.[0],
           };
         }
       }
@@ -229,9 +248,6 @@ export const banService = {
       console.log('🔨 Banning device with data:', banData);
       
       const currentUserId = await this.getCurrentUserId();
-      if (!currentUserId && banData.bannedBy) {
-        console.log('⚠️ Using provided bannedBy ID:', banData.bannedBy);
-      }
       
       // Cari user_id dari email jika tersedia
       let userId = banData.userId;
@@ -289,7 +305,8 @@ export const banService = {
             last_ip_address: banData.ipAddress,
             updated_at: new Date().toISOString()
           })
-          .eq('id', userId);
+          .eq('id', userId)
+          .maybeSingle();
       }
 
       return { success: true, data };
@@ -337,18 +354,14 @@ export const banService = {
   
   async getAllBans(page = 1, limit = 10, filters = {}) {
     try {
-      console.log('📋 Fetching bans with profiles...');
+      console.log('📋 Fetching bans...');
       
       const start = (page - 1) * limit;
       
       // Query utama untuk mendapatkan bans
       let query = supabase
         .from('device_bans')
-        .select(`
-          *,
-          ban_appeals(*),
-          banned_by_user:profiles!banned_by(full_name, email)
-        `, { count: 'exact' })
+        .select('*', { count: 'exact' })
         .order('created_at', { ascending: false });
 
       // Apply filters
@@ -388,7 +401,10 @@ export const banService = {
       const userIds = bansData
         .map(ban => ban.user_id)
         .filter(id => id)
-        .filter((value, index, self) => self.indexOf(value) === index); // Remove duplicates
+        .concat(
+          bansData.map(ban => ban.banned_by).filter(id => id)
+        )
+        .filter((value, index, self) => self.indexOf(value) === index);
 
       console.log('👥 User IDs to fetch:', userIds);
 
@@ -411,9 +427,28 @@ export const banService = {
         }
       }
 
+      // Query auth.users untuk email (fallback)
+      let authUsersData = {};
+      if (userIds.length > 0) {
+        const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
+        
+        if (!authError && authUsers.users) {
+          authUsers.users.forEach(user => {
+            if (userIds.includes(user.id)) {
+              authUsersData[user.id] = {
+                id: user.id,
+                email: user.email,
+                full_name: user.user_metadata?.full_name || user.email
+              };
+            }
+          });
+        }
+      }
+
       // Gabungkan data bans dengan profiles
       const enrichedData = bansData.map(ban => {
-        const userProfile = ban.user_id ? profilesData[ban.user_id] : null;
+        const userProfile = ban.user_id ? (profilesData[ban.user_id] || authUsersData[ban.user_id]) : null;
+        const bannedByProfile = ban.banned_by ? (profilesData[ban.banned_by] || authUsersData[ban.banned_by]) : null;
         
         return {
           ...ban,
@@ -423,7 +458,11 @@ export const banService = {
           } : { 
             email: ban.email || 'N/A', 
             profiles: { full_name: 'N/A' } 
-          }
+          },
+          banned_by_user: bannedByProfile ? {
+            email: bannedByProfile.email || 'No email',
+            profiles: { full_name: bannedByProfile.full_name || 'N/A' }
+          } : null
         };
       });
 
@@ -456,14 +495,11 @@ export const banService = {
       
       let query = supabase
         .from('user_devices')
-        .select(`
-          *,
-          user:profiles!user_id(full_name, email)
-        `, { count: 'exact' })
+        .select('*', { count: 'exact' })
         .order('last_seen_at', { ascending: false });
 
       if (filters.search) {
-        query = query.or(`email.ilike.%${filters.search}%,device_fingerprint.ilike.%${filters.search}%,ip_address.ilike.%${filters.search}%`);
+        query = query.or(`email.ilike.%${filters.search}%,device_fingerprint.ilike.%${filters.search}%,ip_address.ilike.%${filters.search}%,device_name.ilike.%${filters.search}%`);
       }
 
       if (filters.email) {
@@ -477,9 +513,45 @@ export const banService = {
         throw error;
       }
 
+      // Jika ada user_id, ambil data profile
+      const enrichedData = [];
+      for (const device of (data || [])) {
+        let userInfo = null;
+        
+        if (device.user_id) {
+          // Coba dari profiles
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('email, full_name')
+            .eq('id', device.user_id)
+            .maybeSingle();
+          
+          if (profile) {
+            userInfo = {
+              email: profile.email,
+              full_name: profile.full_name
+            };
+          } else {
+            // Coba dari auth.users
+            const { data: authUser } = await supabase.auth.admin.getUserById(device.user_id);
+            if (authUser) {
+              userInfo = {
+                email: authUser.email,
+                full_name: authUser.user_metadata?.full_name || authUser.email
+              };
+            }
+          }
+        }
+        
+        enrichedData.push({
+          ...device,
+          user: userInfo
+        });
+      }
+
       return {
         success: true,
-        data: data || [],
+        data: enrichedData,
         total: count || 0,
         page,
         totalPages: Math.ceil((count || 0) / limit),
@@ -590,11 +662,13 @@ export const banService = {
         .select('*', { count: 'exact', head: true })
         .eq('is_permanent', true);
 
-      // Recent login attempts
+      // Recent login attempts (24 jam)
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const { count: recentLoginsCount } = await supabase
         .from('login_attempts')
         .select('*', { count: 'exact', head: true })
-        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+        .gte('created_at', yesterday.toISOString())
+        .eq('success', true);
 
       return {
         success: true,
@@ -638,7 +712,7 @@ export const banService = {
   async testConnection() {
     try {
       // Test semua tabel
-      const tables = ['user_devices', 'device_bans', 'ban_appeals', 'login_attempts', 'profiles'];
+      const tables = ['user_devices', 'device_bans', 'ban_appeals', 'login_attempts'];
       const results = {};
       
       for (const table of tables) {
@@ -673,11 +747,11 @@ export const banService = {
         .from('profiles')
         .select('id, email, full_name')
         .eq('email', email)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
       
-      return { success: true, data };
+      return { success: true, data: data || null };
       
     } catch (error) {
       console.error('❌ Error getting user:', error);
@@ -709,33 +783,34 @@ export const banService = {
     try {
       const { data, error } = await supabase
         .from('user_devices')
-        .select(`
-          *,
-          user:profiles!user_id(full_name, email)
-        `)
+        .select('*')
         .eq('device_fingerprint', deviceFingerprint)
         .order('last_seen_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (error) {
-        // Jika tidak ditemukan di user_devices, coba di device_bans
-        const { data: banData } = await supabase
-          .from('device_bans')
-          .select('*')
-          .eq('device_fingerprint', deviceFingerprint)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
-        
-        if (banData) {
-          return { success: true, data: banData, source: 'bans' };
-        }
-        
-        throw new Error('Device not found');
+        console.error('❌ Error getting device from user_devices:', error);
+      }
+
+      if (data) {
+        return { success: true, data, source: 'user_devices' };
+      }
+
+      // Jika tidak ditemukan di user_devices, coba di device_bans
+      const { data: banData } = await supabase
+        .from('device_bans')
+        .select('*')
+        .eq('device_fingerprint', deviceFingerprint)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (banData) {
+        return { success: true, data: banData, source: 'bans' };
       }
       
-      return { success: true, data, source: 'user_devices' };
+      throw new Error('Device not found');
       
     } catch (error) {
       console.error('❌ Error getting device info:', error);
