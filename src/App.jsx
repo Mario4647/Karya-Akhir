@@ -24,7 +24,6 @@ import Trip from "./admin/tripsettings/Trip";
 import AdminMessage from "./admin/pesan/AdminMessage";
 import AdminPIP from "./admin/pip/AdminPIP";
 import AdminBansPage from "./admin/ban-device/AdminBansPage";
-import AdminBansPage from "./admin/ban-device/AdminBansPage";
 import AdminSearchHistory from "./pencarian/pip/AdminSearchHistory";
 import CekPIP from "./user/pip/CekPIP";
 import UserTripDashboard from "./triplist/UserTripDashboard";
