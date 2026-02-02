@@ -26,11 +26,13 @@ const Form = () => {
     const [deviceBan, setDeviceBan] = useState(null);
     const [showBanPopup, setShowBanPopup] = useState(false);
     const [isCheckingBan, setIsCheckingBan] = useState(true);
+    const [deviceTracked, setDeviceTracked] = useState(false);
     
     const navigate = useNavigate();
     const { fingerprint, deviceInfo, ipAddress, isReady } = useDeviceFingerprint();
 
-    // Handle sign up input changes
+    // ==================== HANDLERS ====================
+
     const handleSignUpChange = (e) => {
         const { name, value } = e.target;
         setSignUpData(prev => ({ ...prev, [name]: value }));
@@ -42,7 +44,6 @@ const Form = () => {
         }
     };
 
-    // Handle sign in input changes
     const handleSignInChange = (e) => {
         const { name, value } = e.target;
         setSignInData(prev => ({ ...prev, [name]: value }));
@@ -54,7 +55,8 @@ const Form = () => {
         }
     };
 
-    // Check for device ban on component mount
+    // ==================== DEVICE CHECKING ====================
+
     useEffect(() => {
         const checkDeviceBan = async () => {
             if (fingerprint && isReady) {
@@ -82,11 +84,10 @@ const Form = () => {
         checkDeviceBan();
     }, [fingerprint, isReady]);
 
-    // Validate device before any action
     const validateDevice = async (email = null) => {
         if (!fingerprint) {
             console.log('⚠️ Fingerprint not available yet');
-            return true; // Allow action if fingerprint not ready
+            return true;
         }
 
         try {
@@ -102,11 +103,63 @@ const Form = () => {
             return true;
         } catch (error) {
             console.error('Error validating device:', error);
-            return true; // Allow action if check fails
+            return true;
         }
     };
 
-    // Validate sign up form
+    // ==================== TRACK DEVICE FUNCTION ====================
+
+    const trackDevice = async (email, userId = null, actionType = 'login') => {
+        try {
+            if (!fingerprint || !deviceInfo || !ipAddress) {
+                console.log('⚠️ Device info not complete, skipping tracking');
+                return;
+            }
+
+            console.log(`📱 Tracking device for ${actionType}:`, email);
+            
+            // Track device login
+            const deviceData = {
+                userId: userId,
+                email: email,
+                deviceFingerprint: fingerprint,
+                ipAddress: ipAddress,
+                userAgent: deviceInfo.userAgent || navigator.userAgent,
+                platform: deviceInfo.platform || navigator.platform,
+                browser: deviceInfo.browser || 'Unknown',
+                os: deviceInfo.os || 'Unknown',
+                screenResolution: deviceInfo.screenResolution || `${window.screen.width}x${window.screen.height}`,
+                languages: deviceInfo.languages || navigator.language,
+                timezone: deviceInfo.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+            };
+
+            const trackResult = await banService.trackDeviceLogin(deviceData);
+            
+            if (trackResult.success) {
+                console.log(`✅ Device tracked successfully for ${email}`);
+                setDeviceTracked(true);
+            } else {
+                console.error('❌ Failed to track device:', trackResult.error);
+            }
+
+            // Log login attempt
+            await banService.logLoginAttempt({
+                email: email,
+                userId: userId,
+                deviceFingerprint: fingerprint,
+                ipAddress: ipAddress,
+                userAgent: deviceInfo.userAgent || navigator.userAgent,
+                actionType: actionType,
+                success: true,
+            });
+
+        } catch (error) {
+            console.error('Error tracking device:', error);
+        }
+    };
+
+    // ==================== VALIDATION FUNCTIONS ====================
+
     const validateSignUp = () => {
         const newErrors = {};
         if (!signUpData.email) {
@@ -126,7 +179,6 @@ const Form = () => {
         return Object.keys(newErrors).length === 0;
     };
 
-    // Validate sign in form
     const validateSignIn = () => {
         const newErrors = {};
         if (!signInData.email) {
@@ -141,7 +193,6 @@ const Form = () => {
         return Object.keys(newErrors).length === 0;
     };
 
-    // Validate forgot password form
     const validateForgotPassword = () => {
         const newErrors = {};
         if (!forgotPasswordEmail) {
@@ -153,7 +204,8 @@ const Form = () => {
         return Object.keys(newErrors).length === 0;
     };
 
-    // Handle sign up
+    // ==================== AUTH HANDLERS ====================
+
     const handleSignUp = async (e) => {
         e.preventDefault();
         if (!validateSignUp()) return;
@@ -167,16 +219,8 @@ const Form = () => {
 
         setLoading(true);
         try {
-            // Log registration attempt
-            await banService.logLoginAttempt({
-                email: signUpData.email,
-                deviceFingerprint: fingerprint || 'unknown',
-                ipAddress: ipAddress || 'unknown',
-                userAgent: deviceInfo?.userAgent || navigator.userAgent,
-                success: true,
-            });
-
-            const { data, error } = await supabase.auth.signUp({
+            // Register user dengan Supabase Auth
+            const { data: authData, error: authError } = await supabase.auth.signUp({
                 email: signUpData.email,
                 password: signUpData.password,
                 options: {
@@ -187,14 +231,14 @@ const Form = () => {
                 }
             });
 
-            if (error) {
-                let errorMessage = error.message;
+            if (authError) {
+                let errorMessage = authError.message;
                 
-                if (error.message === "User already registered") {
+                if (authError.message === "User already registered") {
                     errorMessage = "Email sudah terdaftar";
-                } else if (error.message.includes('rate limit')) {
+                } else if (authError.message.includes('rate limit')) {
                     errorMessage = "Terlalu banyak percobaan. Coba lagi nanti.";
-                } else if (error.message.includes('Password')) {
+                } else if (authError.message.includes('Password')) {
                     errorMessage = "Kata sandi terlalu lemah. Gunakan minimal 6 karakter.";
                 }
                 
@@ -202,18 +246,16 @@ const Form = () => {
                 return;
             }
 
-            if (data.user) {
-                // Create profile for new user
+            if (authData.user) {
+                // Buat profile untuk user baru
                 try {
                     await supabase
                         .from('profiles')
                         .insert([
                             {
-                                id: data.user.id,
+                                id: authData.user.id,
                                 email: signUpData.email,
                                 full_name: signUpData.email.split('@')[0],
-                                last_device_fingerprint: fingerprint,
-                                last_ip_address: ipAddress,
                                 roles: 'user',
                                 created_at: new Date().toISOString(),
                                 updated_at: new Date().toISOString()
@@ -221,27 +263,54 @@ const Form = () => {
                         ]);
                 } catch (profileError) {
                     console.error('Error creating profile:', profileError);
-                    // Continue even if profile creation fails
                 }
+
+                // Track device untuk registration
+                await trackDevice(signUpData.email, authData.user.id, 'register');
+
+                // Log registration attempt
+                await banService.logLoginAttempt({
+                    email: signUpData.email,
+                    userId: authData.user.id,
+                    deviceFingerprint: fingerprint,
+                    ipAddress: ipAddress,
+                    userAgent: deviceInfo?.userAgent || navigator.userAgent,
+                    actionType: 'register',
+                    success: true,
+                });
 
                 setSubmitSuccess(true);
                 setSignUpData({ email: "", password: "", confirmPassword: "" });
-                setTimeout(() => setSubmitSuccess(false), 5000);
                 
-                // Log successful registration
-                console.log('✅ User registered successfully:', data.user.email);
+                console.log('✅ User registered successfully:', authData.user.email);
+                
+                setTimeout(() => {
+                    setSubmitSuccess(false);
+                    // Auto login setelah register
+                    handleAutoLogin(signUpData.email, signUpData.password);
+                }, 2000);
             }
         } catch (error) {
             console.error("Sign Up Error:", error);
             setErrors({ 
                 submit: "Terjadi kesalahan sistem. Coba lagi nanti atau hubungi admin." 
             });
+            
+            // Log failed registration
+            await banService.logLoginAttempt({
+                email: signUpData.email,
+                deviceFingerprint: fingerprint,
+                ipAddress: ipAddress,
+                userAgent: deviceInfo?.userAgent || navigator.userAgent,
+                actionType: 'register',
+                success: false,
+                errorMessage: error.message
+            });
         } finally {
             setLoading(false);
         }
     };
 
-    // Handle sign in
     const handleSignIn = async (e) => {
         e.preventDefault();
         if (!validateSignIn()) return;
@@ -255,67 +324,72 @@ const Form = () => {
 
         setLoading(true);
         try {
-            const { data, error } = await supabase.auth.signInWithPassword({
+            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
                 email: signInData.email,
                 password: signInData.password
             });
 
-            // Log login attempt
-            await banService.logLoginAttempt({
-                email: signInData.email,
-                deviceFingerprint: fingerprint || 'unknown',
-                ipAddress: ipAddress || 'unknown',
-                userAgent: deviceInfo?.userAgent || navigator.userAgent,
-                success: !error,
-            });
-
-            if (error) {
-                // Handle specific errors
-                let errorMessage = error.message;
+            if (authError) {
+                let errorMessage = authError.message;
                 
-                if (error.message === 'Invalid login credentials') {
+                if (authError.message === 'Invalid login credentials') {
                     errorMessage = 'Email atau kata sandi salah';
-                } else if (error.message.includes('rate limit')) {
+                } else if (authError.message.includes('rate limit')) {
                     errorMessage = 'Terlalu banyak percobaan. Coba lagi nanti.';
-                } else if (error.message.includes('Email not confirmed')) {
+                } else if (authError.message.includes('Email not confirmed')) {
                     errorMessage = 'Email belum dikonfirmasi. Periksa inbox email Anda.';
                 }
                 
                 setErrors({ submit: errorMessage });
+                
+                // Log failed login attempt
+                await banService.logLoginAttempt({
+                    email: signInData.email,
+                    deviceFingerprint: fingerprint,
+                    ipAddress: ipAddress,
+                    userAgent: deviceInfo?.userAgent || navigator.userAgent,
+                    actionType: 'login',
+                    success: false,
+                    errorMessage: authError.message
+                });
+                
                 return;
             }
 
-            if (data.user) {
+            if (authData.user) {
                 // Update profile dengan device info terakhir
                 try {
                     await supabase
                         .from('profiles')
                         .update({
-                            last_device_fingerprint: fingerprint,
-                            last_ip_address: ipAddress,
+                            last_login: new Date().toISOString(),
                             updated_at: new Date().toISOString()
                         })
-                        .eq('id', data.user.id);
+                        .eq('id', authData.user.id);
                 } catch (profileError) {
                     console.error('Error updating profile:', profileError);
-                    // Continue even if profile update fails
                 }
+
+                // Track device untuk login
+                await trackDevice(signInData.email, authData.user.id, 'login');
 
                 // Get user profile for role checking
                 const { data: profile, error: profileError } = await supabase
                     .from('profiles')
                     .select('roles')
-                    .eq('id', data.user.id)
+                    .eq('id', authData.user.id)
                     .single();
 
                 setSubmitSuccess(true);
                 setSignInData({ email: "", password: "" });
                 
+                console.log('✅ User logged in successfully:', authData.user.email);
+                
                 setTimeout(() => {
                     setSubmitSuccess(false);
                     if (!profileError && profile) {
                         if (profile.roles === 'admin') {
-                            navigate("/admin");
+                            navigate("/admin/bans");
                         } else if (profile.roles === 'user-raport') {
                             navigate("/dashboard-user");
                         } else {
@@ -325,9 +399,6 @@ const Form = () => {
                         navigate("/");
                     }
                 }, 1500);
-                
-                // Log successful login
-                console.log('✅ User logged in successfully:', data.user.email);
             }
         } catch (error) {
             console.error("Sign In Error:", error);
@@ -339,7 +410,29 @@ const Form = () => {
         }
     };
 
-    // Handle forgot password
+    const handleAutoLogin = async (email, password) => {
+        try {
+            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+                email: email,
+                password: password
+            });
+
+            if (authError) {
+                console.error('Auto login failed:', authError);
+                return;
+            }
+
+            if (authData.user) {
+                // Track device untuk auto login
+                await trackDevice(email, authData.user.id, 'login');
+                
+                navigate("/");
+            }
+        } catch (error) {
+            console.error('Auto login error:', error);
+        }
+    };
+
     const handleForgotPassword = async (e) => {
         e.preventDefault();
         if (!validateForgotPassword()) return;
@@ -348,9 +441,6 @@ const Form = () => {
         try {
             const siteUrl = window.location.origin;
             const redirectUrl = `${siteUrl}/reset-password`;
-
-            console.log("Mengirim reset password ke:", forgotPasswordEmail);
-            console.log("Redirect ke:", redirectUrl);
 
             const { error } = await supabase.auth.resetPasswordForEmail(
                 forgotPasswordEmail,
@@ -366,7 +456,6 @@ const Form = () => {
             setIsResetLinkSent(true);
             setErrors({});
             
-            // Reset form setelah 5 detik
             setTimeout(() => {
                 setIsForgotPassword(false);
                 setIsResetLinkSent(false);
@@ -387,7 +476,8 @@ const Form = () => {
         }
     };
 
-    // Handle appeal submission
+    // ==================== APPEAL HANDLER ====================
+
     const handleAppealSubmit = async (appealData) => {
         try {
             console.log('Submitting appeal:', appealData);
@@ -412,11 +502,11 @@ const Form = () => {
         }
     };
 
-    // Close ban popup
     const handleCloseBanPopup = () => {
         setShowBanPopup(false);
-        // Jangan reset deviceBan agar tetap tahu bahwa device dibanned
     };
+
+    // ==================== RENDER ====================
 
     return (
         <section className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 pt-20 flex items-center justify-center px-4">
@@ -487,11 +577,13 @@ const Form = () => {
                             </div>
                         )}
 
-                        {/* Device Info (Debug) */}
-                        {process.env.NODE_ENV === 'development' && (
-                            <div className="mb-4 p-3 bg-gray-100 rounded-lg text-xs">
-                                <p>Fingerprint: {fingerprint ? `${fingerprint.substring(0, 20)}...` : 'Loading...'}</p>
-                                <p>Status: {isCheckingBan ? 'Checking ban...' : 'Ready'}</p>
+                        {/* Device Tracking Status */}
+                        {deviceTracked && process.env.NODE_ENV === 'development' && (
+                            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                <p className="text-sm text-blue-700 flex items-center gap-2">
+                                    <i className="bx bx-check-circle text-green-500"></i>
+                                    Device berhasil ditrack ke database
+                                </p>
                             </div>
                         )}
 
@@ -805,7 +897,7 @@ const Form = () => {
                                 © {new Date().getFullYear()} Karya Akhir Procommit 2025
                                 <span className="block text-xs text-gray-500 mt-1">
                                     <i className="bx bx-shield-alt mr-1"></i>
-                                    Dilindungi dengan sistem keamanan Device Ban
+                                    Sistem melacak device untuk keamanan akun Anda
                                 </span>
                             </p>
                         </div>
