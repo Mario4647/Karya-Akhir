@@ -14,30 +14,17 @@ const AdminBansTable = () => {
     total: 0,
     totalPages: 0,
   });
-  const [statistics, setStatistics] = useState({
-    totalBanned: 0,
-    percentageChange: 0,
-    pendingAppeals: 0,
-    todayAppeals: 0,
-    permanentBans: 0,
-    permanentPercentage: '0.0',
-    avgDurationDays: 7,
-    lastMonthChange: 0,
-  });
-
-  // Modals state
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [banModalData, setBanModalData] = useState(null);
   const [selectedAppeal, setSelectedAppeal] = useState(null);
   const [showAppealModal, setShowAppealModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [actionLoading, setActionLoading] = useState(false);
 
-  // Fetch bans dan statistics
   useEffect(() => {
     fetchBans();
-    fetchStatistics();
-  }, [pagination.page, statusFilter, searchTerm]);
+  }, [pagination.page, statusFilter]);
 
   const fetchBans = async () => {
     setLoading(true);
@@ -58,81 +45,84 @@ const AdminBansTable = () => {
       }));
     } else {
       console.error('❌ Failed to fetch bans:', result.error);
+      alert('Gagal memuat data: ' + result.error);
       setBans([]);
     }
     setLoading(false);
-  };
-
-  const fetchStatistics = async () => {
-    const result = await banService.getBanStatistics();
-    if (result.success) {
-      setStatistics(result.statistics);
-    }
   };
 
   const handleBanDevice = (user) => {
     console.log('Ban device clicked:', user);
     setBanModalData({
       userId: user.user_id,
-      email: user.user?.email || 'Unknown',
-      deviceInfo: user,
+      email: user.user?.email || 'N/A',
+      deviceInfo: {
+        fingerprint: user.device_fingerprint,
+        ipAddress: user.ip_address,
+        userAgent: user.user_agent,
+        platform: user.platform,
+        browser: user.browser,
+        os: user.os,
+        screenResolution: user.screen_resolution,
+        languages: user.languages,
+        timezone: user.timezone,
+      },
     });
   };
 
   const handleUnbanDevice = async (banId) => {
-    if (window.confirm('Yakin ingin melepas pembatasan device ini?')) {
-      const result = await banService.unbanDevice(banId);
-      if (result.success) {
-        alert('Device berhasil dilepas dari pembatasan');
-        fetchBans();
-        fetchStatistics();
-      } else {
-        alert('Gagal melepas ban: ' + result.error);
-      }
+    if (!window.confirm('Yakin ingin melepas pembatasan device ini?')) return;
+    
+    setActionLoading(true);
+    const result = await banService.unbanDevice(banId);
+    
+    if (result.success) {
+      alert('✅ Device berhasil dilepas dari pembatasan');
+      fetchBans(); // Refresh data
+    } else {
+      alert('❌ Gagal melepas ban: ' + result.error);
     }
+    setActionLoading(false);
   };
 
   const handleConfirmBan = async (banData) => {
     console.log('Confirming ban:', banData);
+    setActionLoading(true);
+    
     const result = await banService.banDevice({
       ...banData.deviceInfo,
       bannedUntil: banData.bannedUntil,
       isPermanent: banData.isPermanent,
       reason: banData.reason,
-      bannedBy: 'admin-user-id', // Ganti dengan ID admin yang sebenarnya
       email: banData.email,
     });
 
     if (result.success) {
-      alert('Device berhasil dibatasi');
+      alert('✅ Device berhasil dibatasi');
       setBanModalData(null);
-      fetchBans();
-      fetchStatistics();
+      fetchBans(); // Refresh data
     } else {
-      alert('Gagal membatasi device: ' + result.error);
+      alert('❌ Gagal membatasi device: ' + result.error);
     }
+    setActionLoading(false);
   };
 
   const handleAppealResponse = async (appealId, status) => {
     const response = prompt(`Berikan alasan untuk ${status === 'approved' ? 'menyetujui' : 'menolak'} banding:`);
-    if (response) {
-      const result = await banService.updateAppealStatus(
-        appealId,
-        status,
-        response,
-        'admin-user-id' // Ganti dengan ID admin yang sebenarnya
-      );
-      
-      if (result.success) {
-        alert(`Banding berhasil di${status === 'approved' ? 'setujui' : 'tolak'}`);
-        setShowAppealModal(false);
-        setSelectedAppeal(null);
-        fetchBans();
-        fetchStatistics();
-      } else {
-        alert(`Gagal merespon banding: ${result.error}`);
-      }
+    if (!response) return;
+    
+    setActionLoading(true);
+    const result = await banService.updateAppealStatus(appealId, status, response);
+    
+    if (result.success) {
+      alert(`✅ Banding berhasil di${status === 'approved' ? 'setujui' : 'tolak'}`);
+      setShowAppealModal(false);
+      setSelectedAppeal(null);
+      fetchBans();
+    } else {
+      alert(`❌ Gagal merespon banding: ${result.error}`);
     }
+    setActionLoading(false);
   };
 
   const isCurrentlyBanned = (ban) => {
@@ -154,9 +144,8 @@ const AdminBansTable = () => {
 
   const getStatusBadge = (ban) => {
     const isActive = isCurrentlyBanned(ban);
-    const isPerm = ban.is_permanent;
     
-    if (isPerm) {
+    if (ban.is_permanent) {
       return (
         <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-medium">
           <i className="bx bx-infinite mr-1"></i>
@@ -183,6 +172,10 @@ const AdminBansTable = () => {
   const handleSearch = (e) => {
     e.preventDefault();
     setPagination(prev => ({ ...prev, page: 1 }));
+    fetchBans();
+  };
+
+  const handleRefresh = () => {
     fetchBans();
   };
 
@@ -225,20 +218,28 @@ const AdminBansTable = () => {
                 </select>
                 <button
                   type="submit"
-                  className="px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
+                  disabled={actionLoading}
+                  className="px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50"
                 >
                   <i className="bx bx-filter-alt"></i>
                   Filter
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRefresh}
+                  disabled={actionLoading}
+                  className="px-4 py-2.5 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors flex items-center gap-2 disabled:opacity-50"
+                >
+                  <i className="bx bx-refresh"></i>
+                  Refresh
                 </button>
               </div>
             </form>
           </div>
           
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <i className="bx bx-info-circle"></i>
+          <div className="text-sm text-gray-600">
             <span>
-              Menampilkan {bans.length} dari {pagination.total} • 
-              Halaman {pagination.page} dari {pagination.totalPages}
+              Menampilkan {bans.length} dari {pagination.total}
             </span>
           </div>
         </div>
@@ -281,7 +282,7 @@ const AdminBansTable = () => {
                         <i className="bx bx-envelope text-blue-600"></i>
                       </div>
                       <div className="min-w-0">
-                        <p className="font-medium text-gray-800 truncate">
+                        <p className="font-medium text-gray-800 truncate max-w-xs">
                           {ban.user?.email || 'Tidak tersedia'}
                         </p>
                         {ban.banned_by_user && (
@@ -301,10 +302,10 @@ const AdminBansTable = () => {
                       </div>
                       <div>
                         <p className="font-medium text-gray-800">
-                          {ban.user?.profiles?.full_name || 'Tidak tersedia'}
+                          {ban.user?.profiles?.full_name || 'N/A'}
                         </p>
                         <p className="text-xs text-gray-500">
-                          {ban.user_id ? ban.user_id.substring(0, 8) + '...' : 'No user'}
+                          ID: {ban.user_id ? ban.user_id.substring(0, 8) + '...' : 'No user'}
                         </p>
                       </div>
                     </div>
@@ -323,12 +324,13 @@ const AdminBansTable = () => {
                         languages: ban.languages,
                         timezone: ban.timezone,
                       })}
-                      className="px-4 py-2 bg-blue-50 text-blue-600 rounded-lg font-medium hover:bg-blue-100 transition-colors flex items-center gap-2"
+                      disabled={actionLoading}
+                      className="px-4 py-2 bg-blue-50 text-blue-600 rounded-lg font-medium hover:bg-blue-100 transition-colors flex items-center gap-2 disabled:opacity-50"
                     >
                       <i className="bx bx-devices"></i>
                       Lihat Detail
                     </button>
-                    <p className="text-xs text-gray-500 mt-1 truncate max-w-xs">
+                    <p className="text-xs text-gray-500 mt-1 truncate max-w-xs" title={ban.device_fingerprint}>
                       {ban.device_fingerprint?.substring(0, 30)}...
                     </p>
                   </td>
@@ -379,13 +381,24 @@ const AdminBansTable = () => {
                           ? handleUnbanDevice(ban.id) 
                           : handleBanDevice(ban)
                         }
-                        className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${isCurrentlyBanned(ban) 
-                          ? 'bg-green-50 text-green-600 hover:bg-green-100 border border-green-200' 
-                          : 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200'
+                        disabled={actionLoading}
+                        className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50 ${
+                          isCurrentlyBanned(ban) 
+                            ? 'bg-green-50 text-green-600 hover:bg-green-100 border border-green-200' 
+                            : 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200'
                         }`}
                       >
-                        <i className={`bx ${isCurrentlyBanned(ban) ? 'bx-lock-open' : 'bx-lock'}`}></i>
-                        {isCurrentlyBanned(ban) ? 'Lepas Ban' : 'Ban Device'}
+                        {actionLoading ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
+                            Memproses...
+                          </>
+                        ) : (
+                          <>
+                            <i className={`bx ${isCurrentlyBanned(ban) ? 'bx-lock-open' : 'bx-lock'}`}></i>
+                            {isCurrentlyBanned(ban) ? 'Lepas Ban' : 'Ban Device'}
+                          </>
+                        )}
                       </button>
 
                       {/* Appeal Button */}
@@ -395,7 +408,8 @@ const AdminBansTable = () => {
                             setSelectedAppeal(ban.ban_appeals[0]);
                             setShowAppealModal(true);
                           }}
-                          className="px-4 py-2 bg-yellow-50 text-yellow-600 rounded-lg font-medium hover:bg-yellow-100 transition-colors flex items-center justify-center gap-2 border border-yellow-200"
+                          disabled={actionLoading}
+                          className="px-4 py-2 bg-yellow-50 text-yellow-600 rounded-lg font-medium hover:bg-yellow-100 transition-colors flex items-center justify-center gap-2 border border-yellow-200 disabled:opacity-50"
                         >
                           <i className="bx bx-message-square-detail"></i>
                           Banding ({ban.ban_appeals.length})
@@ -416,50 +430,21 @@ const AdminBansTable = () => {
           <div className="flex items-center justify-between">
             <button
               onClick={() => setPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
-              disabled={pagination.page === 1}
+              disabled={pagination.page === 1 || actionLoading}
               className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <i className="bx bx-chevron-left"></i> Sebelumnya
             </button>
             
             <div className="flex items-center gap-2">
-              {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
-                let pageNum;
-                if (pagination.totalPages <= 5) {
-                  pageNum = i + 1;
-                } else if (pagination.page <= 3) {
-                  pageNum = i + 1;
-                } else if (pagination.page >= pagination.totalPages - 2) {
-                  pageNum = pagination.totalPages - 4 + i;
-                } else {
-                  pageNum = pagination.page - 2 + i;
-                }
-                
-                if (pageNum < 1 || pageNum > pagination.totalPages) return null;
-                
-                return (
-                  <button
-                    key={pageNum}
-                    onClick={() => setPagination(prev => ({ ...prev, page: pageNum }))}
-                    className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                      pagination.page === pageNum 
-                        ? 'bg-blue-500 text-white shadow-sm' 
-                        : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    {pageNum}
-                  </button>
-                );
-              })}
-              
-              {pagination.totalPages > 5 && (
-                <span className="px-2 text-gray-500">...</span>
-              )}
+              <span className="text-sm text-gray-600">
+                Halaman {pagination.page} dari {pagination.totalPages}
+              </span>
             </div>
 
             <button
               onClick={() => setPagination(prev => ({ ...prev, page: Math.min(pagination.totalPages, prev.page + 1) }))}
-              disabled={pagination.page === pagination.totalPages}
+              disabled={pagination.page === pagination.totalPages || actionLoading}
               className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               Selanjutnya <i className="bx bx-chevron-right"></i>
@@ -481,6 +466,7 @@ const AdminBansTable = () => {
           {...banModalData}
           onConfirm={handleConfirmBan}
           onClose={() => setBanModalData(null)}
+          loading={actionLoading}
         />
       )}
 
@@ -492,6 +478,7 @@ const AdminBansTable = () => {
             setShowAppealModal(false);
             setSelectedAppeal(null);
           }}
+          loading={actionLoading}
         />
       )}
     </div>
