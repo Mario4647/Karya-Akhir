@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+// src/components/bans/BanDurationModal.jsx
+import React, { useState, useEffect } from 'react';
 
-const BanDurationModal = ({ userId, email, deviceInfo, onConfirm, onClose }) => {
+const BanDurationModal = ({ userId, email, deviceInfo, onConfirm, onClose, loading }) => {
   const [duration, setDuration] = useState(24); // hours
   const [isPermanent, setIsPermanent] = useState(false);
   const [reason, setReason] = useState('');
   const [customDuration, setCustomDuration] = useState({ value: 1, unit: 'hours' });
+  const [formErrors, setFormErrors] = useState({});
 
   const durationOptions = [
     { value: 1, label: '1 Jam', unit: 'hours' },
@@ -32,6 +34,13 @@ const BanDurationModal = ({ userId, email, deviceInfo, onConfirm, onClose }) => 
     'Other (specify below)',
   ];
 
+  useEffect(() => {
+    // Auto-select first reason
+    if (!reason && reasonOptions.length > 0) {
+      setReason(reasonOptions[0]);
+    }
+  }, []);
+
   const calculateBanUntil = () => {
     if (isPermanent) return null;
     
@@ -51,10 +60,25 @@ const BanDurationModal = ({ userId, email, deviceInfo, onConfirm, onClose }) => 
     return new Date(now.getTime() + hours * 60 * 60 * 1000);
   };
 
+  const validateForm = () => {
+    const errors = {};
+    
+    if (!reason.trim()) {
+      errors.reason = 'Mohon pilih atau tulis alasan pembatasan';
+    }
+    
+    if (!isPermanent && customDuration.value <= 0) {
+      errors.duration = 'Durasi harus lebih dari 0';
+    }
+    
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!reason.trim()) {
-      alert('Mohon pilih atau tulis alasan pembatasan');
+    
+    if (!validateForm()) {
       return;
     }
 
@@ -85,9 +109,9 @@ const BanDurationModal = ({ userId, email, deviceInfo, onConfirm, onClose }) => 
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl animate-slide-up">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl animate-slide-up max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="p-6 border-b border-gray-200">
+        <div className="p-6 border-b border-gray-200 sticky top-0 bg-white">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="p-3 bg-red-100 rounded-xl">
@@ -100,7 +124,8 @@ const BanDurationModal = ({ userId, email, deviceInfo, onConfirm, onClose }) => 
             </div>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              disabled={loading}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
             >
               <i className="bx bx-x text-2xl text-gray-500"></i>
             </button>
@@ -113,12 +138,12 @@ const BanDurationModal = ({ userId, email, deviceInfo, onConfirm, onClose }) => 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <p className="text-sm font-medium text-gray-600 mb-1">Email Target</p>
-                <p className="font-semibold text-gray-800 break-words">{email}</p>
+                <p className="font-semibold text-gray-800 break-words">{email || 'N/A'}</p>
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-600 mb-1">Device ID</p>
-                <p className="font-semibold text-gray-800 font-mono text-sm truncate">
-                  {deviceInfo.fingerprint?.substring(0, 20)}...
+                <p className="font-semibold text-gray-800 font-mono text-sm truncate" title={deviceInfo?.fingerprint}>
+                  {deviceInfo?.fingerprint?.substring(0, 30) || '...'}
                 </p>
               </div>
             </div>
@@ -139,6 +164,7 @@ const BanDurationModal = ({ userId, email, deviceInfo, onConfirm, onClose }) => 
                     checked={isPermanent}
                     onChange={(e) => setIsPermanent(e.target.checked)}
                     className="sr-only"
+                    disabled={loading}
                   />
                   <div className={`w-6 h-6 rounded border flex items-center justify-center ${isPermanent ? 'bg-red-500 border-red-500' : 'border-gray-300'}`}>
                     {isPermanent && <i className="bx bx-check text-white text-sm"></i>}
@@ -163,7 +189,12 @@ const BanDurationModal = ({ userId, email, deviceInfo, onConfirm, onClose }) => 
                       key={option.value}
                       type="button"
                       onClick={() => setCustomDuration({ value: option.value, unit: 'hours' })}
-                      className={`py-3 px-4 rounded-lg border text-center transition-all duration-200 ${customDuration.value === option.value && customDuration.unit === 'hours' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 hover:border-gray-300'}`}
+                      disabled={loading}
+                      className={`py-3 px-4 rounded-lg border text-center transition-all duration-200 disabled:opacity-50 ${
+                        customDuration.value === option.value && customDuration.unit === 'hours' 
+                          ? 'border-blue-500 bg-blue-50 text-blue-600' 
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
                     >
                       <div className="font-medium">{option.label}</div>
                     </button>
@@ -176,16 +207,22 @@ const BanDurationModal = ({ userId, email, deviceInfo, onConfirm, onClose }) => 
                     <input
                       type="number"
                       min="1"
+                      max="999"
                       value={customDuration.value}
-                      onChange={(e) => setCustomDuration(prev => ({ ...prev, value: parseInt(e.target.value) || 1 }))}
-                      className="w-full p-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                      onChange={(e) => {
+                        const value = Math.max(1, parseInt(e.target.value) || 1);
+                        setCustomDuration(prev => ({ ...prev, value }));
+                      }}
+                      disabled={loading}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none disabled:opacity-50"
                     />
                   </div>
                   <div className="flex-1">
                     <select
                       value={customDuration.unit}
                       onChange={(e) => setCustomDuration(prev => ({ ...prev, unit: e.target.value }))}
-                      className="w-full p-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                      disabled={loading}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none disabled:opacity-50"
                     >
                       {unitOptions.map((unit) => (
                         <option key={unit.value} value={unit.value}>
@@ -195,6 +232,9 @@ const BanDurationModal = ({ userId, email, deviceInfo, onConfirm, onClose }) => 
                     </select>
                   </div>
                 </div>
+                {formErrors.duration && (
+                  <p className="text-red-500 text-sm mt-2">{formErrors.duration}</p>
+                )}
               </>
             )}
           </div>
@@ -216,6 +256,7 @@ const BanDurationModal = ({ userId, email, deviceInfo, onConfirm, onClose }) => 
                       checked={reason === option}
                       onChange={(e) => setReason(e.target.value)}
                       className="sr-only"
+                      disabled={loading}
                     />
                     <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${reason === option ? 'border-blue-500' : 'border-gray-300'}`}>
                       {reason === option && <div className="w-2.5 h-2.5 bg-blue-500 rounded-full"></div>}
@@ -227,12 +268,18 @@ const BanDurationModal = ({ userId, email, deviceInfo, onConfirm, onClose }) => 
             </div>
 
             {/* Custom Reason */}
-            <textarea
-              value={reason.startsWith('Other') ? reason : ''}
-              onChange={(e) => setReason(`Other: ${e.target.value}`)}
-              placeholder="Jelaskan alasan lainnya (wajib diisi jika memilih Other)"
-              className="w-full h-24 p-4 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none resize-none"
-            />
+            {reason.startsWith('Other') && (
+              <textarea
+                value={reason.replace('Other: ', '')}
+                onChange={(e) => setReason(`Other: ${e.target.value}`)}
+                placeholder="Jelaskan alasan lainnya..."
+                disabled={loading}
+                className="w-full h-24 p-4 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none resize-none disabled:opacity-50"
+              />
+            )}
+            {formErrors.reason && (
+              <p className="text-red-500 text-sm mt-2">{formErrors.reason}</p>
+            )}
           </div>
 
           {/* Preview */}
@@ -242,8 +289,11 @@ const BanDurationModal = ({ userId, email, deviceInfo, onConfirm, onClose }) => 
               <span className="font-medium text-blue-800">Ringkasan Pembatasan</span>
             </div>
             <div className="space-y-2 text-sm text-blue-700">
-              <p>• Email: <span className="font-medium">{email}</span></p>
+              <p>• Email: <span className="font-medium">{email || 'N/A'}</span></p>
               <p>• Tipe: <span className="font-medium">{isPermanent ? 'Permanen' : 'Sementara'}</span></p>
+              {!isPermanent && (
+                <p>• Durasi: <span className="font-medium">{customDuration.value} {unitOptions.find(u => u.value === customDuration.unit)?.label}</span></p>
+              )}
               {!isPermanent && (
                 <p>• Berakhir pada: <span className="font-medium">{formatDate(calculateBanUntil())}</span></p>
               )}
@@ -255,16 +305,27 @@ const BanDurationModal = ({ userId, email, deviceInfo, onConfirm, onClose }) => 
           <div className="flex gap-3 pt-4">
             <button
               type="submit"
-              className="flex-1 py-3 px-6 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-xl font-semibold hover:from-red-700 hover:to-red-800 transition-all duration-300 flex items-center justify-center gap-2 shadow-lg hover:shadow-xl"
+              disabled={loading}
+              className="flex-1 py-3 px-6 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-xl font-semibold hover:from-red-700 hover:to-red-800 transition-all duration-300 flex items-center justify-center gap-2 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <i className="bx bx-shield-x text-lg"></i>
-              Terapkan Pembatasan
+              {loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  Memproses...
+                </>
+              ) : (
+                <>
+                  <i className="bx bx-shield-x text-lg"></i>
+                  Terapkan Pembatasan
+                </>
+              )}
             </button>
             
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-3 px-6 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-all duration-300 flex items-center justify-center gap-2"
+              disabled={loading}
+              className="flex-1 py-3 px-6 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50"
             >
               <i className="bx bx-x text-lg"></i>
               Batal
