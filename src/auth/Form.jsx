@@ -1,3 +1,4 @@
+// src/auth/Form.jsx
 import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 import { useNavigate } from "react-router-dom";
@@ -24,12 +25,12 @@ const Form = () => {
     const [loading, setLoading] = useState(false);
     const [deviceBan, setDeviceBan] = useState(null);
     const [showBanPopup, setShowBanPopup] = useState(false);
+    const [isCheckingBan, setIsCheckingBan] = useState(true);
     
     const navigate = useNavigate();
-    
-    // Initialize device fingerprint hook
-    const { fingerprint, deviceInfo, ipAddress } = useDeviceFingerprint();
+    const { fingerprint, deviceInfo, ipAddress, isReady } = useDeviceFingerprint();
 
+    // Handle sign up input changes
     const handleSignUpChange = (e) => {
         const { name, value } = e.target;
         setSignUpData(prev => ({ ...prev, [name]: value }));
@@ -41,6 +42,7 @@ const Form = () => {
         }
     };
 
+    // Handle sign in input changes
     const handleSignInChange = (e) => {
         const { name, value } = e.target;
         setSignInData(prev => ({ ...prev, [name]: value }));
@@ -55,35 +57,43 @@ const Form = () => {
     // Check for device ban on component mount
     useEffect(() => {
         const checkDeviceBan = async () => {
-            if (fingerprint) {
+            if (fingerprint && isReady) {
+                console.log('🔍 Checking device ban for fingerprint:', fingerprint);
+                setIsCheckingBan(true);
                 try {
                     const banCheck = await banService.checkDeviceBan(fingerprint);
+                    console.log('Ban check result:', banCheck);
+                    
                     if (banCheck.isBanned) {
+                        console.log('🚫 Device is banned!', banCheck.ban);
                         setDeviceBan(banCheck);
                         setShowBanPopup(true);
+                    } else {
+                        console.log('✅ Device is not banned');
                     }
                 } catch (error) {
                     console.error('Error checking device ban:', error);
+                } finally {
+                    setIsCheckingBan(false);
                 }
             }
         };
         
-        if (fingerprint) {
-            checkDeviceBan();
-        }
-    }, [fingerprint]);
+        checkDeviceBan();
+    }, [fingerprint, isReady]);
 
     // Validate device before any action
     const validateDevice = async (email = null) => {
         if (!fingerprint) {
-            console.warn('Device fingerprint not available');
-            return true;
+            console.log('⚠️ Fingerprint not available yet');
+            return true; // Allow action if fingerprint not ready
         }
 
         try {
             const banCheck = await banService.checkDeviceBan(fingerprint, email);
             
             if (banCheck.isBanned) {
+                console.log('🚫 Device is banned, showing popup');
                 setDeviceBan(banCheck);
                 setShowBanPopup(true);
                 return false;
@@ -96,6 +106,7 @@ const Form = () => {
         }
     };
 
+    // Validate sign up form
     const validateSignUp = () => {
         const newErrors = {};
         if (!signUpData.email) {
@@ -115,6 +126,7 @@ const Form = () => {
         return Object.keys(newErrors).length === 0;
     };
 
+    // Validate sign in form
     const validateSignIn = () => {
         const newErrors = {};
         if (!signInData.email) {
@@ -129,6 +141,7 @@ const Form = () => {
         return Object.keys(newErrors).length === 0;
     };
 
+    // Validate forgot password form
     const validateForgotPassword = () => {
         const newErrors = {};
         if (!forgotPasswordEmail) {
@@ -140,21 +153,25 @@ const Form = () => {
         return Object.keys(newErrors).length === 0;
     };
 
+    // Handle sign up
     const handleSignUp = async (e) => {
         e.preventDefault();
         if (!validateSignUp()) return;
 
         // Check device ban before registration
         const isDeviceAllowed = await validateDevice(signUpData.email);
-        if (!isDeviceAllowed) return;
+        if (!isDeviceAllowed) {
+            console.log('❌ Device not allowed to register');
+            return;
+        }
 
         setLoading(true);
         try {
             // Log registration attempt
             await banService.logLoginAttempt({
                 email: signUpData.email,
-                deviceFingerprint: fingerprint,
-                ipAddress: ipAddress,
+                deviceFingerprint: fingerprint || 'unknown',
+                ipAddress: ipAddress || 'unknown',
                 userAgent: deviceInfo?.userAgent || navigator.userAgent,
                 success: true,
             });
@@ -164,39 +181,77 @@ const Form = () => {
                 password: signUpData.password,
                 options: {
                     emailRedirectTo: `${window.location.origin}/auth`,
+                    data: {
+                        full_name: signUpData.email.split('@')[0]
+                    }
                 }
             });
 
             if (error) {
-                setErrors({
-                    submit:
-                        error.message === "User already registered"
-                            ? "Email sudah terdaftar"
-                            : error.message,
-                });
+                let errorMessage = error.message;
+                
+                if (error.message === "User already registered") {
+                    errorMessage = "Email sudah terdaftar";
+                } else if (error.message.includes('rate limit')) {
+                    errorMessage = "Terlalu banyak percobaan. Coba lagi nanti.";
+                } else if (error.message.includes('Password')) {
+                    errorMessage = "Kata sandi terlalu lemah. Gunakan minimal 6 karakter.";
+                }
+                
+                setErrors({ submit: errorMessage });
                 return;
             }
 
             if (data.user) {
+                // Create profile for new user
+                try {
+                    await supabase
+                        .from('profiles')
+                        .insert([
+                            {
+                                id: data.user.id,
+                                email: signUpData.email,
+                                full_name: signUpData.email.split('@')[0],
+                                last_device_fingerprint: fingerprint,
+                                last_ip_address: ipAddress,
+                                roles: 'user',
+                                created_at: new Date().toISOString(),
+                                updated_at: new Date().toISOString()
+                            }
+                        ]);
+                } catch (profileError) {
+                    console.error('Error creating profile:', profileError);
+                    // Continue even if profile creation fails
+                }
+
                 setSubmitSuccess(true);
                 setSignUpData({ email: "", password: "", confirmPassword: "" });
                 setTimeout(() => setSubmitSuccess(false), 5000);
+                
+                // Log successful registration
+                console.log('✅ User registered successfully:', data.user.email);
             }
         } catch (error) {
-            setErrors({ submit: "Terjadi kesalahan, coba lagi nanti" });
             console.error("Sign Up Error:", error);
+            setErrors({ 
+                submit: "Terjadi kesalahan sistem. Coba lagi nanti atau hubungi admin." 
+            });
         } finally {
             setLoading(false);
         }
     };
 
+    // Handle sign in
     const handleSignIn = async (e) => {
         e.preventDefault();
         if (!validateSignIn()) return;
 
         // Check device ban before login
         const isDeviceAllowed = await validateDevice(signInData.email);
-        if (!isDeviceAllowed) return;
+        if (!isDeviceAllowed) {
+            console.log('❌ Device not allowed to login');
+            return;
+        }
 
         setLoading(true);
         try {
@@ -208,55 +263,83 @@ const Form = () => {
             // Log login attempt
             await banService.logLoginAttempt({
                 email: signInData.email,
-                deviceFingerprint: fingerprint,
-                ipAddress: ipAddress,
+                deviceFingerprint: fingerprint || 'unknown',
+                ipAddress: ipAddress || 'unknown',
                 userAgent: deviceInfo?.userAgent || navigator.userAgent,
                 success: !error,
             });
 
             if (error) {
-                setErrors({ submit: error.message === "Invalid login credentials" ? "Email atau kata sandi salah" : error.message });
+                // Handle specific errors
+                let errorMessage = error.message;
+                
+                if (error.message === 'Invalid login credentials') {
+                    errorMessage = 'Email atau kata sandi salah';
+                } else if (error.message.includes('rate limit')) {
+                    errorMessage = 'Terlalu banyak percobaan. Coba lagi nanti.';
+                } else if (error.message.includes('Email not confirmed')) {
+                    errorMessage = 'Email belum dikonfirmasi. Periksa inbox email Anda.';
+                }
+                
+                setErrors({ submit: errorMessage });
                 return;
             }
 
             if (data.user) {
+                // Update profile dengan device info terakhir
+                try {
+                    await supabase
+                        .from('profiles')
+                        .update({
+                            last_device_fingerprint: fingerprint,
+                            last_ip_address: ipAddress,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', data.user.id);
+                } catch (profileError) {
+                    console.error('Error updating profile:', profileError);
+                    // Continue even if profile update fails
+                }
+
+                // Get user profile for role checking
                 const { data: profile, error: profileError } = await supabase
                     .from('profiles')
                     .select('roles')
                     .eq('id', data.user.id)
                     .single();
 
-                if (!profileError && profile) {
-                    setSubmitSuccess(true);
-                    setSignInData({ email: "", password: "" });
-                    
-                    setTimeout(() => {
-                        setSubmitSuccess(false);
+                setSubmitSuccess(true);
+                setSignInData({ email: "", password: "" });
+                
+                setTimeout(() => {
+                    setSubmitSuccess(false);
+                    if (!profileError && profile) {
                         if (profile.roles === 'admin') {
-                            navigate("/admin/bans");
+                            navigate("/admin");
                         } else if (profile.roles === 'user-raport') {
                             navigate("/dashboard-user");
                         } else {
                             navigate("/");
                         }
-                    }, 1500);
-                } else {
-                    setSubmitSuccess(true);
-                    setSignInData({ email: "", password: "" });
-                    setTimeout(() => {
-                        setSubmitSuccess(false);
+                    } else {
                         navigate("/");
-                    }, 1500);
-                }
+                    }
+                }, 1500);
+                
+                // Log successful login
+                console.log('✅ User logged in successfully:', data.user.email);
             }
         } catch (error) {
-            setErrors({ submit: "Terjadi kesalahan, coba lagi nanti" });
             console.error("Sign In Error:", error);
+            setErrors({ 
+                submit: "Terjadi kesalahan sistem. Coba lagi nanti atau hubungi admin." 
+            });
         } finally {
             setLoading(false);
         }
     };
 
+    // Handle forgot password
     const handleForgotPassword = async (e) => {
         e.preventDefault();
         if (!validateForgotPassword()) return;
@@ -265,6 +348,9 @@ const Form = () => {
         try {
             const siteUrl = window.location.origin;
             const redirectUrl = `${siteUrl}/reset-password`;
+
+            console.log("Mengirim reset password ke:", forgotPasswordEmail);
+            console.log("Redirect ke:", redirectUrl);
 
             const { error } = await supabase.auth.resetPasswordForEmail(
                 forgotPasswordEmail,
@@ -280,6 +366,7 @@ const Form = () => {
             setIsResetLinkSent(true);
             setErrors({});
             
+            // Reset form setelah 5 detik
             setTimeout(() => {
                 setIsForgotPassword(false);
                 setIsResetLinkSent(false);
@@ -300,24 +387,35 @@ const Form = () => {
         }
     };
 
+    // Handle appeal submission
     const handleAppealSubmit = async (appealData) => {
         try {
+            console.log('Submitting appeal:', appealData);
+            
             const result = await banService.submitAppeal({
                 ...appealData,
                 userId: deviceBan?.ban?.user_id,
             });
 
             if (result.success) {
-                alert('Banding berhasil diajukan. Mohon tunggu respon dari admin.');
+                alert('✅ Banding berhasil diajukan. Mohon tunggu respon dari admin.');
                 setShowBanPopup(false);
+            } else {
+                alert('❌ Gagal mengajukan banding: ' + result.error);
             }
             
             return result;
         } catch (error) {
             console.error('Error submitting appeal:', error);
-            alert('Gagal mengajukan banding: ' + error.message);
+            alert('❌ Gagal mengajukan banding: ' + error.message);
             return { success: false, error: error.message };
         }
+    };
+
+    // Close ban popup
+    const handleCloseBanPopup = () => {
+        setShowBanPopup(false);
+        // Jangan reset deviceBan agar tetap tahu bahwa device dibanned
     };
 
     return (
@@ -326,9 +424,20 @@ const Form = () => {
             {showBanPopup && deviceBan && (
                 <BanPopup
                     ban={deviceBan.ban}
-                    onClose={() => setShowBanPopup(false)}
+                    onClose={handleCloseBanPopup}
                     onSubmitAppeal={handleAppealSubmit}
                 />
+            )}
+
+            {/* Loading overlay saat checking ban */}
+            {isCheckingBan && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-40">
+                    <div className="bg-white rounded-xl p-6 shadow-2xl flex flex-col items-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+                        <p className="text-gray-700 font-medium">Memeriksa status device...</p>
+                        <p className="text-sm text-gray-500 mt-1">Mohon tunggu sebentar</p>
+                    </div>
+                </div>
             )}
 
             <div className="w-full max-w-7xl mx-auto">
@@ -378,6 +487,14 @@ const Form = () => {
                             </div>
                         )}
 
+                        {/* Device Info (Debug) */}
+                        {process.env.NODE_ENV === 'development' && (
+                            <div className="mb-4 p-3 bg-gray-100 rounded-lg text-xs">
+                                <p>Fingerprint: {fingerprint ? `${fingerprint.substring(0, 20)}...` : 'Loading...'}</p>
+                                <p>Status: {isCheckingBan ? 'Checking ban...' : 'Ready'}</p>
+                            </div>
+                        )}
+
                         {/* Tabs Navigation */}
                         {!isForgotPassword && (
                             <div className="flex bg-gray-100/50 p-1 rounded-xl mb-6">
@@ -388,7 +505,8 @@ const Form = () => {
                                         setIsResetLinkSent(false);
                                         setErrors({});
                                     }}
-                                    className={`flex-1 py-3 px-4 text-center text-sm font-medium transition-all duration-300 rounded-lg ${activeTab === 'signin'
+                                    disabled={isCheckingBan}
+                                    className={`flex-1 py-3 px-4 text-center text-sm font-medium transition-all duration-300 rounded-lg disabled:opacity-50 ${activeTab === 'signin'
                                         ? 'bg-white text-blue-600 shadow-sm'
                                         : 'text-gray-600 hover:text-gray-800'
                                         }`}
@@ -403,7 +521,8 @@ const Form = () => {
                                         setIsResetLinkSent(false);
                                         setErrors({});
                                     }}
-                                    className={`flex-1 py-3 px-4 text-center text-sm font-medium transition-all duration-300 rounded-lg ${activeTab === 'signup'
+                                    disabled={isCheckingBan}
+                                    className={`flex-1 py-3 px-4 text-center text-sm font-medium transition-all duration-300 rounded-lg disabled:opacity-50 ${activeTab === 'signup'
                                         ? 'bg-white text-blue-600 shadow-sm'
                                         : 'text-gray-600 hover:text-gray-800'
                                         }`}
@@ -425,7 +544,8 @@ const Form = () => {
                                             setForgotPasswordEmail("");
                                             setErrors({});
                                         }}
-                                        className="text-blue-600 hover:text-blue-800 flex items-center gap-2 mb-4"
+                                        disabled={isCheckingBan}
+                                        className="text-blue-600 hover:text-blue-800 flex items-center gap-2 mb-4 disabled:opacity-50"
                                     >
                                         <i className="bx bx-arrow-back text-lg"></i>
                                         Kembali ke Login
@@ -456,9 +576,9 @@ const Form = () => {
                                                     }
                                                 }}
                                                 placeholder="Masukkan email terdaftar"
+                                                disabled={loading || isResetLinkSent || isCheckingBan}
                                                 className={`w-full pl-10 pr-4 py-3 rounded-xl border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${errors.forgotPassword ? "border-red-300 bg-red-50/50" : ""
-                                                    }`}
-                                                disabled={isResetLinkSent}
+                                                    } disabled:opacity-50`}
                                             />
                                         </div>
                                         <div className="h-5 mt-1">
@@ -473,8 +593,8 @@ const Form = () => {
                                     
                                     <button
                                         type="submit"
-                                        disabled={loading || isResetLinkSent}
-                                        className={`w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-lg shadow-blue-500/30 font-semibold transition-all duration-300 flex items-center justify-center gap-2 hover:shadow-xl hover:shadow-blue-500/40 ${loading || isResetLinkSent ? 'opacity-70 cursor-not-allowed' : 'hover:from-blue-700 hover:to-indigo-700'}`}
+                                        disabled={loading || isResetLinkSent || isCheckingBan}
+                                        className={`w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-lg shadow-blue-500/30 font-semibold transition-all duration-300 flex items-center justify-center gap-2 hover:shadow-xl hover:shadow-blue-500/40 ${loading || isResetLinkSent || isCheckingBan ? 'opacity-70 cursor-not-allowed' : 'hover:from-blue-700 hover:to-indigo-700'}`}
                                     >
                                         {loading ? (
                                             <>
@@ -511,8 +631,9 @@ const Form = () => {
                                                 value={signUpData.email}
                                                 onChange={handleSignUpChange}
                                                 placeholder="contoh@email.com"
+                                                disabled={loading || isCheckingBan}
                                                 className={`w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${errors.email ? "border-red-300 bg-red-50/50" : ""
-                                                    }`}
+                                                    } disabled:opacity-50`}
                                             />
                                             {errors.email && (
                                                 <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
@@ -533,8 +654,9 @@ const Form = () => {
                                                 value={signUpData.password}
                                                 onChange={handleSignUpChange}
                                                 placeholder="Minimal 6 karakter"
+                                                disabled={loading || isCheckingBan}
                                                 className={`w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${errors.password ? "border-red-300 bg-red-50/50" : ""
-                                                    }`}
+                                                    } disabled:opacity-50`}
                                             />
                                             {errors.password && (
                                                 <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
@@ -555,8 +677,9 @@ const Form = () => {
                                                 value={signUpData.confirmPassword}
                                                 onChange={handleSignUpChange}
                                                 placeholder="Ulangi kata sandi"
+                                                disabled={loading || isCheckingBan}
                                                 className={`w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${errors.confirmPassword ? "border-red-300 bg-red-50/50" : ""
-                                                    }`}
+                                                    } disabled:opacity-50`}
                                             />
                                             {errors.confirmPassword && (
                                                 <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
@@ -568,13 +691,18 @@ const Form = () => {
                                         
                                         <button
                                             type="submit"
-                                            disabled={loading}
-                                            className={`w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-lg shadow-blue-500/30 font-semibold transition-all duration-300 flex items-center justify-center gap-2 hover:shadow-xl hover:shadow-blue-500/40 ${loading ? 'opacity-70 cursor-not-allowed' : 'hover:from-blue-700 hover:to-indigo-700'}`}
+                                            disabled={loading || isCheckingBan}
+                                            className={`w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-lg shadow-blue-500/30 font-semibold transition-all duration-300 flex items-center justify-center gap-2 hover:shadow-xl hover:shadow-blue-500/40 ${loading || isCheckingBan ? 'opacity-70 cursor-not-allowed' : 'hover:from-blue-700 hover:to-indigo-700'}`}
                                         >
                                             {loading ? (
                                                 <>
                                                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
                                                     Memproses...
+                                                </>
+                                            ) : isCheckingBan ? (
+                                                <>
+                                                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                                                    Memeriksa...
                                                 </>
                                             ) : (
                                                 <>
@@ -597,8 +725,9 @@ const Form = () => {
                                                 value={signInData.email}
                                                 onChange={handleSignInChange}
                                                 placeholder="contoh@email.com"
+                                                disabled={loading || isCheckingBan}
                                                 className={`w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${errors.email ? "border-red-300 bg-red-50/50" : ""
-                                                    }`}
+                                                    } disabled:opacity-50`}
                                             />
                                             {errors.email && (
                                                 <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
@@ -619,8 +748,9 @@ const Form = () => {
                                                 value={signInData.password}
                                                 onChange={handleSignInChange}
                                                 placeholder="Masukkan kata sandi"
+                                                disabled={loading || isCheckingBan}
                                                 className={`w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${errors.password ? "border-red-300 bg-red-50/50" : ""
-                                                    }`}
+                                                    } disabled:opacity-50`}
                                             />
                                             {errors.password && (
                                                 <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
@@ -635,7 +765,8 @@ const Form = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => setIsForgotPassword(true)}
-                                                className="text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 ml-auto"
+                                                disabled={isCheckingBan}
+                                                className="text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 ml-auto disabled:opacity-50"
                                             >
                                                 <i className="bx bx-key"></i>
                                                 Lupa password?
@@ -644,13 +775,18 @@ const Form = () => {
 
                                         <button
                                             type="submit"
-                                            disabled={loading}
-                                            className={`w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-lg shadow-blue-500/30 font-semibold transition-all duration-300 flex items-center justify-center gap-2 hover:shadow-xl hover:shadow-blue-500/40 ${loading ? 'opacity-70 cursor-not-allowed' : 'hover:from-blue-700 hover:to-indigo-700'}`}
+                                            disabled={loading || isCheckingBan}
+                                            className={`w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-lg shadow-blue-500/30 font-semibold transition-all duration-300 flex items-center justify-center gap-2 hover:shadow-xl hover:shadow-blue-500/40 ${loading || isCheckingBan ? 'opacity-70 cursor-not-allowed' : 'hover:from-blue-700 hover:to-indigo-700'}`}
                                         >
                                             {loading ? (
                                                 <>
                                                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
                                                     Memproses...
+                                                </>
+                                            ) : isCheckingBan ? (
+                                                <>
+                                                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                                                    Memeriksa...
                                                 </>
                                             ) : (
                                                 <>
