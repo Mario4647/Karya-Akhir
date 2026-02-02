@@ -136,6 +136,7 @@ function App() {
         <Route path="/triplist" element={<UserTripDashboard />} />
       <Route path="/admin/pesan" element={<AdminMessage />} />
         <Route path="/admin/pip" element={<AdminPIP />} />
+        <Route path="/admin/ban-device" element={<AdminBansPage />} />
         <Route path="/pencarian/pip" element={<AdminSearchHistory />} />
         <Route path="/user/pip" element={<CekPIP />} />
 <Route path="/reset-password" element={<ResetPassword />} />
