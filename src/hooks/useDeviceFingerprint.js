@@ -10,40 +10,37 @@ export const useDeviceFingerprint = () => {
   useEffect(() => {
     const generateFingerprint = async () => {
       try {
-        // 1. Collect device data
+        // Collect basic device information
         const deviceData = {
           userAgent: navigator.userAgent,
           language: navigator.language,
           languages: navigator.languages ? navigator.languages.join(',') : navigator.language,
           platform: navigator.platform,
-          hardwareConcurrency: navigator.hardwareConcurrency || 'unknown',
-          deviceMemory: navigator.deviceMemory || 'unknown',
           screenResolution: `${window.screen.width}x${window.screen.height}`,
           colorDepth: window.screen.colorDepth,
           pixelRatio: window.devicePixelRatio,
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          sessionStorage: typeof sessionStorage !== 'undefined',
-          localStorage: typeof localStorage !== 'undefined',
-          indexedDB: !!window.indexedDB,
           cookies: navigator.cookieEnabled,
           doNotTrack: navigator.doNotTrack || 'unspecified',
           plugins: navigator.plugins ? navigator.plugins.length : 0,
+          hardwareConcurrency: navigator.hardwareConcurrency || 'unknown',
+          maxTouchPoints: navigator.maxTouchPoints || 0,
         };
 
-        // 2. Create fingerprint from data
+        // Generate fingerprint from collected data
         const dataString = JSON.stringify(deviceData);
-        const fp = btoa(dataString).substring(0, 50); // Simple fingerprint
+        const fp = btoa(dataString).substring(0, 64); // Use first 64 chars as fingerprint
         setFingerprint(fp);
 
-        // 3. Parse device info
+        // Parse browser info
         const getBrowserInfo = () => {
           const ua = navigator.userAgent;
           let browser = 'Unknown';
           
           if (ua.includes('Firefox')) browser = 'Firefox';
-          else if (ua.includes('Chrome')) browser = 'Chrome';
-          else if (ua.includes('Safari')) browser = 'Safari';
-          else if (ua.includes('Edge')) browser = 'Edge';
+          else if (ua.includes('Chrome') && !ua.includes('Edg')) browser = 'Chrome';
+          else if (ua.includes('Safari') && !ua.includes('Chrome')) browser = 'Safari';
+          else if (ua.includes('Edg')) browser = 'Edge';
           else if (ua.includes('Opera')) browser = 'Opera';
           
           return browser;
@@ -57,21 +54,26 @@ export const useDeviceFingerprint = () => {
           else if (ua.includes('Mac')) os = 'macOS';
           else if (ua.includes('Linux')) os = 'Linux';
           else if (ua.includes('Android')) os = 'Android';
-          else if (ua.includes('iOS')) os = 'iOS';
+          else if (ua.includes('iOS') || ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
           
           return os;
         };
 
-        // 4. Get IP (using free service)
+        // Try to get IP address
         try {
-          const ipResponse = await fetch('https://api.ipify.org?format=json');
-          const ipData = await ipResponse.json();
-          setIpAddress(ipData.ip);
+          const response = await fetch('https://api.ipify.org?format=json');
+          if (response.ok) {
+            const data = await response.json();
+            setIpAddress(data.ip);
+          } else {
+            setIpAddress('Unable to detect');
+          }
         } catch (ipError) {
-          setIpAddress('Unable to detect');
+          console.log('IP detection failed, using fallback');
+          setIpAddress('127.0.0.1');
         }
 
-        // 5. Set device info
+        // Set device info
         setDeviceInfo({
           userAgent: deviceData.userAgent,
           browser: getBrowserInfo(),
@@ -85,20 +87,28 @@ export const useDeviceFingerprint = () => {
 
         setIsReady(true);
         
-        // 6. Log fingerprint for debugging
-        console.log('Generated Fingerprint:', fp);
-        console.log('Device Info:', deviceInfo);
-        console.log('IP Address:', ipAddress);
+        console.log('✅ Device fingerprint generated:', fp.substring(0, 20) + '...');
+        console.log('📱 Device info:', {
+          browser: getBrowserInfo(),
+          os: getOSInfo(),
+          platform: deviceData.platform
+        });
 
       } catch (error) {
-        console.error('Error generating fingerprint:', error);
+        console.error('❌ Error generating fingerprint:', error);
         
         // Fallback fingerprint
         const fallbackFp = `fallback-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         setFingerprint(fallbackFp);
-        setDeviceInfo({ userAgent: navigator.userAgent });
+        setDeviceInfo({ 
+          userAgent: navigator.userAgent,
+          browser: 'Unknown',
+          os: 'Unknown'
+        });
         setIpAddress('fallback-ip');
         setIsReady(true);
+        
+        console.log('⚠️ Using fallback fingerprint:', fallbackFp);
       }
     };
 
