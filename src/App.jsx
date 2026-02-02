@@ -23,7 +23,7 @@ import AdminSiswa from "./datasiswa/AdminSiswa";
 import Trip from "./admin/tripsettings/Trip";
 import AdminMessage from "./admin/pesan/AdminMessage";
 import AdminPIP from "./admin/pip/AdminPIP";
-import AdminBansPage from "./admin/ban-device/AdminBansPage";
+import AdminBansPage from "./admin/banned/AdminBansPage";
 import AdminSearchHistory from "./pencarian/pip/AdminSearchHistory";
 import CekPIP from "./user/pip/CekPIP";
 import UserTripDashboard from "./triplist/UserTripDashboard";
@@ -136,7 +136,7 @@ function App() {
         <Route path="/triplist" element={<UserTripDashboard />} />
       <Route path="/admin/pesan" element={<AdminMessage />} />
         <Route path="/admin/pip" element={<AdminPIP />} />
-        <Route path="/admin/ban-device" element={<AdminBansPage />} />
+        <Route path="/admin/banned" element={<AdminBansPage />} />
         <Route path="/pencarian/pip" element={<AdminSearchHistory />} />
         <Route path="/user/pip" element={<CekPIP />} />
 <Route path="/reset-password" element={<ResetPassword />} />
