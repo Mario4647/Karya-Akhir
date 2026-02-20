@@ -11,8 +11,8 @@ import {
   BiDetail,
   BiDownload,
   BiPrinter,
-  BiQr,
-  BiCopy,
+  BiCode, // Ganti BiQr
+  BiDuplicate, // Ganti BiCopy
   BiCheck,
   BiXCircle,
   BiSave
@@ -99,7 +99,6 @@ const SuccessOrdersPage = () => {
   }
 
   const generateQRCode = (invoiceCode) => {
-    // QR Code dengan style garis-garis
     return (
       <div className="relative">
         <QRCode
@@ -111,7 +110,6 @@ const SuccessOrdersPage = () => {
           includeMargin={false}
           renderAs="svg"
         />
-        {/* Overlay untuk efek garis */}
         <div className="absolute inset-0 pointer-events-none opacity-10">
           <div className="w-full h-full grid grid-cols-8 gap-0.5">
             {[...Array(64)].map((_, i) => (
@@ -224,7 +222,7 @@ const SuccessOrdersPage = () => {
                             onClick={() => copyToClipboard(order.invoice_code)}
                             className="text-gray-400 hover:text-blue-500"
                           >
-                            <BiCopy className="text-sm" />
+                            <BiDuplicate className="text-sm" />
                           </button>
                         </div>
                       </td>
@@ -236,7 +234,7 @@ const SuccessOrdersPage = () => {
                           }}
                           className="text-blue-600 hover:text-blue-700"
                         >
-                          <BiQr className="text-xl" />
+                          <BiCode className="text-xl" />
                         </button>
                       </td>
                       <td className="px-4 py-4">
@@ -317,7 +315,6 @@ const SuccessOrdersPage = () => {
                 <div className="flex space-x-3 mt-6 w-full">
                   <button
                     onClick={() => {
-                      // Download QR Code
                       const canvas = document.querySelector('canvas')
                       if (canvas) {
                         const link = document.createElement('a')
