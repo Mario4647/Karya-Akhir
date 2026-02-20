@@ -12,9 +12,13 @@ import {
   BiWallet,
   BiCode,
   BiCheckCircle,
-  BiXCircle,
-  BiPurchaseTag // Tambahkan untuk icon bank alternatif
+  BiXCircle
 } from 'react-icons/bi'
+
+// Konfigurasi Midtrans
+const MIDTRANS_CLIENT_KEY = 'Mid-client-INUzDH7rWVB7a5sz'
+const MIDTRANS_SERVER_KEY = 'Mid-server-a8kJipjOZM3iVYukLNS2VrPz'
+const MIDTRANS_MERCHANT_ID = 'G738480656'
 
 const PaymentPage = () => {
   const [order, setOrder] = useState(null)
@@ -58,7 +62,7 @@ const PaymentPage = () => {
   const loadMidtransScript = () => {
     const script = document.createElement('script')
     script.src = 'https://app.sandbox.midtrans.com/snap/snap.js'
-    script.setAttribute('data-client-key', 'YOUR_MIDTRANS_CLIENT_KEY')
+    script.setAttribute('data-client-key', MIDTRANS_CLIENT_KEY)
     document.body.appendChild(script)
   }
 
@@ -101,7 +105,7 @@ const PaymentPage = () => {
         .from('orders')
         .update({ status: 'cancelled' })
         .eq('id', order.id)
-      navigate('/')
+      navigate('/concerts')
     }
   }
 
@@ -119,32 +123,58 @@ const PaymentPage = () => {
     setError('')
 
     try {
-      const response = await fetch('/api/create-midtrans-transaction', {
+      // Panggil API Midtrans untuk mendapatkan Snap Token
+      const response = await fetch('https://app.sandbox.midtrans.com/snap/v1/transactions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': 'Basic ' + btoa(MIDTRANS_SERVER_KEY + ':')
         },
         body: JSON.stringify({
-          orderId: order.id,
-          orderNumber: order.order_number,
-          amount: order.total_amount,
-          customerName: order.customer_name,
-          customerEmail: order.customer_email,
-          items: [{
+          transaction_details: {
+            order_id: order.order_number,
+            gross_amount: order.total_amount
+          },
+          credit_card: {
+            secure: true
+          },
+          customer_details: {
+            first_name: order.customer_name,
+            email: order.customer_email,
+            phone: '',
+            billing_address: {
+              address: order.customer_address
+            }
+          },
+          item_details: [{
             id: order.product_id,
             name: order.product_name,
             price: order.product_price,
             quantity: order.quantity
-          }]
+          }],
+          callbacks: {
+            finish: `${window.location.origin}/payment-success/${order.id}`,
+            error: `${window.location.origin}/payment/${order.id}`,
+            pending: `${window.location.origin}/payment/${order.id}`
+          }
         })
       })
 
       const data = await response.json()
 
-      if (data.snap_token) {
-        setSnapToken(data.snap_token)
+      if (data.token) {
+        setSnapToken(data.token)
         
-        window.snap.pay(data.snap_token, {
+        // Simpan transaction_id ke database
+        await supabase
+          .from('orders')
+          .update({ 
+            midtrans_transaction_id: data.transaction_id 
+          })
+          .eq('id', order.id)
+        
+        // Buka Snap popup
+        window.snap.pay(data.token, {
           onSuccess: async (result) => {
             await handlePaymentSuccess(result)
           },
@@ -159,10 +189,12 @@ const PaymentPage = () => {
             setSnapToken(null)
           }
         })
+      } else {
+        setError('Gagal mendapatkan token pembayaran')
       }
     } catch (error) {
       console.error('Error processing payment:', error)
-      setError('Gagal memproses pembayaran')
+      setError('Gagal memproses pembayaran: ' + error.message)
     } finally {
       setProcessingPayment(false)
       setShowPaymentModal(false)
@@ -171,6 +203,7 @@ const PaymentPage = () => {
 
   const handlePaymentSuccess = async (result) => {
     try {
+      // Update order status
       await supabase
         .from('orders')
         .update({
@@ -209,7 +242,7 @@ const PaymentPage = () => {
             <BiError className="text-6xl text-red-400 mx-auto mb-4" />
             <h2 className="text-2xl font-bold text-gray-700">Pesanan tidak ditemukan</h2>
             <button
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/concerts')}
               className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
               Kembali ke Beranda
@@ -231,6 +264,12 @@ const PaymentPage = () => {
                 <BiCheckCircle className="text-6xl text-green-500 mx-auto mb-4" />
                 <h2 className="text-2xl font-bold text-gray-800">Pesanan Sudah Dibayar</h2>
                 <p className="text-gray-600 mt-2">Pesanan Anda sudah dalam status LUNAS</p>
+                <button
+                  onClick={() => navigate(`/payment-success/${order.id}`)}
+                  className="mt-6 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Lihat Tiket
+                </button>
               </>
             ) : order.status === 'cancelled' ? (
               <>
@@ -246,7 +285,7 @@ const PaymentPage = () => {
               </>
             )}
             <button
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/concerts')}
               className="mt-6 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
               Kembali ke Beranda
