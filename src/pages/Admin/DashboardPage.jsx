@@ -4,7 +4,7 @@ import NavbarEvent from '../../components/NavbarEvent'
 import {
   BiCheckCircle,
   BiXCircle,
-  BiTicket,
+  BiPurchaseTag, // Ganti BiTicket
   BiMoney,
   BiCalendar,
   BiTrendingUp,
@@ -177,7 +177,7 @@ const DashboardPage = () => {
           <StatCard
             title="Jumlah Tiket Terjual"
             value={stats.ticketsSold}
-            icon={BiTicket}
+            icon={BiPurchaseTag} // Ganti BiTicket
             color="text-blue-500"
             bgColor="bg-blue-100"
           />
