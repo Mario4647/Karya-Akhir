@@ -13,8 +13,6 @@ import {
   BiDollar,
   BiRefresh,
   BiDetail,
-  BiPrinter,
-  BiDownload,
   BiCheckCircle,
   BiXCircle,
   BiError
