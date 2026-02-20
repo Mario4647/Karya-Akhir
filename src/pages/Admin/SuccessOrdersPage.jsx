@@ -1,20 +1,17 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../../supabaseClient'
 import NavbarEvent from '../../components/NavbarEvent'
-import QRCode from 'qrcode.react'
+import { QRCode } from 'react-qr-code'
 import {
   BiSearch,
-  BiFilter,
   BiX,
   BiEdit,
   BiTrash,
   BiDetail,
   BiDownload,
   BiPrinter,
-  BiCode, // Ganti BiQr
-  BiDuplicate, // Ganti BiCopy
-  BiCheck,
-  BiXCircle,
+  BiCode,
+  BiDuplicate,
   BiSave
 } from 'react-icons/bi'
 
@@ -103,12 +100,10 @@ const SuccessOrdersPage = () => {
       <div className="relative">
         <QRCode
           value={invoiceCode}
-          size={150}
+          size={100}
           bgColor="#ffffff"
           fgColor="#000000"
-          level="L"
-          includeMargin={false}
-          renderAs="svg"
+          level="H"
         />
         <div className="absolute inset-0 pointer-events-none opacity-10">
           <div className="w-full h-full grid grid-cols-8 gap-0.5">
@@ -145,6 +140,29 @@ const SuccessOrdersPage = () => {
       hour: '2-digit',
       minute: '2-digit'
     })
+  }
+
+  const handleDownloadQR = (invoiceCode) => {
+    const svg = document.querySelector(`.qr-${invoiceCode.replace(/[^a-zA-Z0-9]/g, '')} svg`)
+    if (svg) {
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      const img = new Image()
+      
+      img.onload = () => {
+        canvas.width = img.width
+        canvas.height = img.height
+        ctx.drawImage(img, 0, 0)
+        
+        const link = document.createElement('a')
+        link.download = `QR-${invoiceCode}.png`
+        link.href = canvas.toDataURL('image/png')
+        link.click()
+      }
+      
+      const svgData = new XMLSerializer().serializeToString(svg)
+      img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)))
+    }
   }
 
   return (
@@ -291,8 +309,14 @@ const SuccessOrdersPage = () => {
 
               <div className="flex flex-col items-center">
                 {/* QR Code */}
-                <div className="mb-4 p-4 bg-white rounded-xl shadow-inner">
-                  {generateQRCode(selectedOrder.invoice_code)}
+                <div className={`qr-${selectedOrder.invoice_code?.replace(/[^a-zA-Z0-9]/g, '')} mb-4 p-4 bg-white rounded-xl shadow-inner`}>
+                  <QRCode
+                    value={selectedOrder.invoice_code || selectedOrder.order_number}
+                    size={150}
+                    bgColor="#ffffff"
+                    fgColor="#000000"
+                    level="H"
+                  />
                 </div>
 
                 {/* Info */}
@@ -314,15 +338,7 @@ const SuccessOrdersPage = () => {
                 {/* Action Buttons */}
                 <div className="flex space-x-3 mt-6 w-full">
                   <button
-                    onClick={() => {
-                      const canvas = document.querySelector('canvas')
-                      if (canvas) {
-                        const link = document.createElement('a')
-                        link.download = `QR-${selectedOrder.invoice_code}.png`
-                        link.href = canvas.toDataURL()
-                        link.click()
-                      }
-                    }}
+                    onClick={() => handleDownloadQR(selectedOrder.invoice_code)}
                     className="flex-1 py-2 border border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors flex items-center justify-center space-x-2"
                   >
                     <BiDownload />
