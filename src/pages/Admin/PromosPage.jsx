@@ -9,8 +9,7 @@ import {
   BiX,
   BiSearch,
   BiCalendar,
-  BiPercent,
-  BiDollar,
+  BiMoney, // Ganti BiDollar
   BiPackage,
   BiCheck,
   BiError
@@ -364,9 +363,9 @@ const PromosPage = () => {
                   </label>
                   <div className="relative">
                     {formData.discount_type === 'percentage' ? (
-                      <BiPercent className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                      <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400">%</span>
                     ) : (
-                      <BiDollar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                      <BiMoney className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                     )}
                     <input
                       type="number"
@@ -374,7 +373,7 @@ const PromosPage = () => {
                       value={formData.discount_value}
                       onChange={handleInputChange}
                       className={`w-full ${
-                        formData.discount_type === 'percentage' ? 'pr-10' : 'pl-10'
+                        formData.discount_type === 'percentage' ? 'pr-8' : 'pl-10'
                       } px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                         errors.discount_value ? 'border-red-500' : 'border-gray-300'
                       }`}
