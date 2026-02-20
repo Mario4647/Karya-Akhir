@@ -4,7 +4,7 @@ import { supabase } from '../supabaseClient'
 import { 
   BiHome, 
   BiMovie, 
-  BiTicket, 
+  BiPurchaseTag, // Ganti BiTicket dengan BiPurchaseTag
   BiGift, 
   BiShoppingBag, 
   BiLogOut,
@@ -66,7 +66,7 @@ const NavbarEvent = ({ userRole = 'user' }) => {
         <div className="flex justify-between h-16">
           <div className="flex items-center">
             <Link to="/" className="flex items-center space-x-2">
-              <BiTicket className="h-8 w-8 text-blue-500" />
+              <BiPurchaseTag className="h-8 w-8 text-blue-500" /> {/* Ganti dengan BiPurchaseTag */}
               <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
                 TicketConcert
               </span>
