@@ -17,11 +17,12 @@ import {
   BiHome,
   BiCreditCard,
   BiArrowBack,
-  BiCopy,
+  BiDuplicate, // Ganti BiCopy
   BiCheckCircle,
   BiError,
   BiRefresh,
-  BiSend
+  BiSend,
+  BiPurchaseTag // Ganti BiTicket
 } from 'react-icons/bi'
 
 const ConcertPage = () => {
