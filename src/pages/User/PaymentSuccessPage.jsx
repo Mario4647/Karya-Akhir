@@ -13,7 +13,7 @@ import {
   BiCopy,
   BiArrowBack
 } from 'react-icons/bi'
-import QRCode from 'react-qr-code'
+import QRCode from 'qrcode.react'
 
 const PaymentSuccessPage = () => {
   const [order, setOrder] = useState(null)
@@ -57,25 +57,12 @@ const PaymentSuccessPage = () => {
   }
 
   const handleDownloadQR = () => {
-    const svg = document.querySelector('.qr-code-container svg')
-    if (svg) {
-      const canvas = document.createElement('canvas')
-      const ctx = canvas.getContext('2d')
-      const img = new Image()
-      
-      img.onload = () => {
-        canvas.width = img.width
-        canvas.height = img.height
-        ctx.drawImage(img, 0, 0)
-        
-        const link = document.createElement('a')
-        link.download = `QR-${order?.invoice_code || 'ticket'}.png`
-        link.href = canvas.toDataURL('image/png')
-        link.click()
-      }
-      
-      const svgData = new XMLSerializer().serializeToString(svg)
-      img.src = 'data:image/svg+xml;base64,' + btoa(svgData)
+    const canvas = document.querySelector('canvas')
+    if (canvas) {
+      const link = document.createElement('a')
+      link.download = `QR-${order?.invoice_code || 'ticket'}.png`
+      link.href = canvas.toDataURL('image/png')
+      link.click()
     }
   }
 
@@ -97,6 +84,29 @@ const PaymentSuccessPage = () => {
       currency: 'IDR',
       minimumFractionDigits: 0
     }).format(number)
+  }
+
+  const generateQRCode = (text) => {
+    return (
+      <div className="relative">
+        <QRCode
+          value={text}
+          size={150}
+          bgColor="#ffffff"
+          fgColor="#000000"
+          level="H"
+          includeMargin={false}
+        />
+        {/* Efek garis-garis */}
+        <div className="absolute inset-0 pointer-events-none opacity-10">
+          <div className="w-full h-full grid grid-cols-8 gap-0.5">
+            {[...Array(64)].map((_, i) => (
+              <div key={i} className="bg-black"></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (loading) {
@@ -186,14 +196,8 @@ const PaymentSuccessPage = () => {
             <div className="flex flex-col md:flex-row gap-8">
               {/* Left side - QR Code */}
               <div className="flex flex-col items-center md:w-48">
-                <div className="qr-code-container bg-white p-4 rounded-xl shadow-inner border-2 border-dashed border-blue-200">
-                  <QRCode
-                    value={order.invoice_code || order.order_number}
-                    size={150}
-                    bgColor="#ffffff"
-                    fgColor="#000000"
-                    level="H"
-                  />
+                <div className="bg-white p-4 rounded-xl shadow-inner border-2 border-dashed border-blue-200">
+                  {generateQRCode(order.invoice_code || order.order_number)}
                 </div>
                 <p className="text-xs text-gray-500 mt-3 text-center">
                   Scan kode ini untuk verifikasi tiket
@@ -377,8 +381,8 @@ const PaymentSuccessPage = () => {
           </button>
           <button
             onClick={() => {
-              // Fungsi untuk download PDF (bisa diimplementasikan dengan library seperti jspdf)
-              alert('Fitur download PDF akan segera tersedia')
+              // Fungsi untuk download PDF
+              window.print()
             }}
             className="px-6 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors flex items-center space-x-2 shadow-lg shadow-green-500/30"
           >
@@ -403,21 +407,6 @@ const PaymentSuccessPage = () => {
           </p>
         </div>
       </div>
-
-      {/* Print Styles */}
-      <style jsx>{`
-        @media print {
-          body {
-            background: white;
-          }
-          .print\\:hidden {
-            display: none !important;
-          }
-          .bg-gradient-to-br {
-            background: white !important;
-          }
-        }
-      `}</style>
     </div>
   )
 }
