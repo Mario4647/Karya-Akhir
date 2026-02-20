@@ -28,6 +28,17 @@ import AdminSearchHistory from "./pencarian/pip/AdminSearchHistory";
 import CekPIP from "./user/pip/CekPIP";
 import UserTripDashboard from "./triplist/UserTripDashboard";
 
+// Import komponen untuk penjualan tiket konser
+import ConcertPage from "./pages/User/ConcertPage";
+import PaymentPage from "./pages/User/PaymentPage";
+import PaymentSuccessPage from "./pages/User/PaymentSuccessPage";
+// Admin pages untuk tiket konser
+import AdminConcertDashboard from "./pages/Admin/DashboardPage";
+import AdminProducts from "./pages/Admin/ProductsPage";
+import AdminPromos from "./pages/Admin/PromosPage";
+import AdminOrders from "./pages/Admin/OrdersPage";
+import AdminSuccessOrders from "./pages/Admin/SuccessOrdersPage";
+import AdminCancelledOrders from "./pages/Admin/CancelledOrdersPage";
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -124,7 +135,9 @@ function App() {
       <Routes>
         {/* Route untuk halaman login */}
         <Route path="/auth" element={<Form />} />
-            <Route path="/admin" element={<AdminDashboard />} />
+        
+        {/* Route untuk admin panel yang sudah ada */}
+        <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/dataguru" element={<AdminGuru />} />
         <Route path="/datasiswa" element={<AdminSiswa />} />
         <Route path="/dashboard-user" element={<DapodikDashboard />} />
@@ -134,13 +147,29 @@ function App() {
         <Route path="/pencarian" element={<AdminSearchLog />} />
         <Route path="/admin/tripsettings" element={<Trip />} />
         <Route path="/triplist" element={<UserTripDashboard />} />
-      <Route path="/admin/pesan" element={<AdminMessage />} />
+        <Route path="/admin/pesan" element={<AdminMessage />} />
         <Route path="/admin/pip" element={<AdminPIP />} />
         <Route path="/admin/banned" element={<AdminBansPage />} />
         <Route path="/pencarian/pip" element={<AdminSearchHistory />} />
         <Route path="/user/pip" element={<CekPIP />} />
-<Route path="/reset-password" element={<ResetPassword />} />
-        {/* Route untuk halaman utama (dashboard) */}
+        <Route path="/reset-password" element={<ResetPassword />} />
+
+        {/* ===== ROUTES UNTUK PENJUALAN TIKET KONSER ===== */}
+        
+        {/* User Routes */}
+        <Route path="/concerts" element={<ConcertPage />} />
+        <Route path="/payment/:orderId" element={<PaymentPage />} />
+        <Route path="/payment-success/:orderId" element={<PaymentSuccessPage />} />
+        
+        {/* Admin Routes untuk Tiket Konser */}
+        <Route path="/admin/concert-dashboard" element={<AdminConcertDashboard />} />
+        <Route path="/admin/concert-products" element={<AdminProducts />} />
+        <Route path="/admin/concert-promos" element={<AdminPromos />} />
+        <Route path="/admin/concert-orders" element={<AdminOrders />} />
+        <Route path="/admin/concert-success-orders" element={<AdminSuccessOrders />} />
+        <Route path="/admin/concert-cancelled-orders" element={<AdminCancelledOrders />} />
+
+        {/* Route untuk halaman utama (dashboard) - letakkan di paling bawah */}
         <Route
           path="/"
           element={
