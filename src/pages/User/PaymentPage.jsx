@@ -8,19 +8,17 @@ import {
   BiX,
   BiCheck,
   BiError,
-  BiCopy,
   BiArrowBack,
-  BiMoney,
   BiWallet,
   BiBank,
-  BiQr,
+  BiCode, // Ganti BiQr
   BiCheckCircle,
   BiXCircle
 } from 'react-icons/bi'
 
 const PaymentPage = () => {
   const [order, setOrder] = useState(null)
-  const [timeLeft, setTimeLeft] = useState(3600) // 60 minutes in seconds
+  const [timeLeft, setTimeLeft] = useState(3600)
   const [loading, setLoading] = useState(true)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [selectedPayment, setSelectedPayment] = useState(null)
@@ -60,7 +58,7 @@ const PaymentPage = () => {
   const loadMidtransScript = () => {
     const script = document.createElement('script')
     script.src = 'https://app.sandbox.midtrans.com/snap/snap.js'
-    script.setAttribute('data-client-key', 'YOUR_MIDTRANS_CLIENT_KEY') // Ganti dengan client key Midtrans Anda
+    script.setAttribute('data-client-key', 'YOUR_MIDTRANS_CLIENT_KEY')
     document.body.appendChild(script)
   }
 
@@ -121,7 +119,6 @@ const PaymentPage = () => {
     setError('')
 
     try {
-      // Panggil API Midtrans untuk mendapatkan Snap Token
       const response = await fetch('/api/create-midtrans-transaction', {
         method: 'POST',
         headers: {
@@ -147,7 +144,6 @@ const PaymentPage = () => {
       if (data.snap_token) {
         setSnapToken(data.snap_token)
         
-        // Buka Snap popup
         window.snap.pay(data.snap_token, {
           onSuccess: async (result) => {
             await handlePaymentSuccess(result)
@@ -175,7 +171,6 @@ const PaymentPage = () => {
 
   const handlePaymentSuccess = async (result) => {
     try {
-      // Update order status
       await supabase
         .from('orders')
         .update({
@@ -188,23 +183,10 @@ const PaymentPage = () => {
         })
         .eq('id', order.id)
 
-      // Send success email (implementasikan sesuai kebutuhan)
-      await sendSuccessEmail()
-
       navigate(`/payment-success/${order.id}`)
     } catch (error) {
       console.error('Error updating order:', error)
     }
-  }
-
-  const sendSuccessEmail = async () => {
-    // Implementasi pengiriman email sukses
-    // Bisa menggunakan Supabase Edge Functions atau service email lainnya
-  }
-
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text)
-    alert('Kode berhasil disalin!')
   }
 
   if (loading) {
@@ -305,15 +287,7 @@ const PaymentPage = () => {
           <div className="space-y-4">
             <div className="flex justify-between items-center pb-2 border-b border-gray-100">
               <span className="text-gray-600">Nomor Pesanan</span>
-              <div className="flex items-center space-x-2">
-                <span className="font-medium text-gray-800">{order.order_number}</span>
-                <button
-                  onClick={() => copyToClipboard(order.order_number)}
-                  className="text-blue-500 hover:text-blue-600"
-                >
-                  <BiCopy />
-                </button>
-              </div>
+              <span className="font-medium text-gray-800">{order.order_number}</span>
             </div>
 
             <div className="space-y-2">
@@ -446,7 +420,7 @@ const PaymentPage = () => {
                       : 'border-gray-200 hover:border-blue-300'
                   }`}
                 >
-                  <BiQr className={`text-2xl ${selectedPayment === 'qris' ? 'text-blue-500' : 'text-gray-400'}`} />
+                  <BiCode className={`text-2xl ${selectedPayment === 'qris' ? 'text-blue-500' : 'text-gray-400'}`} />
                   <div className="flex-1 text-left">
                     <p className="font-medium text-gray-800">QRIS</p>
                     <p className="text-sm text-gray-500">Scan QR code</p>
