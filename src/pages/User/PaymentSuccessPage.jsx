@@ -5,14 +5,13 @@ import NavbarEvent from '../../components/NavbarEvent'
 import {
   BiCheckCircle,
   BiDownload,
-  BiCopy,
-  BiQr,
   BiPrinter,
   BiMovie,
   BiCalendar,
   BiMap,
   BiUser
 } from 'react-icons/bi'
+import QRCode from 'qrcode.react'
 
 const PaymentSuccessPage = () => {
   const [order, setOrder] = useState(null)
@@ -43,17 +42,23 @@ const PaymentSuccessPage = () => {
   }
 
   const generateQRCode = (text) => {
-    // Fungsi untuk generate QR code dengan garis-garis
-    // Bisa menggunakan library qrcode.react atau buat custom
     return (
-      <div className="w-48 h-48 bg-gray-100 rounded-xl flex items-center justify-center">
-        <div className="grid grid-cols-8 gap-1">
-          {[...Array(64)].map((_, i) => (
-            <div
-              key={i}
-              className={`w-3 h-3 ${Math.random() > 0.5 ? 'bg-gray-800' : 'bg-gray-300'}`}
-            ></div>
-          ))}
+      <div className="relative">
+        <QRCode
+          value={text}
+          size={150}
+          bgColor="#ffffff"
+          fgColor="#000000"
+          level="L"
+          includeMargin={false}
+          renderAs="svg"
+        />
+        <div className="absolute inset-0 pointer-events-none opacity-10">
+          <div className="w-full h-full grid grid-cols-8 gap-0.5">
+            {[...Array(64)].map((_, i) => (
+              <div key={i} className="bg-black"></div>
+            ))}
+          </div>
         </div>
       </div>
     )
@@ -64,7 +69,13 @@ const PaymentSuccessPage = () => {
   }
 
   const handleDownload = () => {
-    // Implementasi download e-ticket
+    const canvas = document.querySelector('canvas')
+    if (canvas) {
+      const link = document.createElement('a')
+      link.download = `e-ticket-${order?.invoice_code}.png`
+      link.href = canvas.toDataURL()
+      link.click()
+    }
   }
 
   if (loading) {
