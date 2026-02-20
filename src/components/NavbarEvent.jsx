@@ -4,7 +4,7 @@ import { supabase } from '../supabaseClient'
 import { 
   BiHome, 
   BiMovie, 
-  BiPurchaseTag, // Ganti BiTicket dengan BiPurchaseTag
+  BiPurchaseTag,
   BiGift, 
   BiShoppingBag, 
   BiLogOut,
@@ -39,19 +39,20 @@ const NavbarEvent = ({ userRole = 'user' }) => {
     navigate('/auth')
   }
 
+  // Navigation items khusus untuk tiket konser
   const userNavItems = [
-    { name: 'Beranda', path: '/', icon: BiHome },
-    { name: 'Event', path: '/events', icon: BiMovie },
-    { name: 'Pesanan Saya', path: '/my-orders', icon: BiShoppingBag }
+    { name: 'Beranda', path: '/concerts', icon: BiHome }, // Arahkan ke halaman konser
+    { name: 'Event', path: '/concerts', icon: BiMovie }, // Arahkan ke halaman konser
+    { name: 'Pesanan Saya', path: '/my-orders', icon: BiShoppingBag } // Jika ada halaman riwayat pesanan
   ]
 
   const adminNavItems = [
-    { name: 'Dashboard', path: '/admin', icon: BiBarChart },
-    { name: 'Produk', path: '/admin/products', icon: BiMovie },
-    { name: 'Kode Promo', path: '/admin/promos', icon: BiGift },
-    { name: 'Pesanan', path: '/admin/orders', icon: BiListUl },
-    { name: 'Pesanan Sukses', path: '/admin/success-orders', icon: BiCheckCircle },
-    { name: 'Pesanan Batal', path: '/admin/cancelled-orders', icon: BiXCircle }
+    { name: 'Dashboard', path: '/admin/concert-dashboard', icon: BiBarChart },
+    { name: 'Produk', path: '/admin/concert-products', icon: BiMovie },
+    { name: 'Kode Promo', path: '/admin/concert-promos', icon: BiGift },
+    { name: 'Pesanan', path: '/admin/concert-orders', icon: BiListUl },
+    { name: 'Pesanan Sukses', path: '/admin/concert-success-orders', icon: BiCheckCircle },
+    { name: 'Pesanan Batal', path: '/admin/concert-cancelled-orders', icon: BiXCircle }
   ]
 
   const navItems = userRole === 'admin' ? adminNavItems : userNavItems
@@ -65,8 +66,8 @@ const NavbarEvent = ({ userRole = 'user' }) => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center">
-            <Link to="/" className="flex items-center space-x-2">
-              <BiPurchaseTag className="h-8 w-8 text-blue-500" /> {/* Ganti dengan BiPurchaseTag */}
+            <Link to={userRole === 'admin' ? '/admin/concert-dashboard' : '/concerts'} className="flex items-center space-x-2">
+              <BiPurchaseTag className="h-8 w-8 text-blue-500" />
               <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
                 TicketConcert
               </span>
