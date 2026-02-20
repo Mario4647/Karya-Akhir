@@ -1,0 +1,612 @@
+import React, { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { supabase } from '../../supabaseClient'
+import NavbarEvent from '../../components/NavbarEvent'
+import {
+  BiCalendar,
+  BiMap,
+  BiTime,
+  BiInfoCircle,
+  BiPlus,
+  BiMinus,
+  BiGift,
+  BiX,
+  BiCheck,
+  BiUser,
+  BiIdCard,
+  BiHome,
+  BiCreditCard,
+  BiArrowBack,
+  BiCopy,
+  BiCheckCircle,
+  BiError,
+  BiRefresh,
+  BiSend
+} from 'react-icons/bi'
+
+const ConcertPage = () => {
+  const [products, setProducts] = useState([])
+  const [selectedProduct, setSelectedProduct] = useState(null)
+  const [quantity, setQuantity] = useState(1)
+  const [showPromoInput, setShowPromoInput] = useState(false)
+  const [promoCode, setPromoCode] = useState('')
+  const [promoApplied, setPromoApplied] = useState(null)
+  const [promoError, setPromoError] = useState('')
+  const [promoLoading, setPromoLoading] = useState(false)
+  const [showBuyerForm, setShowBuyerForm] = useState(false)
+  const [buyers, setBuyers] = useState([{ name: '', nik: '', address: '' }])
+  const [loading, setLoading] = useState(false)
+  const [user, setUser] = useState(null)
+  const [profile, setProfile] = useState(null)
+  const [error, setError] = useState('')
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    fetchProducts()
+    getUser()
+  }, [])
+
+  const getUser = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    setUser(user)
+    if (user) {
+      fetchProfile(user.id)
+    }
+  }
+
+  const fetchProfile = async (userId) => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single()
+    
+    if (!error && data) {
+      setProfile(data)
+    }
+  }
+
+  const fetchProducts = async () => {
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .order('created_at', { ascending: false })
+    
+    if (!error && data) {
+      setProducts(data)
+      if (data.length > 0) {
+        setSelectedProduct(data[0])
+      }
+    }
+  }
+
+  const handleQuantityChange = (type) => {
+    if (type === 'add') {
+      if (quantity < (selectedProduct?.stock || 0)) {
+        setQuantity(prev => prev + 1)
+      }
+    } else {
+      if (quantity > 1) {
+        setQuantity(prev => prev - 1)
+      }
+    }
+  }
+
+  const validatePromo = async () => {
+    if (!promoCode.trim()) {
+      setPromoError('Masukkan kode promo')
+      return
+    }
+
+    setPromoLoading(true)
+    setPromoError('')
+
+    const now = new Date().toISOString()
+    const { data, error } = await supabase
+      .from('promo_codes')
+      .select('*')
+      .eq('code', promoCode.toUpperCase())
+      .lte('valid_from', now)
+      .gte('valid_until', now)
+      .single()
+
+    if (error || !data) {
+      setPromoError('Kode promo tidak valid atau sudah kadaluarsa')
+      setPromoLoading(false)
+      return
+    }
+
+    if (data.used_count >= data.stock) {
+      setPromoError('Kode promo sudah habis digunakan')
+      setPromoLoading(false)
+      return
+    }
+
+    setPromoApplied(data)
+    setPromoError('')
+    setPromoLoading(false)
+  }
+
+  const calculateDiscount = (subtotal) => {
+    if (!promoApplied) return 0
+    
+    if (promoApplied.discount_type === 'percentage') {
+      return (subtotal * promoApplied.discount_value) / 100
+    } else {
+      return promoApplied.discount_value
+    }
+  }
+
+  const subtotal = selectedProduct ? selectedProduct.price * quantity : 0
+  const discount = calculateDiscount(subtotal)
+  const total = subtotal - discount
+
+  const handleBuyNow = () => {
+    if (!user) {
+      navigate('/auth')
+      return
+    }
+    if (quantity === 0) return
+    setShowBuyerForm(true)
+  }
+
+  const handleAddBuyer = () => {
+    setBuyers([...buyers, { name: '', nik: '', address: '' }])
+  }
+
+  const handleRemoveBuyer = (index) => {
+    if (buyers.length > 1) {
+      setBuyers(buyers.filter((_, i) => i !== index))
+    }
+  }
+
+  const handleBuyerChange = (index, field, value) => {
+    const updatedBuyers = [...buyers]
+    updatedBuyers[index][field] = value
+    setBuyers(updatedBuyers)
+  }
+
+  const validateBuyers = () => {
+    for (let i = 0; i < buyers.length; i++) {
+      const buyer = buyers[i]
+      if (!buyer.name.trim()) {
+        setError(`Nama Pembeli ${i + 1} harus diisi`)
+        return false
+      }
+      if (!buyer.nik.trim()) {
+        setError(`NIK Pembeli ${i + 1} harus diisi`)
+        return false
+      }
+      if (buyer.nik.length < 16) {
+        setError(`NIK Pembeli ${i + 1} harus 16 digit`)
+        return false
+      }
+      if (!buyer.address.trim()) {
+        setError(`Alamat Pembeli ${i + 1} harus diisi`)
+        return false
+      }
+    }
+    return true
+  }
+
+  const createOrder = async () => {
+    if (!validateBuyers()) return
+
+    setLoading(true)
+    setError('')
+
+    try {
+      const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
+      const expiryTime = new Date()
+      expiryTime.setMinutes(expiryTime.getMinutes() + 60)
+
+      const orderData = {
+        order_number: orderNumber,
+        user_id: user.id,
+        product_id: selectedProduct.id,
+        product_name: selectedProduct.name,
+        product_price: selectedProduct.price,
+        quantity: quantity,
+        subtotal: subtotal,
+        promo_code_id: promoApplied?.id || null,
+        promo_discount: discount,
+        total_amount: total,
+        customer_name: buyers[0].name,
+        customer_nik: buyers[0].nik,
+        customer_email: user.email,
+        customer_address: buyers[0].address,
+        additional_buyers: buyers.slice(1).map(b => ({
+          name: b.name,
+          nik: b.nik,
+          address: b.address
+        })),
+        status: 'pending',
+        payment_expiry: expiryTime.toISOString()
+      }
+
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .insert([orderData])
+        .select()
+        .single()
+
+      if (orderError) throw orderError
+
+      // Insert additional buyers if any
+      if (buyers.length > 1) {
+        const buyersData = buyers.slice(1).map((buyer, index) => ({
+          order_id: order.id,
+          buyer_index: index + 1,
+          name: buyer.name,
+          nik: buyer.nik,
+          address: buyer.address
+        }))
+
+        const { error: buyersError } = await supabase
+          .from('order_buyers')
+          .insert(buyersData)
+
+        if (buyersError) throw buyersError
+      }
+
+      navigate(`/payment/${order.id}`)
+    } catch (error) {
+      console.error('Error creating order:', error)
+      setError('Gagal membuat pesanan. Silakan coba lagi.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (!selectedProduct) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
+        <NavbarEvent />
+        <div className="max-w-7xl mx-auto px-4 py-12">
+          <div className="text-center py-20">
+            <BiInfoCircle className="text-6xl text-gray-400 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-gray-700">Belum ada event tersedia</h2>
+            <p className="text-gray-500 mt-2">Silakan cek kembali nanti</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
+      <NavbarEvent />
+
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Left Column - Event Details */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Poster */}
+            <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
+              {selectedProduct.poster_url ? (
+                <img 
+                  src={selectedProduct.poster_url} 
+                  alt={selectedProduct.name}
+                  className="w-full h-96 object-cover"
+                />
+              ) : (
+                <div className="w-full h-96 bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center">
+                  <BiMovie className="text-8xl text-blue-300" />
+                </div>
+              )}
+            </div>
+
+            {/* Event Info */}
+            <div className="bg-white rounded-2xl shadow-xl p-6">
+              <h1 className="text-3xl font-bold text-gray-800 mb-4">{selectedProduct.name}</h1>
+              
+              <div className="space-y-4">
+                <div className="flex items-start space-x-3">
+                  <BiCalendar className="text-2xl text-blue-500 mt-1" />
+                  <div>
+                    <p className="font-semibold text-gray-700">Tanggal & Waktu</p>
+                    <p className="text-gray-600">
+                      {new Date(selectedProduct.event_date).toLocaleDateString('id-ID', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </p>
+                    <p className="text-gray-600">
+                      {new Date(selectedProduct.event_date).toLocaleTimeString('id-ID', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start space-x-3">
+                  <BiMap className="text-2xl text-blue-500 mt-1" />
+                  <div>
+                    <p className="font-semibold text-gray-700">Lokasi</p>
+                    <p className="text-gray-600">{selectedProduct.event_location}</p>
+                    {selectedProduct.location_description && (
+                      <p className="text-gray-500 text-sm mt-1">{selectedProduct.location_description}</p>
+                    )}
+                    {selectedProduct.maps_link && (
+                      <a
+                        href={selectedProduct.maps_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center space-x-1 mt-2 text-blue-600 hover:text-blue-700"
+                      >
+                        <BiMap className="text-lg" />
+                        <span>Lihat Melalui Google Maps</span>
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {selectedProduct.description && (
+                  <div className="flex items-start space-x-3">
+                    <BiInfoCircle className="text-2xl text-blue-500 mt-1" />
+                    <div>
+                      <p className="font-semibold text-gray-700">Deskripsi Event</p>
+                      <p className="text-gray-600">{selectedProduct.description}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column - Ticket Purchase */}
+          <div className="lg:col-span-1">
+            <div className="bg-white rounded-2xl shadow-xl p-6 sticky top-24">
+              <h2 className="text-xl font-bold text-gray-800 mb-4">Beli Tiket</h2>
+
+              {/* Product Info */}
+              <div className="mb-6">
+                <p className="text-sm text-gray-500">Produk</p>
+                <p className="font-semibold text-gray-800">{selectedProduct.name}</p>
+                <div className="flex justify-between items-center mt-2">
+                  <span className="text-sm text-gray-500">Harga</span>
+                  <span className="text-lg font-bold text-blue-600">
+                    Rp {selectedProduct.price.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+
+              {/* Quantity Selector */}
+              <div className="mb-6">
+                <p className="text-sm text-gray-500 mb-2">Jumlah Tiket</p>
+                <div className="flex items-center space-x-3">
+                  <button
+                    onClick={() => handleQuantityChange('minus')}
+                    disabled={quantity === 1}
+                    className="w-10 h-10 rounded-lg border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <BiMinus />
+                  </button>
+                  <span className="w-12 text-center font-semibold text-lg">{quantity}</span>
+                  <button
+                    onClick={() => handleQuantityChange('add')}
+                    disabled={quantity >= selectedProduct.stock}
+                    className="w-10 h-10 rounded-lg border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <BiPlus />
+                  </button>
+                  <span className="text-sm text-gray-500 ml-2">
+                    Stok: {selectedProduct.stock}
+                  </span>
+                </div>
+                {selectedProduct.stock === 0 && (
+                  <p className="text-red-500 text-sm mt-2">Stock telah habis</p>
+                )}
+              </div>
+
+              {/* Promo Code */}
+              <div className="mb-6">
+                <button
+                  onClick={() => setShowPromoInput(!showPromoInput)}
+                  className="text-blue-600 hover:text-blue-700 flex items-center space-x-1 text-sm font-medium"
+                >
+                  <BiGift className="text-lg" />
+                  <span>Gunakan Kode Promo</span>
+                </button>
+
+                {showPromoInput && (
+                  <div className="mt-3 space-y-2">
+                    <div className="flex space-x-2">
+                      <input
+                        type="text"
+                        value={promoCode}
+                        onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                        placeholder="Masukkan kode promo"
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <button
+                        onClick={validatePromo}
+                        disabled={promoLoading}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                      >
+                        {promoLoading ? '...' : 'Gunakan'}
+                      </button>
+                    </div>
+                    {promoError && (
+                      <p className="text-red-500 text-sm flex items-center space-x-1">
+                        <BiError />
+                        <span>{promoError}</span>
+                      </p>
+                    )}
+                    {promoApplied && (
+                      <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <p className="text-green-700 font-medium flex items-center space-x-1">
+                          <BiCheck className="text-lg" />
+                          <span>Promo berhasil diterapkan!</span>
+                        </p>
+                        <p className="text-sm text-green-600 mt-1">
+                          {promoApplied.discount_type === 'percentage' 
+                            ? `Diskon ${promoApplied.discount_value}%`
+                            : `Diskon Rp ${promoApplied.discount_value.toLocaleString()}`
+                          }
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Total */}
+              <div className="border-t border-gray-200 pt-4 mb-6">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Subtotal</span>
+                    <span className="text-gray-800">Rp {subtotal.toLocaleString()}</span>
+                  </div>
+                  {promoApplied && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Diskon</span>
+                      <span className="text-green-600">- Rp {discount.toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-lg font-bold pt-2 border-t border-gray-200">
+                    <span>Total</span>
+                    <span className="text-blue-600">Rp {total.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Buy Button */}
+              <button
+                onClick={handleBuyNow}
+                disabled={quantity === 0 || selectedProduct.stock === 0 || !user}
+                className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {!user ? 'Login untuk Membeli' : 'Beli Tiket'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Buyer Form Modal */}
+      {showBuyerForm && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold text-gray-800">Data Pembeli</h2>
+                <button
+                  onClick={() => setShowBuyerForm(false)}
+                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+                >
+                  <BiX className="text-xl" />
+                </button>
+              </div>
+
+              {buyers.map((buyer, index) => (
+                <div key={index} className="mb-6 p-4 border border-gray-200 rounded-xl">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="font-semibold text-gray-700">Pembeli {index + 1}</h3>
+                    {buyers.length > 1 && (
+                      <button
+                        onClick={() => handleRemoveBuyer(index)}
+                        className="text-red-500 hover:text-red-600 text-sm flex items-center space-x-1"
+                      >
+                        <BiX />
+                        <span>Hapus</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 mb-1">
+                        Nama Lengkap
+                      </label>
+                      <div className="relative">
+                        <BiUser className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="text"
+                          value={buyer.name}
+                          onChange={(e) => handleBuyerChange(index, 'name', e.target.value)}
+                          placeholder="Masukkan nama lengkap"
+                          className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 mb-1">
+                        NIK
+                      </label>
+                      <div className="relative">
+                        <BiIdCard className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="text"
+                          value={buyer.nik}
+                          onChange={(e) => handleBuyerChange(index, 'nik', e.target.value.replace(/\D/g, '').slice(0, 16))}
+                          placeholder="16 digit NIK"
+                          maxLength="16"
+                          className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 mb-1">
+                        Alamat
+                      </label>
+                      <div className="relative">
+                        <BiHome className="absolute left-3 top-3 text-gray-400" />
+                        <textarea
+                          value={buyer.address}
+                          onChange={(e) => handleBuyerChange(index, 'address', e.target.value)}
+                          placeholder="Masukkan alamat lengkap"
+                          rows="2"
+                          className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {quantity > 1 && buyers.length < quantity && (
+                <button
+                  onClick={handleAddBuyer}
+                  className="w-full mb-4 py-2 border-2 border-dashed border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+                >
+                  + Tambah Pembeli
+                </button>
+              )}
+
+              {error && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm flex items-center space-x-1">
+                  <BiError />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setShowBuyerForm(false)}
+                  className="flex-1 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={createOrder}
+                  disabled={loading}
+                  className="flex-1 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 transition-colors disabled:opacity-50"
+                >
+                  {loading ? 'Memproses...' : 'Simpan & Lanjut'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default ConcertPage
