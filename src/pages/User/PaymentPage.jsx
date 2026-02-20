@@ -10,10 +10,10 @@ import {
   BiError,
   BiArrowBack,
   BiWallet,
-  BiBank,
-  BiCode, // Ganti BiQr
+  BiCode,
   BiCheckCircle,
-  BiXCircle
+  BiXCircle,
+  BiPurchaseTag // Tambahkan untuk icon bank alternatif
 } from 'react-icons/bi'
 
 const PaymentPage = () => {
@@ -390,7 +390,7 @@ const PaymentPage = () => {
                       : 'border-gray-200 hover:border-blue-300'
                   }`}
                 >
-                  <BiBank className={`text-2xl ${selectedPayment === 'bank_transfer' ? 'text-blue-500' : 'text-gray-400'}`} />
+                  <BiWallet className={`text-2xl ${selectedPayment === 'bank_transfer' ? 'text-blue-500' : 'text-gray-400'}`} />
                   <div className="flex-1 text-left">
                     <p className="font-medium text-gray-800">Transfer Bank</p>
                     <p className="text-sm text-gray-500">BCA, Mandiri, BNI, BRI</p>
