@@ -13,7 +13,7 @@ import {
   BiCode,
   BiDuplicate,
   BiSave,
-  BiTicket
+  BiPurchaseTag // Ganti BiTicket
 } from 'react-icons/bi'
 
 const SuccessOrdersPage = () => {
@@ -24,7 +24,6 @@ const SuccessOrdersPage = () => {
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState(null)
-  const [selectedTicket, setSelectedTicket] = useState(null)
   const [editForm, setEditForm] = useState({
     name: '',
     nik: '',
@@ -267,7 +266,7 @@ const SuccessOrdersPage = () => {
                         </td>
                         <td className="px-4 py-4">
                           <div className="flex items-center space-x-1">
-                            <BiTicket className="text-blue-500" />
+                            <BiPurchaseTag className="text-blue-500" /> {/* Ganti BiTicket */}
                             <span className="text-sm">{orderTickets.length}</span>
                           </div>
                         </td>
