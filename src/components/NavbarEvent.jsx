@@ -11,35 +11,15 @@ import {
   BiMenu,
   BiX,
   BiUser,
-  BiCalendar,
-  BiMap,
   BiBarChart,
   BiListUl,
   BiCheckCircle,
   BiXCircle,
   BiHistory,
-  BiDetail,
   BiCreditCard,
-  BiQr,
-  BiCode,
   BiPackage,
-  BiDollar,
-  BiRefresh,
-  BiSearch,
-  BiFilter,
-  BiDownload,
-  BiPrinter,
-  BiCopy,
-  BiEdit,
-  BiTrash,
-  BiPlus,
-  BiMinus,
-  BiInfoCircle,
-  BiTime,
-  BiError,
-  BiWallet,
   BiMoney,
-  BiDuplicate
+  BiTime
 } from 'react-icons/bi'
 
 const NavbarEvent = ({ userRole = 'user' }) => {
@@ -63,45 +43,38 @@ const NavbarEvent = ({ userRole = 'user' }) => {
     navigate('/auth')
   }
 
-  // Semua halaman untuk user
+  // ========== HALAMAN YANG ADA DI APP.JSX ==========
+  
+  // Halaman User Tiket (bisa diakses oleh: user, user-raport, admin, admin-event)
   const userPages = [
     { name: 'Beranda', path: '/concerts', icon: BiHome },
-    { name: 'Event', path: '/concerts', icon: BiMovie },
     { name: 'Pesanan Saya', path: '/my-orders', icon: BiShoppingBag },
-    { name: 'Riwayat Pesanan', path: '/my-orders?status=all', icon: BiHistory },
-    { name: 'Pembayaran', path: '/payment', icon: BiCreditCard, hidden: true }, // Hidden karena dynamic
-    { name: 'Detail Pesanan', path: '/order-detail', icon: BiDetail, hidden: true }, // Hidden karena dynamic
-    { name: 'Tiket Saya', path: '/my-tickets', icon: BiPurchaseTag },
-    { name: 'Scan QR', path: '/scan-qr', icon: BiQr }
+    { name: 'Detail Pesanan', path: '/order-detail/:orderId', icon: BiHistory, hide: true }, // Hidden karena dynamic
+    { name: 'Pembayaran', path: '/payment/:orderId', icon: BiCreditCard, hide: true }, // Hidden karena dynamic
+    { name: 'Sukses', path: '/payment-success/:orderId', icon: BiCheckCircle, hide: true } // Hidden karena dynamic
   ]
 
-  // Semua halaman untuk admin
+  // Halaman Admin Tiket (hanya untuk admin dan admin-event)
   const adminPages = [
     { name: 'Dashboard', path: '/admin/concert-dashboard', icon: BiBarChart },
-    { name: 'Manajemen Produk', path: '/admin/concert-products', icon: BiPackage },
-    { name: 'Tipe Tiket', path: '/admin/concert-ticket-types', icon: BiPurchaseTag },
+    { name: 'Produk', path: '/admin/concert-products', icon: BiPackage },
     { name: 'Kode Promo', path: '/admin/concert-promos', icon: BiGift },
-    { name: 'Semua Pesanan', path: '/admin/concert-orders', icon: BiListUl },
+    { name: 'Pesanan', path: '/admin/concert-orders', icon: BiListUl },
     { name: 'Pesanan Sukses', path: '/admin/concert-success-orders', icon: BiCheckCircle },
-    { name: 'Pesanan Batal', path: '/admin/concert-cancelled-orders', icon: BiXCircle },
-    { name: 'Pesanan Menunggu', path: '/admin/concert-pending-orders', icon: BiTime },
-    { name: 'Manajemen Tiket', path: '/admin/concert-tickets', icon: BiCode },
-    { name: 'Laporan Keuangan', path: '/admin/concert-reports', icon: BiMoney },
-    { name: 'Statistik', path: '/admin/concert-statistics', icon: BiBarChart },
-    { name: 'Log Aktivitas', path: '/admin/concert-logs', icon: BiHistory },
-    { name: 'Pengaturan', path: '/admin/concert-settings', icon: BiDetail }
+    { name: 'Pesanan Batal', path: '/admin/concert-cancelled-orders', icon: BiXCircle }
   ]
 
-  // Filter hanya halaman yang tidak hidden
-  const visibleUserPages = userPages.filter(page => !page.hidden)
+  // Filter hanya halaman yang tidak di-hide
+  const visibleUserPages = userPages.filter(page => !page.hide)
   const visibleAdminPages = adminPages
 
   const navItems = userRole === 'admin' ? visibleAdminPages : visibleUserPages
 
   const isActive = (path) => {
-    if (path.includes('?')) {
-      const basePath = path.split('?')[0]
-      return location.pathname === basePath
+    // Handle dynamic routes
+    if (path.includes(':')) {
+      const basePath = path.split('/:')[0]
+      return location.pathname.startsWith(basePath)
     }
     return location.pathname === path
   }
@@ -272,13 +245,13 @@ const NavbarEvent = ({ userRole = 'user' }) => {
               </div>
             )}
 
-            {/* Navigation Groups */}
+            {/* Navigation Groups - Sesuai dengan App.jsx */}
             {userRole === 'admin' ? (
               // Admin Navigation Groups
               <>
                 <div className="mb-4">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-3">
-                    Overview
+                    Dashboard
                   </p>
                   <div className="space-y-1">
                     <SidebarLink 
@@ -288,19 +261,12 @@ const NavbarEvent = ({ userRole = 'user' }) => {
                       isActive={isActive('/admin/concert-dashboard')}
                       onClick={closeSidebar}
                     />
-                    <SidebarLink 
-                      to="/admin/concert-statistics" 
-                      icon={BiBarChart} 
-                      label="Statistik"
-                      isActive={isActive('/admin/concert-statistics')}
-                      onClick={closeSidebar}
-                    />
                   </div>
                 </div>
 
                 <div className="mb-4">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-3">
-                    Manajemen Produk
+                    Manajemen
                   </p>
                   <div className="space-y-1">
                     <SidebarLink 
@@ -310,28 +276,6 @@ const NavbarEvent = ({ userRole = 'user' }) => {
                       isActive={isActive('/admin/concert-products')}
                       onClick={closeSidebar}
                     />
-                    <SidebarLink 
-                      to="/admin/concert-ticket-types" 
-                      icon={BiPurchaseTag} 
-                      label="Tipe Tiket"
-                      isActive={isActive('/admin/concert-ticket-types')}
-                      onClick={closeSidebar}
-                    />
-                    <SidebarLink 
-                      to="/admin/concert-tickets" 
-                      icon={BiCode} 
-                      label="Manajemen Tiket"
-                      isActive={isActive('/admin/concert-tickets')}
-                      onClick={closeSidebar}
-                    />
-                  </div>
-                </div>
-
-                <div className="mb-4">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-3">
-                    Promo & Diskon
-                  </p>
-                  <div className="space-y-1">
                     <SidebarLink 
                       to="/admin/concert-promos" 
                       icon={BiGift} 
@@ -344,7 +288,7 @@ const NavbarEvent = ({ userRole = 'user' }) => {
 
                 <div className="mb-4">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-3">
-                    Manajemen Pesanan
+                    Pesanan
                   </p>
                   <div className="space-y-1">
                     <SidebarLink 
@@ -355,53 +299,17 @@ const NavbarEvent = ({ userRole = 'user' }) => {
                       onClick={closeSidebar}
                     />
                     <SidebarLink 
-                      to="/admin/concert-pending-orders" 
-                      icon={BiTime} 
-                      label="Menunggu"
-                      isActive={isActive('/admin/concert-pending-orders')}
-                      onClick={closeSidebar}
-                    />
-                    <SidebarLink 
                       to="/admin/concert-success-orders" 
                       icon={BiCheckCircle} 
-                      label="Sukses"
+                      label="Pesanan Sukses"
                       isActive={isActive('/admin/concert-success-orders')}
                       onClick={closeSidebar}
                     />
                     <SidebarLink 
                       to="/admin/concert-cancelled-orders" 
                       icon={BiXCircle} 
-                      label="Batal"
+                      label="Pesanan Batal"
                       isActive={isActive('/admin/concert-cancelled-orders')}
-                      onClick={closeSidebar}
-                    />
-                  </div>
-                </div>
-
-                <div className="mb-4">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-3">
-                    Laporan & Pengaturan
-                  </p>
-                  <div className="space-y-1">
-                    <SidebarLink 
-                      to="/admin/concert-reports" 
-                      icon={BiMoney} 
-                      label="Laporan Keuangan"
-                      isActive={isActive('/admin/concert-reports')}
-                      onClick={closeSidebar}
-                    />
-                    <SidebarLink 
-                      to="/admin/concert-logs" 
-                      icon={BiHistory} 
-                      label="Log Aktivitas"
-                      isActive={isActive('/admin/concert-logs')}
-                      onClick={closeSidebar}
-                    />
-                    <SidebarLink 
-                      to="/admin/concert-settings" 
-                      icon={BiDetail} 
-                      label="Pengaturan"
-                      isActive={isActive('/admin/concert-settings')}
                       onClick={closeSidebar}
                     />
                   </div>
@@ -422,11 +330,19 @@ const NavbarEvent = ({ userRole = 'user' }) => {
                       isActive={isActive('/concerts')}
                       onClick={closeSidebar}
                     />
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-3">
+                    Pesanan Saya
+                  </p>
+                  <div className="space-y-1">
                     <SidebarLink 
-                      to="/concerts" 
-                      icon={BiMovie} 
-                      label="Event"
-                      isActive={isActive('/concerts')}
+                      to="/my-orders" 
+                      icon={BiShoppingBag} 
+                      label="Semua Pesanan"
+                      isActive={isActive('/my-orders')}
                       onClick={closeSidebar}
                     />
                   </div>
@@ -434,23 +350,9 @@ const NavbarEvent = ({ userRole = 'user' }) => {
 
                 <div className="mb-4">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-3">
-                    Tiket Saya
+                    Status Pesanan
                   </p>
                   <div className="space-y-1">
-                    <SidebarLink 
-                      to="/my-orders" 
-                      icon={BiShoppingBag} 
-                      label="Pesanan Saya"
-                      isActive={isActive('/my-orders')}
-                      onClick={closeSidebar}
-                    />
-                    <SidebarLink 
-                      to="/my-orders?status=paid" 
-                      icon={BiCheckCircle} 
-                      label="Tiket Aktif"
-                      isActive={location.pathname === '/my-orders' && new URLSearchParams(location.search).get('status') === 'paid'}
-                      onClick={closeSidebar}
-                    />
                     <SidebarLink 
                       to="/my-orders?status=pending" 
                       icon={BiTime} 
@@ -459,32 +361,17 @@ const NavbarEvent = ({ userRole = 'user' }) => {
                       onClick={closeSidebar}
                     />
                     <SidebarLink 
-                      to="/my-tickets" 
-                      icon={BiPurchaseTag} 
-                      label="Semua Tiket"
-                      isActive={isActive('/my-tickets')}
-                      onClick={closeSidebar}
-                    />
-                  </div>
-                </div>
-
-                <div className="mb-4">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-3">
-                    Lainnya
-                  </p>
-                  <div className="space-y-1">
-                    <SidebarLink 
-                      to="/scan-qr" 
-                      icon={BiQr} 
-                      label="Scan QR"
-                      isActive={isActive('/scan-qr')}
+                      to="/my-orders?status=paid" 
+                      icon={BiCheckCircle} 
+                      label="Sukses"
+                      isActive={location.pathname === '/my-orders' && new URLSearchParams(location.search).get('status') === 'paid'}
                       onClick={closeSidebar}
                     />
                     <SidebarLink 
-                      to="/my-orders?status=all" 
-                      icon={BiHistory} 
-                      label="Riwayat"
-                      isActive={location.pathname === '/my-orders' && new URLSearchParams(location.search).get('status') === 'all'}
+                      to="/my-orders?status=cancelled" 
+                      icon={BiXCircle} 
+                      label="Batal"
+                      isActive={location.pathname === '/my-orders' && new URLSearchParams(location.search).get('status') === 'cancelled'}
                       onClick={closeSidebar}
                     />
                   </div>
