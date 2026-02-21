@@ -32,6 +32,49 @@ const Dashboard = ({ user }) => {
         day: "numeric",
     });
 
+    // Redirect berdasarkan role
+    useEffect(() => {
+        const checkUserRoleAndRedirect = async () => {
+            try {
+                // Jika user tidak ada (kemungkinan tamu)
+                if (!user || !user.id) {
+                    navigate("/concerts");
+                    return;
+                }
+
+                // Ambil role user dari database
+                const { data: profileData, error: profileError } = await supabase
+                    .from("profiles")
+                    .select("roles")
+                    .eq("id", user.id)
+                    .single();
+
+                if (profileError) {
+                    console.error("Error fetching user role:", profileError);
+                    // Jika error, anggap sebagai user biasa dan redirect ke concerts
+                    navigate("/concerts");
+                    return;
+                }
+
+                const role = profileData?.roles || "user";
+
+                // Redirect berdasarkan role
+                if (role === "admin-event") {
+                    navigate("/admin/concert-dashboard");
+                } else {
+                    // Untuk role user, tanpa role, atau tamu
+                    navigate("/concerts");
+                }
+            } catch (error) {
+                console.error("Error in redirect:", error);
+                // Jika terjadi error, redirect aman ke concerts
+                navigate("/concerts");
+            }
+        };
+
+        checkUserRoleAndRedirect();
+    }, [user, navigate]); // Dependensi: user dan navigate
+
     // Update time every second
     useEffect(() => {
         const interval = setInterval(() => {
@@ -330,8 +373,6 @@ const Dashboard = ({ user }) => {
                                                 <span>Trip Dashboard</span>
                                             </button>
                                         )}
-
-                                        
 
                                         {/* List Trip Pasangan Button - Only for partner status */}
                                         {partnerStatus && (
