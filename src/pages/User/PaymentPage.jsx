@@ -16,18 +16,10 @@ import {
   BiCopy,
   BiRefresh
 } from 'react-icons/bi'
-import Midtrans from 'midtrans-client'
+import axios from 'axios'
 
-// Konfigurasi Midtrans Sandbox
+// Konfigurasi Midtrans
 const MIDTRANS_CLIENT_KEY = 'Mid-client-PKxh7PoyLs2QwsBh'
-const MIDTRANS_SERVER_KEY = 'Mid-server-GO01WdWzdlBnf8IVAP_IQ7BU'
-
-// Inisialisasi Snap
-const snap = new Midtrans.Snap({
-  isProduction: false,
-  serverKey: MIDTRANS_SERVER_KEY,
-  clientKey: MIDTRANS_CLIENT_KEY
-})
 
 const PaymentPage = () => {
   const [order, setOrder] = useState(null)
@@ -153,68 +145,24 @@ const PaymentPage = () => {
 
   const createTransaction = async () => {
     try {
-      const parameter = {
-        transaction_details: {
-          order_id: order.order_number,
-          gross_amount: order.total_amount
-        },
-        credit_card: {
-          secure: true
-        },
-        customer_details: {
-          first_name: order.customer_name,
-          email: order.customer_email,
-          phone: "081234567890",
-          billing_address: {
-            first_name: order.customer_name,
-            email: order.customer_email,
-            phone: "081234567890",
-            address: order.customer_address,
-            city: "Jakarta",
-            postal_code: "12345",
-            country_code: "IDN"
-          }
-        },
-        item_details: [{
-          id: order.product_id || "TICKET-001",
-          price: order.product_price,
-          quantity: order.quantity,
-          name: order.product_name
-        }],
-        enabled_payments: [
-          "credit_card",
-          "mandiri_clickpay",
-          "bca_klikbca",
-          "bca_klikpay",
-          "bri_epay",
-          "echannel",
-          "permata_va",
-          "bca_va",
-          "bni_va",
-          "bri_va",
-          "cimb_va",
-          "other_va",
-          "gopay",
-          "shopeepay",
-          "qris"
-        ],
-        callbacks: {
-          finish: `${window.location.origin}/payment-success/${order.id}`,
-          error: `${window.location.origin}/payment/${order.id}`,
-          pending: `${window.location.origin}/payment/${order.id}`
-        }
-      }
+      // Gunakan axios untuk memanggil API kita sendiri
+      const response = await axios.post('/api/midtrans', {
+        orderId: order.id,
+        orderNumber: order.order_number,
+        totalAmount: order.total_amount,
+        customerName: order.customer_name,
+        customerEmail: order.customer_email,
+        customerAddress: order.customer_address,
+        productName: order.product_name,
+        productPrice: order.product_price,
+        quantity: order.quantity,
+        productId: order.product_id
+      })
 
-      console.log('Creating transaction with params:', parameter)
-
-      // Gunakan midtrans-client untuk membuat transaksi
-      const transaction = await snap.createTransaction(parameter)
-      console.log('Transaction created:', transaction)
-      
-      return transaction
+      return response.data
     } catch (error) {
-      console.error('Error creating transaction:', error)
-      throw error
+      console.error('Error creating transaction:', error.response?.data || error.message)
+      throw new Error(error.response?.data?.error || error.message)
     }
   }
 
@@ -233,7 +181,7 @@ const PaymentPage = () => {
     setError('')
 
     try {
-      // Buat transaksi menggunakan midtrans-client
+      // Dapatkan token dari backend kita
       const transaction = await createTransaction()
       
       if (transaction && transaction.token) {
@@ -420,6 +368,7 @@ const PaymentPage = () => {
       <NavbarEvent />
 
       <div className="max-w-4xl mx-auto px-4 py-8">
+        {/* Timer */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6 relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-red-500"></div>
           <div className="flex items-center justify-between">
@@ -450,8 +399,12 @@ const PaymentPage = () => {
           </div>
         </div>
 
+        {/* Order Summary */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
-          <h2 className="text-xl font-bold text-gray-800 mb-4">Ringkasan Pesanan</h2>
+          <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <span className="w-1 h-6 bg-blue-500 rounded-full"></span>
+            Ringkasan Pesanan
+          </h2>
           
           <div className="space-y-4">
             <div className="flex justify-between items-center pb-3 border-b border-gray-100">
@@ -507,8 +460,12 @@ const PaymentPage = () => {
           </div>
         </div>
 
+        {/* Customer Data */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
-          <h2 className="text-xl font-bold text-gray-800 mb-4">Data Pemesan</h2>
+          <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <span className="w-1 h-6 bg-blue-500 rounded-full"></span>
+            Data Pemesan
+          </h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-gray-50 p-3 rounded-lg">
@@ -526,9 +483,13 @@ const PaymentPage = () => {
           </div>
         </div>
 
+        {/* Additional Buyers */}
         {order.additional_buyers && order.additional_buyers.length > 0 && (
           <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Pembeli Lainnya</h2>
+            <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+              <span className="w-1 h-6 bg-blue-500 rounded-full"></span>
+              Pembeli Lainnya
+            </h2>
             
             <div className="space-y-3">
               {order.additional_buyers.map((buyer, index) => (
@@ -554,6 +515,7 @@ const PaymentPage = () => {
           </div>
         )}
 
+        {/* Email Info */}
         <div className="mb-6 p-4 bg-blue-50 rounded-xl border border-blue-200">
           <p className="text-sm text-blue-700 flex items-center gap-2">
             <BiCheckCircle className="text-blue-500 text-lg" />
@@ -562,6 +524,7 @@ const PaymentPage = () => {
           </p>
         </div>
 
+        {/* Midtrans Status */}
         {!snapLoaded && (
           <div className="mb-6 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
             <p className="text-sm text-yellow-700 flex items-center gap-2">
@@ -580,6 +543,7 @@ const PaymentPage = () => {
           </div>
         )}
 
+        {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-4">
           <button
             onClick={handleCancelOrder}
@@ -607,11 +571,13 @@ const PaymentPage = () => {
           </button>
         </div>
 
+        {/* Info tambahan */}
         <div className="mt-4 text-center text-sm text-gray-500">
           <p>Anda akan diarahkan ke halaman pembayaran Midtrans</p>
         </div>
       </div>
 
+      {/* Loading Overlay */}
       {processingPayment && (
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[60]">
           <div className="bg-white rounded-2xl p-8 shadow-2xl">
