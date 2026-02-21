@@ -12,7 +12,7 @@ import {
   BiUser,
   BiCopy,
   BiArrowBack,
-  BiPurchaseTag // Ganti BiTicket
+  BiPurchaseTag
 } from 'react-icons/bi'
 import { QRCode } from 'react-qr-code'
 
@@ -59,12 +59,10 @@ const PaymentSuccessPage = () => {
     }
   }
 
-  const handleCopyInvoice = () => {
-    if (order?.invoice_code) {
-      navigator.clipboard.writeText(order.invoice_code)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }
+  const handleCopy = (text) => {
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   const handlePrint = () => {
@@ -122,23 +120,23 @@ const PaymentSuccessPage = () => {
     }).format(number)
   }
 
-  const generateQRCode = (text, index) => {
+  // QR Code pendek (ukuran 80x80) dengan kode di bawah
+  const generateQRCode = (text, code) => {
     return (
-      <div className={`qr-${text.replace(/[^a-zA-Z0-9]/g, '')} relative inline-block`}>
-        <QRCode
-          value={text}
-          size={120}
-          bgColor="#ffffff"
-          fgColor="#000000"
-          level="H"
-        />
-        {/* Efek garis-garis */}
-        <div className="absolute inset-0 pointer-events-none opacity-10">
-          <div className="w-full h-full grid grid-cols-8 gap-0.5">
-            {[...Array(64)].map((_, i) => (
-              <div key={i} className="bg-black"></div>
-            ))}
-          </div>
+      <div className="flex flex-col items-center">
+        <div className={`qr-${text.replace(/[^a-zA-Z0-9]/g, '')} bg-white p-2 rounded-lg border border-gray-200`}>
+          <QRCode
+            value={text}
+            size={70} // Ukuran kecil/pendek
+            bgColor="#ffffff"
+            fgColor="#000000"
+            level="H"
+          />
+        </div>
+        <div className="mt-2 text-center">
+          <span className="text-xs font-mono font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">
+            {code}
+          </span>
         </div>
       </div>
     )
@@ -201,7 +199,7 @@ const PaymentSuccessPage = () => {
             <span className="text-sm text-blue-700">No. Pesanan: </span>
             <span className="font-mono font-bold text-blue-800 ml-2">{order.order_number}</span>
             <button
-              onClick={() => navigator.clipboard.writeText(order.order_number)}
+              onClick={() => handleCopy(order.order_number)}
               className="ml-2 text-blue-500 hover:text-blue-700"
               title="Salin nomor pesanan"
             >
@@ -210,7 +208,25 @@ const PaymentSuccessPage = () => {
           </div>
         </div>
 
-        {/* Multiple Tickets */}
+        {/* Invoice Code Display */}
+        <div className="bg-white rounded-2xl shadow-xl p-6 mb-6 text-center">
+          <p className="text-sm text-gray-500 mb-2">Kode Invoice</p>
+          <div className="flex items-center justify-center gap-2">
+            <span className="text-2xl font-mono font-bold text-blue-600">{order.invoice_code}</span>
+            <button
+              onClick={() => handleCopy(order.invoice_code)}
+              className="text-gray-400 hover:text-blue-500"
+              title="Salin kode invoice"
+            >
+              <BiCopy className="text-lg" />
+            </button>
+          </div>
+          {copied && (
+            <p className="text-xs text-green-600 mt-1">Kode berhasil disalin!</p>
+          )}
+        </div>
+
+        {/* Multiple Tickets with Short QR Codes */}
         <div className="space-y-4 mb-6">
           {tickets.map((ticket, index) => (
             <div key={ticket.id} className="bg-white rounded-2xl shadow-xl overflow-hidden">
@@ -221,28 +237,27 @@ const PaymentSuccessPage = () => {
                     <h3 className="text-xl font-bold mt-1">{order.product_name}</h3>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm opacity-90">KODE TIKET</p>
-                    <p className="font-mono text-sm">{ticket.ticket_code}</p>
+                    <p className="text-sm opacity-90">TIPE TIKET</p>
+                    <p className="font-bold">{ticket.ticket_type || 'Reguler'}</p>
                   </div>
                 </div>
               </div>
 
               <div className="p-6">
                 <div className="flex flex-col md:flex-row gap-6">
-                  {/* QR Code */}
-                  <div className="flex flex-col items-center md:w-48">
-                    {generateQRCode(ticket.ticket_code, index)}
-                    <p className="text-xs text-gray-500 mt-2">Scan untuk verifikasi</p>
+                  {/* Left side - Short QR Code dengan Kode */}
+                  <div className="flex flex-col items-center md:w-32">
+                    {generateQRCode(ticket.ticket_code, ticket.ticket_code)}
                     <button
                       onClick={() => handleDownloadQR(ticket.ticket_code)}
-                      className="mt-2 text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                      className="mt-2 text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
                     >
-                      <BiDownload />
-                      Download QR
+                      <BiDownload size={14} />
+                      <span>Download QR</span>
                     </button>
                   </div>
 
-                  {/* Ticket Info */}
+                  {/* Right side - Ticket Info */}
                   <div className="flex-1 space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
@@ -252,8 +267,8 @@ const PaymentSuccessPage = () => {
                         </p>
                       </div>
                       <div>
-                        <p className="text-xs text-gray-500">Tipe Tiket</p>
-                        <p className="font-medium text-gray-800">{ticket.ticket_type || 'Reguler'}</p>
+                        <p className="text-xs text-gray-500">Harga Tiket</p>
+                        <p className="font-medium text-blue-600">{formatRupiah(ticket.price)}</p>
                       </div>
                     </div>
 
@@ -262,11 +277,11 @@ const PaymentSuccessPage = () => {
                       <div className="mt-1 space-y-1">
                         <div className="flex items-center gap-2 text-sm">
                           <BiCalendar className="text-blue-500" />
-                          <span>{formatDate(order.products?.event_date)}</span>
+                          <span>{order.products?.event_date ? formatDate(order.products.event_date) : '-'}</span>
                         </div>
                         <div className="flex items-center gap-2 text-sm">
                           <BiMap className="text-blue-500" />
-                          <span>{order.products?.event_location}</span>
+                          <span>{order.products?.event_location || '-'}</span>
                         </div>
                       </div>
                     </div>
@@ -318,7 +333,7 @@ const PaymentSuccessPage = () => {
             onClick={() => navigate('/my-orders')}
             className="px-6 py-3 border-2 border-blue-600 text-blue-600 rounded-xl hover:bg-blue-50 transition-colors flex items-center space-x-2"
           >
-            <BiPurchaseTag className="text-xl" /> {/* Ganti BiTicket */}
+            <BiPurchaseTag className="text-xl" />
             <span>Lihat Semua Pesanan</span>
           </button>
         </div>
