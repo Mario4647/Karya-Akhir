@@ -211,6 +211,12 @@ const AdminNavbar = () => {
                                 active={location.pathname === '/admin'}
                             />
                             <MobileNavItem
+                                icon="bx-dashboard"
+                                label="Dashboard Event"
+                                onClick={() => { navigate('/admin/concert-dashboard'); closeAllMenus(); }}
+                                active={location.pathname === '/admin/concert-dashboard'}
+                            />
+                            <MobileNavItem
                                 icon="bx-data"
                                 label="Data Dapodik"
                                 onClick={() => { navigate('/dapodik'); closeAllMenus(); }}
@@ -325,6 +331,12 @@ const AdminNavbar = () => {
                                 label="Dashboard Admin"
                                 onClick={() => { navigate('/admin'); closeAllMenus(); }}
                                 active={location.pathname === '/admin'}
+                            />
+                            <MobileNavItem
+                                icon="bx-dashboard"
+                                label="Dashboard Event"
+                                onClick={() => { navigate('/admin/concert-dashboard'); closeAllMenus(); }}
+                                active={location.pathname === '/admin/concert-dashboard'}
                             />
                             <MobileNavItem
                                 icon="bx-data"
