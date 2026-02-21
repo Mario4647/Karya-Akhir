@@ -19,6 +19,7 @@ import {
 
 // Konfigurasi Midtrans Sandbox
 const MIDTRANS_CLIENT_KEY = 'Mid-client-PKxh7PoyLs2QwsBh'
+const MIDTRANS_MERCHANT_ID = 'G738480656'
 
 const PaymentPage = () => {
   const [order, setOrder] = useState(null)
@@ -30,6 +31,7 @@ const PaymentPage = () => {
   const [error, setError] = useState('')
   const [snapLoaded, setSnapLoaded] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [snapInitialized, setSnapInitialized] = useState(false)
   const { orderId } = useParams()
   const navigate = useNavigate()
 
@@ -63,21 +65,43 @@ const PaymentPage = () => {
   const loadMidtransScript = () => {
     // Cek apakah script sudah ada
     if (document.querySelector('script[src="https://app.sandbox.midtrans.com/snap/snap.js"]')) {
+      console.log('Midtrans script already loaded')
       setSnapLoaded(true)
+      // Tunggu sebentar untuk memastikan snap siap
+      setTimeout(() => {
+        if (window.snap) {
+          console.log('Snap is ready')
+          setSnapInitialized(true)
+        }
+      }, 500)
       return
     }
     
+    console.log('Loading Midtrans script...')
     const script = document.createElement('script')
     script.src = 'https://app.sandbox.midtrans.com/snap/snap.js'
     script.setAttribute('data-client-key', MIDTRANS_CLIENT_KEY)
+    
     script.onload = () => {
-      console.log('Midtrans script loaded')
+      console.log('Midtrans script loaded successfully')
       setSnapLoaded(true)
+      // Tunggu sebentar untuk memastikan snap siap
+      setTimeout(() => {
+        if (window.snap) {
+          console.log('Snap is ready')
+          setSnapInitialized(true)
+        } else {
+          console.error('Snap not available after load')
+          setError('Gagal menginisialisasi metode pembayaran')
+        }
+      }, 1000)
     }
-    script.onerror = () => {
-      console.error('Failed to load Midtrans script')
+    
+    script.onerror = (err) => {
+      console.error('Failed to load Midtrans script:', err)
       setError('Gagal memuat metode pembayaran. Silakan refresh halaman.')
     }
+    
     document.body.appendChild(script)
   }
 
@@ -95,10 +119,11 @@ const PaymentPage = () => {
         .single()
 
       if (error) throw error
+      console.log('Order fetched:', data)
       setOrder(data)
     } catch (error) {
       console.error('Error fetching order:', error)
-      setError('Gagal memuat data pesanan')
+      setError('Gagal memuat data pesanan: ' + error.message)
     } finally {
       setLoading(false)
     }
@@ -140,7 +165,8 @@ const PaymentPage = () => {
   }
 
   const handlePayOrder = () => {
-    if (!snapLoaded) {
+    console.log('Pay button clicked, snapInitialized:', snapInitialized)
+    if (!snapInitialized) {
       setError('Metode pembayaran belum siap. Silakan tunggu atau refresh halaman.')
       return
     }
@@ -153,50 +179,10 @@ const PaymentPage = () => {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // Fungsi untuk membuat parameter Snap
-  const getSnapParameters = () => {
-    return {
-      transaction_details: {
-        order_id: order.order_number,
-        gross_amount: order.total_amount
-      },
-      credit_card: {
-        secure: true
-      },
-      customer_details: {
-        first_name: order.customer_name,
-        email: order.customer_email,
-        phone: "",
-        billing_address: {
-          address: order.customer_address
-        }
-      },
-      item_details: [{
-        id: order.product_id,
-        name: order.product_name,
-        price: order.product_price,
-        quantity: order.quantity
-      }],
-      callbacks: {
-        finish: `${window.location.origin}/payment-success/${order.id}`,
-        error: `${window.location.origin}/payment/${order.id}`,
-        pending: `${window.location.origin}/payment/${order.id}`
-      },
-      expiry: {
-        duration: 60,
-        unit: "minutes"
-      }
-    }
-  }
-
-  const processPayment = async () => {
-    if (!selectedPayment) {
-      setError('Pilih metode pembayaran terlebih dahulu')
-      return
-    }
-
+  // Fungsi untuk membayar langsung tanpa pilih metode di modal
+  const payDirect = () => {
     if (!window.snap) {
-      setError('Metode pembayaran tidak tersedia. Silakan refresh halaman.')
+      setError('Metode pembayaran tidak tersedia')
       return
     }
 
@@ -204,18 +190,82 @@ const PaymentPage = () => {
     setError('')
 
     try {
-      // Dapatkan parameter Snap
-      const snapParams = getSnapParameters()
-      console.log('Snap parameters:', snapParams)
-
-      // Buat transaksi dengan Snap
-      // Snap akan handle sendiri komunikasi dengan backend Midtrans
-      window.snap.pay(snapParams, {
-        onSuccess: async (result) => {
-          console.log('Payment success:', result)
-          await handlePaymentSuccess(result)
+      // Siapkan parameter transaksi
+      const snapParams = {
+        transaction_details: {
+          order_id: order.order_number,
+          gross_amount: order.total_amount
         },
-        onPending: (result) => {
+        credit_card: {
+          secure: true
+        },
+        customer_details: {
+          first_name: order.customer_name,
+          email: order.customer_email,
+          phone: "08123456789",
+          billing_address: {
+            first_name: order.customer_name,
+            email: order.customer_email,
+            phone: "08123456789",
+            address: order.customer_address,
+            city: "Jakarta",
+            postal_code: "12345",
+            country_code: "IDN"
+          },
+          shipping_address: {
+            first_name: order.customer_name,
+            email: order.customer_email,
+            phone: "08123456789",
+            address: order.customer_address,
+            city: "Jakarta",
+            postal_code: "12345",
+            country_code: "IDN"
+          }
+        },
+        item_details: [{
+          id: order.product_id || "TICKET-001",
+          price: order.product_price,
+          quantity: order.quantity,
+          name: order.product_name
+        }],
+        callbacks: {
+          finish: `${window.location.origin}/payment-success/${order.id}`,
+          error: `${window.location.origin}/payment/${order.id}`,
+          pending: `${window.location.origin}/payment/${order.id}`
+        },
+        enabled_payments: [
+          "credit_card",
+          "mandiri_clickpay",
+          "bca_klikbca",
+          "bca_klikpay",
+          "bri_epay",
+          "echannel",
+          "permata_va",
+          "bca_va",
+          "bni_va",
+          "bri_va",
+          "cimb_va",
+          "other_va",
+          "gopay",
+          "shopeepay",
+          "qris"
+        ],
+        expiry: {
+          start_time: new Date().toISOString(),
+          duration: 60,
+          unit: "minutes"
+        }
+      }
+
+      console.log('Snap params:', snapParams)
+
+      // Buka Snap popup
+      window.snap.pay(snapParams, {
+        onSuccess: function(result) {
+          console.log('Payment success:', result)
+          handlePaymentSuccess(result)
+        },
+        onPending: function(result) {
           console.log('Payment pending:', result)
           supabase
             .from('orders')
@@ -225,36 +275,36 @@ const PaymentPage = () => {
               updated_at: new Date().toISOString()
             })
             .eq('id', order.id)
-          
           alert('Pembayaran sedang diproses. Silakan cek status secara berkala.')
+          setProcessingPayment(false)
           setShowPaymentModal(false)
         },
-        onError: (result) => {
+        onError: function(result) {
           console.error('Payment error:', result)
           setError('Pembayaran gagal: ' + (result.status_message || 'Silakan coba lagi'))
-          
-          supabase
-            .from('orders')
-            .update({ 
-              midtrans_transaction_status: 'error',
-              payment_details: result,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', order.id)
-          
+          setProcessingPayment(false)
           setShowPaymentModal(false)
         },
-        onClose: () => {
+        onClose: function() {
           console.log('Payment popup closed')
           setProcessingPayment(false)
+          setShowPaymentModal(false)
         }
       })
-      
     } catch (error) {
-      console.error('Error processing payment:', error)
+      console.error('Error in snap.pay:', error)
       setError('Gagal memproses pembayaran: ' + error.message)
       setProcessingPayment(false)
     }
+  }
+
+  const processPayment = () => {
+    if (!selectedPayment) {
+      setError('Pilih metode pembayaran terlebih dahulu')
+      return
+    }
+
+    payDirect()
   }
 
   const handlePaymentSuccess = async (result) => {
@@ -549,7 +599,7 @@ const PaymentPage = () => {
         </div>
 
         {/* Midtrans Status */}
-        {!snapLoaded && (
+        {!snapInitialized && (
           <div className="mb-6 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
             <p className="text-sm text-yellow-700 flex items-center gap-2">
               <BiTimer className="text-yellow-500 text-lg" />
@@ -577,8 +627,8 @@ const PaymentPage = () => {
             <span>Batalkan Pesanan</span>
           </button>
           <button
-            onClick={handlePayOrder}
-            disabled={!snapLoaded || processingPayment}
+            onClick={payDirect}
+            disabled={!snapInitialized || processingPayment}
             className="flex-1 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 transition-colors flex items-center justify-center space-x-2 shadow-lg shadow-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {processingPayment ? (
@@ -594,153 +644,19 @@ const PaymentPage = () => {
             )}
           </button>
         </div>
-      </div>
 
-      {/* Payment Method Modal */}
-      {showPaymentModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full transform transition-all">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold text-gray-800">Pilih Metode Pembayaran</h2>
-                <button
-                  onClick={() => setShowPaymentModal(false)}
-                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <BiX className="text-xl" />
-                </button>
-              </div>
-
-              <div className="space-y-3 mb-6">
-                <button
-                  onClick={() => setSelectedPayment('credit_card')}
-                  className={`w-full p-4 border-2 rounded-xl flex items-center space-x-4 transition-all ${
-                    selectedPayment === 'credit_card'
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
-                  }`}
-                >
-                  <div className={`p-2 rounded-lg ${selectedPayment === 'credit_card' ? 'bg-blue-100' : 'bg-gray-100'}`}>
-                    <BiCreditCard className={`text-2xl ${selectedPayment === 'credit_card' ? 'text-blue-500' : 'text-gray-400'}`} />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <p className="font-semibold text-gray-800">Kartu Kredit/Debit</p>
-                    <p className="text-sm text-gray-500">Visa, Mastercard, JCB</p>
-                  </div>
-                  {selectedPayment === 'credit_card' && (
-                    <BiCheck className="text-2xl text-blue-500" />
-                  )}
-                </button>
-
-                <button
-                  onClick={() => setSelectedPayment('bank_transfer')}
-                  className={`w-full p-4 border-2 rounded-xl flex items-center space-x-4 transition-all ${
-                    selectedPayment === 'bank_transfer'
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
-                  }`}
-                >
-                  <div className={`p-2 rounded-lg ${selectedPayment === 'bank_transfer' ? 'bg-blue-100' : 'bg-gray-100'}`}>
-                    <BiWallet className={`text-2xl ${selectedPayment === 'bank_transfer' ? 'text-blue-500' : 'text-gray-400'}`} />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <p className="font-semibold text-gray-800">Transfer Bank</p>
-                    <p className="text-sm text-gray-500">BCA, Mandiri, BNI, BRI</p>
-                  </div>
-                  {selectedPayment === 'bank_transfer' && (
-                    <BiCheck className="text-2xl text-blue-500" />
-                  )}
-                </button>
-
-                <button
-                  onClick={() => setSelectedPayment('gopay')}
-                  className={`w-full p-4 border-2 rounded-xl flex items-center space-x-4 transition-all ${
-                    selectedPayment === 'gopay'
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
-                  }`}
-                >
-                  <div className={`p-2 rounded-lg ${selectedPayment === 'gopay' ? 'bg-blue-100' : 'bg-gray-100'}`}>
-                    <BiWallet className={`text-2xl ${selectedPayment === 'gopay' ? 'text-blue-500' : 'text-gray-400'}`} />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <p className="font-semibold text-gray-800">GoPay</p>
-                    <p className="text-sm text-gray-500">Dompet digital Gojek</p>
-                  </div>
-                  {selectedPayment === 'gopay' && (
-                    <BiCheck className="text-2xl text-blue-500" />
-                  )}
-                </button>
-
-                <button
-                  onClick={() => setSelectedPayment('qris')}
-                  className={`w-full p-4 border-2 rounded-xl flex items-center space-x-4 transition-all ${
-                    selectedPayment === 'qris'
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
-                  }`}
-                >
-                  <div className={`p-2 rounded-lg ${selectedPayment === 'qris' ? 'bg-blue-100' : 'bg-gray-100'}`}>
-                    <BiCode className={`text-2xl ${selectedPayment === 'qris' ? 'text-blue-500' : 'text-gray-400'}`} />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <p className="font-semibold text-gray-800">QRIS</p>
-                    <p className="text-sm text-gray-500">Scan QR code</p>
-                  </div>
-                  {selectedPayment === 'qris' && (
-                    <BiCheck className="text-2xl text-blue-500" />
-                  )}
-                </button>
-              </div>
-
-              {error && (
-                <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <div className="flex items-start gap-3">
-                    <BiError className="text-xl text-red-500 mt-0.5" />
-                    <div>
-                      <p className="font-medium text-red-800">Gagal memproses pembayaran</p>
-                      <p className="text-sm text-red-600 mt-1">{error}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowPaymentModal(false)}
-                  className="flex-1 py-3 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
-                >
-                  Batal
-                </button>
-                <button
-                  onClick={processPayment}
-                  disabled={!selectedPayment || processingPayment}
-                  className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {processingPayment ? (
-                    <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
-                      <span>Memproses...</span>
-                    </>
-                  ) : (
-                    <>
-                      <BiCreditCard className="text-xl" />
-                      <span>Bayar Sekarang</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
+        {/* Info tambahan */}
+        <div className="mt-4 text-center text-sm text-gray-500">
+          <p>Anda akan diarahkan ke halaman pembayaran Midtrans</p>
         </div>
-      )}
+      </div>
 
       {/* Loading Overlay */}
       {processingPayment && (
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[60]">
           <div className="bg-white rounded-2xl p-8 shadow-2xl">
             <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
-            <p className="text-gray-700 font-medium">Memproses pembayaran...</p>
+            <p className="text-gray-700 font-medium">Mempersiapkan pembayaran...</p>
             <p className="text-sm text-gray-500 mt-2">Mohon tunggu sebentar</p>
           </div>
         </div>
