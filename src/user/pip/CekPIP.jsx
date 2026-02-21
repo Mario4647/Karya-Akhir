@@ -128,7 +128,7 @@ const CekPIP = () => {
             Cek Status Penerima PIP
           </h1>
           <p className="text-gray-600 max-w-2xl mx-auto">
-            SMAN 1 REJOTANGAN - Program Indonesia Pintar Tahun 2025
+            SMAN 1 REJOTANGAN - Program Indonesia Pintar Tahun 2025/2026
           </p>
           <p className="text-sm text-gray-500 mt-2">
             Masukkan NISN dan Tanggal Lahir Anda untuk mengecek status PIP
