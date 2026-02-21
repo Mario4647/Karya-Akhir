@@ -12,15 +12,20 @@ import {
   BiUser,
   BiCopy,
   BiArrowBack,
-  BiPurchaseTag
+  BiPurchaseTag,
+  BiHome,
+  BiIdCard,
+  BiMail,
+  BiPhone
 } from 'react-icons/bi'
-import { QRCode } from 'react-qr-code'
+import QRCode from 'react-qr-code'
 
 const PaymentSuccessPage = () => {
   const [order, setOrder] = useState(null)
   const [tickets, setTickets] = useState([])
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
+  const [qrLoaded, setQrLoaded] = useState(false)
   const { orderId } = useParams()
   const navigate = useNavigate()
 
@@ -52,6 +57,7 @@ const PaymentSuccessPage = () => {
 
       if (ticketsError) throw ticketsError
       setTickets(ticketsData || [])
+      setQrLoaded(true)
     } catch (error) {
       console.error('Error fetching data:', error)
     } finally {
@@ -70,25 +76,29 @@ const PaymentSuccessPage = () => {
   }
 
   const handleDownloadQR = (ticketCode) => {
-    const svg = document.querySelector(`.qr-${ticketCode.replace(/[^a-zA-Z0-9]/g, '')} svg`)
-    if (svg) {
-      const canvas = document.createElement('canvas')
-      const ctx = canvas.getContext('2d')
-      const img = new Image()
-      
-      img.onload = () => {
-        canvas.width = img.width
-        canvas.height = img.height
-        ctx.drawImage(img, 0, 0)
+    // Cari elemen SVG dalam container spesifik
+    const container = document.getElementById(`qr-${ticketCode.replace(/[^a-zA-Z0-9]/g, '')}`)
+    if (container) {
+      const svg = container.querySelector('svg')
+      if (svg) {
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')
+        const img = new Image()
         
-        const link = document.createElement('a')
-        link.download = `ticket-${ticketCode}.png`
-        link.href = canvas.toDataURL('image/png')
-        link.click()
+        img.onload = () => {
+          canvas.width = img.width
+          canvas.height = img.height
+          ctx.drawImage(img, 0, 0)
+          
+          const link = document.createElement('a')
+          link.download = `ticket-${ticketCode}.png`
+          link.href = canvas.toDataURL('image/png')
+          link.click()
+        }
+        
+        const svgData = new XMLSerializer().serializeToString(svg)
+        img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)))
       }
-      
-      const svgData = new XMLSerializer().serializeToString(svg)
-      img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)))
     }
   }
 
@@ -120,21 +130,23 @@ const PaymentSuccessPage = () => {
     }).format(number)
   }
 
-  // QR Code pendek (ukuran 80x80) dengan kode di bawah
+  // QR Code dengan ID unik untuk memudahkan seleksi
   const generateQRCode = (text, code) => {
+    const safeId = `qr-${text.replace(/[^a-zA-Z0-9]/g, '')}`
+    
     return (
-      <div className="flex flex-col items-center">
-        <div className={`qr-${text.replace(/[^a-zA-Z0-9]/g, '')} bg-white p-2 rounded-lg border border-gray-200`}>
+      <div id={safeId} className="flex flex-col items-center">
+        <div className="bg-white p-2 rounded-lg border-2 border-blue-200 shadow-sm">
           <QRCode
             value={text}
-            size={70} // Ukuran kecil/pendek
+            size={80}
             bgColor="#ffffff"
             fgColor="#000000"
             level="H"
           />
         </div>
         <div className="mt-2 text-center">
-          <span className="text-xs font-mono font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">
+          <span className="text-xs font-mono font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200">
             {code}
           </span>
         </div>
@@ -195,7 +207,7 @@ const PaymentSuccessPage = () => {
           <p className="text-gray-600 max-w-md mx-auto">
             Terima kasih telah melakukan pembayaran. Tiket Anda telah dikonfirmasi dan siap digunakan.
           </p>
-          <div className="mt-4 inline-flex items-center bg-blue-50 px-4 py-2 rounded-full">
+          <div className="mt-4 inline-flex items-center bg-blue-50 px-4 py-2 rounded-full border border-blue-200">
             <span className="text-sm text-blue-700">No. Pesanan: </span>
             <span className="font-mono font-bold text-blue-800 ml-2">{order.order_number}</span>
             <button
@@ -206,6 +218,73 @@ const PaymentSuccessPage = () => {
               <BiCopy className="text-lg" />
             </button>
           </div>
+        </div>
+
+        {/* Data Pemesan Card */}
+        <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <BiUser className="text-blue-500" />
+            Data Pemesan
+          </h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="flex items-start gap-3">
+                <BiUser className="text-blue-500 text-xl mt-0.5" />
+                <div>
+                  <p className="text-xs text-gray-500">Nama Lengkap</p>
+                  <p className="font-medium text-gray-800">{order.customer_name}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="flex items-start gap-3">
+                <BiIdCard className="text-blue-500 text-xl mt-0.5" />
+                <div>
+                  <p className="text-xs text-gray-500">NIK</p>
+                  <p className="font-medium text-gray-800">{order.customer_nik}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="flex items-start gap-3">
+                <BiMail className="text-blue-500 text-xl mt-0.5" />
+                <div>
+                  <p className="text-xs text-gray-500">Email</p>
+                  <p className="font-medium text-gray-800">{order.customer_email}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-gray-50 p-4 rounded-lg md:col-span-2">
+              <div className="flex items-start gap-3">
+                <BiHome className="text-blue-500 text-xl mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-xs text-gray-500">Alamat</p>
+                  <p className="font-medium text-gray-800">{order.customer_address}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Additional Buyers */}
+          {order.additional_buyers && order.additional_buyers.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <p className="text-sm font-semibold text-gray-700 mb-3">Pembeli Lainnya:</p>
+              <div className="space-y-3">
+                {order.additional_buyers.map((buyer, index) => (
+                  <div key={index} className="bg-blue-50 p-3 rounded-lg">
+                    <p className="text-sm font-medium text-gray-800">Pembeli {index + 2}</p>
+                    <p className="text-xs text-gray-600 mt-1">Nama: {buyer.name}</p>
+                    <p className="text-xs text-gray-600">NIK: {buyer.nik}</p>
+                    <p className="text-xs text-gray-600">Alamat: {buyer.address}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Invoice Code Display */}
@@ -226,10 +305,10 @@ const PaymentSuccessPage = () => {
           )}
         </div>
 
-        {/* Multiple Tickets with Short QR Codes */}
+        {/* Multiple Tickets with QR Codes */}
         <div className="space-y-4 mb-6">
           {tickets.map((ticket, index) => (
-            <div key={ticket.id} className="bg-white rounded-2xl shadow-xl overflow-hidden">
+            <div key={ticket.id} className="bg-white rounded-2xl shadow-xl overflow-hidden border-2 border-blue-100">
               <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-4 text-white">
                 <div className="flex justify-between items-center">
                   <div>
@@ -245,12 +324,12 @@ const PaymentSuccessPage = () => {
 
               <div className="p-6">
                 <div className="flex flex-col md:flex-row gap-6">
-                  {/* Left side - Short QR Code dengan Kode */}
+                  {/* Left side - QR Code dengan Kode */}
                   <div className="flex flex-col items-center md:w-32">
                     {generateQRCode(ticket.ticket_code, ticket.ticket_code)}
                     <button
                       onClick={() => handleDownloadQR(ticket.ticket_code)}
-                      className="mt-2 text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                      className="mt-2 text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1 rounded-full flex items-center gap-1 border border-blue-200"
                     >
                       <BiDownload size={14} />
                       <span>Download QR</span>
@@ -260,28 +339,30 @@ const PaymentSuccessPage = () => {
                   {/* Right side - Ticket Info */}
                   <div className="flex-1 space-y-3">
                     <div className="grid grid-cols-2 gap-3">
-                      <div>
+                      <div className="bg-gray-50 p-2 rounded">
                         <p className="text-xs text-gray-500">Nama Pemilik</p>
-                        <p className="font-medium text-gray-800">
+                        <p className="font-medium text-gray-800 text-sm">
                           {index === 0 ? order.customer_name : order.additional_buyers?.[index-1]?.name}
                         </p>
                       </div>
-                      <div>
+                      <div className="bg-gray-50 p-2 rounded">
                         <p className="text-xs text-gray-500">Harga Tiket</p>
-                        <p className="font-medium text-blue-600">{formatRupiah(ticket.price)}</p>
+                        <p className="font-medium text-blue-600 text-sm">{formatRupiah(ticket.price)}</p>
                       </div>
                     </div>
 
-                    <div>
-                      <p className="text-xs text-gray-500">Detail Event</p>
-                      <div className="mt-1 space-y-1">
+                    <div className="bg-gray-50 p-3 rounded">
+                      <p className="text-xs text-gray-500 mb-2">Detail Event</p>
+                      <div className="space-y-1">
                         <div className="flex items-center gap-2 text-sm">
                           <BiCalendar className="text-blue-500" />
-                          <span>{order.products?.event_date ? formatDate(order.products.event_date) : '-'}</span>
+                          <span className="text-gray-700">
+                            {order.products?.event_date ? formatDate(order.products.event_date) : '-'}
+                          </span>
                         </div>
                         <div className="flex items-center gap-2 text-sm">
                           <BiMap className="text-blue-500" />
-                          <span>{order.products?.event_location || '-'}</span>
+                          <span className="text-gray-700">{order.products?.event_location || '-'}</span>
                         </div>
                       </div>
                     </div>
@@ -294,10 +375,10 @@ const PaymentSuccessPage = () => {
 
         {/* Order Summary */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-3">Ringkasan Pesanan</h2>
+          <h2 className="text-lg font-semibold text-gray-800 mb-3">Ringkasan Pembayaran</h2>
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Subtotal</span>
+              <span className="text-gray-600">Subtotal ({order.quantity} tiket)</span>
               <span className="text-gray-800">{formatRupiah(order.subtotal)}</span>
             </div>
             {order.promo_discount > 0 && (
@@ -306,7 +387,7 @@ const PaymentSuccessPage = () => {
                 <span>- {formatRupiah(order.promo_discount)}</span>
               </div>
             )}
-            <div className="flex justify-between font-bold pt-2 border-t border-gray-200">
+            <div className="flex justify-between font-bold pt-2 border-t-2 border-gray-200">
               <span>Total Dibayar</span>
               <span className="text-blue-600 text-xl">{formatRupiah(order.total_amount)}</span>
             </div>
@@ -346,6 +427,11 @@ const PaymentSuccessPage = () => {
             <span className="font-medium text-gray-700">{order.customer_email}</span>
           </p>
         </div>
+      </div>
+
+      {/* Test QR Code - Untuk memastikan library berfungsi */}
+      <div style={{ display: 'none' }}>
+        <QRCode value="test" size={10} />
       </div>
     </div>
   )
