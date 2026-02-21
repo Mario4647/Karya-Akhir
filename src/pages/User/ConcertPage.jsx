@@ -46,7 +46,6 @@ const ConcertPage = () => {
   const [error, setError] = useState('')
   const [fetchError, setFetchError] = useState('')
   const [isLoadingProducts, setIsLoadingProducts] = useState(true)
-  const [debugInfo, setDebugInfo] = useState('')
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -95,6 +94,7 @@ const ConcertPage = () => {
         image_url: product.image_data || product.poster_url
       }))
       
+      console.log('Fetched products:', processedData)
       setProducts(processedData || [])
       
       if (processedData && processedData.length > 0) {
@@ -253,7 +253,6 @@ const ConcertPage = () => {
 
     setLoading(true)
     setError('')
-    setDebugInfo('')
 
     try {
       // Validasi data
@@ -276,14 +275,13 @@ const ConcertPage = () => {
       const expiryTime = new Date()
       expiryTime.setMinutes(expiryTime.getMinutes() + 60)
 
-      // Siapkan data order
+      // Siapkan data order - SESUAIKAN DENGAN SCHEMA
       const orderData = {
         order_number: orderNumber,
         user_id: user.id,
         product_id: selectedProduct.id,
         product_name: `${selectedProduct.name} - ${selectedTicketType.name}`,
         product_price: selectedTicketType.price,
-        ticket_type: selectedTicketType.name,
         quantity: quantity,
         subtotal: subtotal,
         promo_code_id: promoApplied?.id || null,
@@ -304,7 +302,6 @@ const ConcertPage = () => {
         updated_at: new Date().toISOString()
       }
 
-      setDebugInfo('Menyimpan order...')
       console.log('Order Data:', orderData)
 
       // Insert order
@@ -315,15 +312,14 @@ const ConcertPage = () => {
         .single()
 
       if (orderError) {
-        console.error('Order insert error:', orderError)
-        throw new Error(`Gagal menyimpan order: ${orderError.message}`)
+        console.error('Order insert error details:', orderError)
+        throw new Error(orderError.message || 'Gagal menyimpan order')
       }
 
       if (!order) {
         throw new Error('Gagal membuat order: Data tidak ditemukan setelah insert')
       }
 
-      setDebugInfo('Order berhasil dibuat, membuat tiket...')
       console.log('Order created:', order)
 
       // Create tickets for each buyer
@@ -357,7 +353,6 @@ const ConcertPage = () => {
         })
       })
 
-      setDebugInfo(`Membuat ${tickets.length} tiket...`)
       console.log('Tickets to insert:', tickets)
 
       // Insert tickets
@@ -371,8 +366,6 @@ const ConcertPage = () => {
         await supabase.from('orders').delete().eq('id', order.id)
         throw new Error(`Gagal membuat tiket: ${ticketsError.message}`)
       }
-
-      setDebugInfo('Tiket berhasil dibuat, mengupdate stok...')
 
       // Update stock
       const updatedTicketTypes = selectedProduct.ticket_types.map(type => {
@@ -394,7 +387,6 @@ const ConcertPage = () => {
       if (updateError) {
         console.error('Stock update error:', updateError)
         // Log error tapi jangan throw karena order sudah berhasil
-        console.warn('Gagal update stok:', updateError.message)
       }
 
       // Update promo usage jika ada
@@ -408,12 +400,8 @@ const ConcertPage = () => {
           .eq('id', promoApplied.id)
       }
 
-      setDebugInfo('Semua berhasil! Redirecting...')
-      
       // Redirect ke halaman pembayaran
-      setTimeout(() => {
-        navigate(`/payment/${order.id}`)
-      }, 500)
+      navigate(`/payment/${order.id}`)
 
     } catch (error) {
       console.error('Error creating order:', error)
@@ -886,13 +874,6 @@ const ConcertPage = () => {
                       <p className="text-sm text-red-600 mt-1">{error}</p>
                     </div>
                   </div>
-                </div>
-              )}
-
-              {/* Debug Info (hidden in production) */}
-              {process.env.NODE_ENV === 'development' && debugInfo && (
-                <div className="mb-4 p-2 bg-gray-100 border border-gray-300 rounded text-xs font-mono">
-                  <p className="text-gray-600">Debug: {debugInfo}</p>
                 </div>
               )}
 
