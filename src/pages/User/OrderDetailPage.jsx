@@ -12,7 +12,7 @@ import {
   BiMovie,
   BiUser,
   BiMoney,
-  BiTicket,
+  BiPurchaseTag, // Ganti BiTicket
   BiDownload,
   BiPrinter,
   BiCopy
@@ -313,7 +313,7 @@ const OrderDetailPage = () => {
             {order.status === 'paid' && tickets.length > 0 && (
               <div>
                 <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                  <BiTicket className="text-blue-500" />
+                  <BiPurchaseTag className="text-blue-500" /> {/* Ganti BiTicket */}
                   Tiket ({tickets.length})
                 </h3>
                 <div className="space-y-4">
@@ -368,7 +368,7 @@ const OrderDetailPage = () => {
                 onClick={() => navigate(`/payment-success/${order.id}`)}
                 className="flex-1 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors font-semibold flex items-center justify-center gap-2"
               >
-                <BiTicket />
+                <BiPurchaseTag /> {/* Ganti BiTicket */}
                 Lihat E-Ticket
               </button>
             </>
