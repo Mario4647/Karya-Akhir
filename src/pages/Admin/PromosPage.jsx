@@ -9,7 +9,7 @@ import {
   BiX,
   BiSearch,
   BiCalendar,
-  BiMoney, // Ganti BiDollar
+  BiMoney,
   BiPackage,
   BiCheck,
   BiError
@@ -30,6 +30,7 @@ const PromosPage = () => {
     valid_until: ''
   })
   const [errors, setErrors] = useState({})
+  const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     fetchPromos()
@@ -37,15 +38,20 @@ const PromosPage = () => {
 
   const fetchPromos = async () => {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('promo_codes')
-      .select('*')
-      .order('created_at', { ascending: false })
+    try {
+      const { data, error } = await supabase
+        .from('promo_codes')
+        .select('*')
+        .order('created_at', { ascending: false })
 
-    if (!error && data) {
-      setPromos(data)
+      if (error) throw error
+      setPromos(data || [])
+    } catch (error) {
+      console.error('Error fetching promos:', error)
+      alert('Gagal memuat data promo: ' + error.message)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   const handleInputChange = (e) => {
@@ -60,7 +66,9 @@ const PromosPage = () => {
     const newErrors = {}
     if (!formData.code) newErrors.code = 'Kode promo harus diisi'
     if (!formData.discount_value) newErrors.discount_value = 'Nilai diskon harus diisi'
+    if (parseFloat(formData.discount_value) <= 0) newErrors.discount_value = 'Nilai diskon harus lebih dari 0'
     if (!formData.stock) newErrors.stock = 'Stok harus diisi'
+    if (parseInt(formData.stock) <= 0) newErrors.stock = 'Stok harus lebih dari 0'
     if (!formData.valid_from) newErrors.valid_from = 'Tanggal mulai harus diisi'
     if (!formData.valid_until) newErrors.valid_until = 'Tanggal berakhir harus diisi'
     
@@ -68,6 +76,13 @@ const PromosPage = () => {
     if (formData.valid_from && formData.valid_until) {
       if (new Date(formData.valid_from) >= new Date(formData.valid_until)) {
         newErrors.valid_until = 'Tanggal berakhir harus setelah tanggal mulai'
+      }
+    }
+
+    // Validasi diskon berdasarkan tipe
+    if (formData.discount_type === 'percentage') {
+      if (parseFloat(formData.discount_value) > 100) {
+        newErrors.discount_value = 'Diskon persentase maksimal 100%'
       }
     }
 
@@ -79,44 +94,57 @@ const PromosPage = () => {
     e.preventDefault()
     if (!validateForm()) return
 
-    const promoData = {
-      ...formData,
-      discount_value: parseFloat(formData.discount_value),
-      stock: parseInt(formData.stock),
-      used_count: 0
-    }
+    setSubmitting(true)
 
-    if (editingPromo) {
-      const { error } = await supabase
-        .from('promo_codes')
-        .update({ ...promoData, updated_at: new Date().toISOString() })
-        .eq('id', editingPromo.id)
-
-      if (!error) {
-        fetchPromos()
-        closeModal()
+    try {
+      const promoData = {
+        code: formData.code.toUpperCase(),
+        discount_type: formData.discount_type,
+        discount_value: parseFloat(formData.discount_value),
+        stock: parseInt(formData.stock),
+        used_count: editingPromo ? editingPromo.used_count : 0,
+        valid_from: formData.valid_from,
+        valid_until: formData.valid_until,
+        updated_at: new Date().toISOString()
       }
-    } else {
-      const { error } = await supabase
-        .from('promo_codes')
-        .insert([promoData])
 
-      if (!error) {
-        fetchPromos()
-        closeModal()
+      let error
+      if (editingPromo) {
+        ({ error } = await supabase
+          .from('promo_codes')
+          .update(promoData)
+          .eq('id', editingPromo.id))
+      } else {
+        ({ error } = await supabase
+          .from('promo_codes')
+          .insert([{ ...promoData, created_at: new Date().toISOString() }]))
       }
+
+      if (error) throw error
+
+      await fetchPromos()
+      closeModal()
+    } catch (error) {
+      console.error('Error saving promo:', error)
+      alert('Gagal menyimpan kode promo: ' + error.message)
+    } finally {
+      setSubmitting(false)
     }
   }
 
   const handleDelete = async (id) => {
     if (window.confirm('Yakin ingin menghapus kode promo ini?')) {
-      const { error } = await supabase
-        .from('promo_codes')
-        .delete()
-        .eq('id', id)
+      try {
+        const { error } = await supabase
+          .from('promo_codes')
+          .delete()
+          .eq('id', id)
 
-      if (!error) {
-        fetchPromos()
+        if (error) throw error
+        await fetchPromos()
+      } catch (error) {
+        console.error('Error deleting promo:', error)
+        alert('Gagal menghapus kode promo: ' + error.message)
       }
     }
   }
@@ -258,7 +286,7 @@ const PromosPage = () => {
                     return (
                       <tr key={promo.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4">
-                          <div className="font-mono font-medium text-gray-800">{promo.code}</div>
+                          <div className="font-mono font-bold text-gray-800">{promo.code}</div>
                         </td>
                         <td className="px-6 py-4">
                           {promo.discount_type === 'percentage' ? 'Persentase' : 'Nominal'}
@@ -274,7 +302,7 @@ const PromosPage = () => {
                         <td className="px-6 py-4">
                           <div className="text-sm">
                             <div>{new Date(promo.valid_from).toLocaleDateString('id-ID')}</div>
-                            <div className="text-gray-500">s/d</div>
+                            <div className="text-gray-400">sd</div>
                             <div>{new Date(promo.valid_until).toLocaleDateString('id-ID')}</div>
                           </div>
                         </td>
@@ -286,12 +314,14 @@ const PromosPage = () => {
                             <button
                               onClick={() => openModal(promo)}
                               className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Edit"
                             >
                               <BiEdit className="text-lg" />
                             </button>
                             <button
                               onClick={() => handleDelete(promo.id)}
                               className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Hapus"
                             >
                               <BiTrash className="text-lg" />
                             </button>
@@ -372,6 +402,8 @@ const PromosPage = () => {
                       name="discount_value"
                       value={formData.discount_value}
                       onChange={handleInputChange}
+                      min="1"
+                      max={formData.discount_type === 'percentage' ? "100" : undefined}
                       className={`w-full ${
                         formData.discount_type === 'percentage' ? 'pr-8' : 'pl-10'
                       } px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
@@ -393,6 +425,7 @@ const PromosPage = () => {
                       name="stock"
                       value={formData.stock}
                       onChange={handleInputChange}
+                      min="1"
                       className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                         errors.stock ? 'border-red-500' : 'border-gray-300'
                       }`}
@@ -449,9 +482,17 @@ const PromosPage = () => {
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 transition-colors"
+                    disabled={submitting}
+                    className="flex-1 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
                   >
-                    {editingPromo ? 'Simpan Perubahan' : 'Tambah Promo'}
+                    {submitting ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                        <span>Menyimpan...</span>
+                      </>
+                    ) : (
+                      <span>{editingPromo ? 'Simpan Perubahan' : 'Tambah Promo'}</span>
+                    )}
                   </button>
                 </div>
               </form>
