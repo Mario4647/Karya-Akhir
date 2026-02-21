@@ -1,27 +1,42 @@
-const midtransClient = require('midtrans-client');
-const { createClient } = require('@supabase/supabase-js');
-
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-// Konfigurasi Midtrans
-const snap = new midtransClient.Snap({
-  isProduction: false, // Ubah ke true untuk production
-  serverKey: process.env.MIDTRANS_SERVER_KEY,
-  clientKey: process.env.MIDTRANS_CLIENT_KEY
-});
+// api/create-midtrans-transaction.js
+const Midtrans = require('midtrans-client');
 
 export default async function handler(req, res) {
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  // Handle OPTIONS request (preflight)
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
+  // Only allow POST
   if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const { orderId, orderNumber, amount, customerName, customerEmail, items } = req.body;
+    const { 
+      orderId, 
+      orderNumber, 
+      amount, 
+      customerName, 
+      customerEmail, 
+      customerPhone,
+      items 
+    } = req.body;
 
-    // Buat parameter transaksi
-    const parameter = {
+    // Buat Snap API instance dengan Server Key
+    let snap = new Midtrans.Snap({
+      isProduction: false,
+      serverKey: 'Mid-server-GO01WdWzdlBnf8IVAP_IQ7BU',
+      clientKey: 'Mid-client-PKxh7PoyLs2QwsBh'
+    });
+
+    let parameter = {
       transaction_details: {
         order_id: orderNumber,
         gross_amount: amount
@@ -31,33 +46,37 @@ export default async function handler(req, res) {
       },
       customer_details: {
         first_name: customerName,
-        email: customerEmail
+        email: customerEmail,
+        phone: customerPhone || "081234567890"
       },
       item_details: items.map(item => ({
         id: item.id,
-        name: item.name,
         price: item.price,
-        quantity: item.quantity
-      }))
+        quantity: item.quantity,
+        name: item.name
+      })),
+      callbacks: {
+        finish: `${req.headers.origin}/payment-success/${orderId}`,
+        error: `${req.headers.origin}/payment/${orderId}`,
+        pending: `${req.headers.origin}/payment/${orderId}`
+      }
     };
 
-    // Dapatkan Snap token
+    // Buat transaksi
     const transaction = await snap.createTransaction(parameter);
     
-    // Simpan transaction_id ke database
-    await supabase
-      .from('orders')
-      .update({ 
-        midtrans_transaction_id: transaction.transaction_id 
-      })
-      .eq('id', orderId);
-
     res.status(200).json({
+      success: true,
       snap_token: transaction.token,
-      snap_redirect_url: transaction.redirect_url
+      transaction_id: transaction.transaction_id,
+      redirect_url: transaction.redirect_url
     });
+
   } catch (error) {
     console.error('Midtrans error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Gagal membuat transaksi'
+    });
   }
 }
