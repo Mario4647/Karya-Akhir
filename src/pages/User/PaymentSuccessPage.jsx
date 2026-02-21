@@ -14,9 +14,8 @@ import {
   BiArrowBack,
   BiPurchaseTag,
   BiHome,
-  BiIdCard,
-  BiMail,
-  BiPhone
+  BiIdCard
+  // BiMail dan BiPhone dihapus karena tidak tersedia
 } from 'react-icons/bi'
 import QRCode from 'react-qr-code'
 
@@ -250,7 +249,7 @@ const PaymentSuccessPage = () => {
             
             <div className="bg-gray-50 p-4 rounded-lg">
               <div className="flex items-start gap-3">
-                <BiMail className="text-blue-500 text-xl mt-0.5" />
+                <BiUser className="text-blue-500 text-xl mt-0.5" /> {/* Ganti BiMail dengan BiUser */}
                 <div>
                   <p className="text-xs text-gray-500">Email</p>
                   <p className="font-medium text-gray-800">{order.customer_email}</p>
