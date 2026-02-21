@@ -1,11 +1,9 @@
-// api/midtrans.js
 export default async function handler(req, res) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-  // Handle preflight request
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
@@ -28,49 +26,58 @@ export default async function handler(req, res) {
       productId 
     } = req.body;
 
-    // Validasi input
-    if (!orderNumber || !totalAmount || !customerEmail) {
-      return res.status(400).json({ 
-        error: 'Data tidak lengkap',
-        details: { orderNumber, totalAmount, customerEmail }
-      });
-    }
-
-    // Konfigurasi Midtrans Sandbox
     const serverKey = 'Mid-server-GO01WdWzdlBnf8IVAP_IQ7BU';
     const base64ServerKey = Buffer.from(serverKey + ':').toString('base64');
 
-    // Prepare item details
-    const itemDetails = [{
-      id: productId || 'TICKET-001',
-      name: productName || 'Concert Ticket',
-      price: parseInt(productPrice) || 0,
-      quantity: parseInt(quantity) || 1
-    }];
-
-    // Prepare customer details
-    const customerDetails = {
-      first_name: customerName || 'Customer',
-      email: customerEmail,
-      phone: '',
-      billing_address: {
-        address: customerAddress || ''
+    const parameter = {
+      transaction_details: {
+        order_id: orderNumber,
+        gross_amount: totalAmount
+      },
+      credit_card: {
+        secure: true
+      },
+      customer_details: {
+        first_name: customerName,
+        email: customerEmail,
+        phone: "081234567890",
+        billing_address: {
+          address: customerAddress,
+          city: "Jakarta",
+          postal_code: "12345",
+          country_code: "IDN"
+        }
+      },
+      item_details: [{
+        id: productId || "TICKET-001",
+        price: productPrice,
+        quantity: quantity,
+        name: productName
+      }],
+      enabled_payments: [
+        "credit_card",
+        "mandiri_clickpay",
+        "bca_klikbca",
+        "bca_klikpay",
+        "bri_epay",
+        "echannel",
+        "permata_va",
+        "bca_va",
+        "bni_va",
+        "bri_va",
+        "cimb_va",
+        "other_va",
+        "gopay",
+        "shopeepay",
+        "qris"
+      ],
+      callbacks: {
+        finish: `${req.headers.origin}/payment-success/${orderId}`,
+        error: `${req.headers.origin}/payment/${orderId}`,
+        pending: `${req.headers.origin}/payment/${orderId}`
       }
     };
 
-    // Prepare transaction details
-    const transactionDetails = {
-      order_id: orderNumber,
-      gross_amount: parseInt(totalAmount)
-    };
-
-    console.log('Sending to Midtrans:', {
-      transaction_details: transactionDetails,
-      item_details: itemDetails,
-      customer_details: customerDetails
-    });
-
-    // Call Midtrans API Sandbox
     const response = await fetch('https://app.sandbox.midtrans.com/snap/v1/transactions', {
       method: 'POST',
       headers: {
@@ -78,60 +85,18 @@ export default async function handler(req, res) {
         'Authorization': 'Basic ' + base64ServerKey,
         'Accept': 'application/json'
       },
-      body: JSON.stringify({
-        transaction_details: transactionDetails,
-        item_details: itemDetails,
-        customer_details: customerDetails,
-        credit_card: {
-          secure: true
-        },
-        callbacks: {
-          finish: `${req.headers.origin}/payment-success/${orderId}`,
-          error: `${req.headers.origin}/payment/${orderId}`,
-          pending: `${req.headers.origin}/payment/${orderId}`
-        },
-        expiry: {
-          duration: 60,
-          unit: 'minutes'
-        }
-      })
+      body: JSON.stringify(parameter)
     });
 
-    // Baca response sebagai text dulu
-    const responseText = await response.text();
-    console.log('Raw Midtrans Response:', responseText);
-
-    // Coba parse JSON
-    let data;
-    try {
-      data = JSON.parse(responseText);
-    } catch (e) {
-      console.error('Failed to parse Midtrans response:', responseText);
-      return res.status(500).json({ 
-        error: 'Invalid response from Midtrans',
-        raw: responseText.substring(0, 200)
-      });
-    }
+    const data = await response.json();
 
     if (!response.ok) {
-      console.error('Midtrans error response:', data);
-      return res.status(response.status).json({ 
-        error: data.error_message || data.status_message || 'Failed to create transaction',
-        details: data
-      });
+      throw new Error(data.error_message || data.status_message || 'Failed to create transaction');
     }
 
-    // Success response
-    return res.status(200).json({
-      token: data.token,
-      redirect_url: data.redirect_url,
-      transaction_id: data.transaction_id
-    });
-
+    res.status(200).json(data);
   } catch (error) {
     console.error('Midtrans API Error:', error);
-    return res.status(500).json({ 
-      error: error.message || 'Internal server error'
-    });
+    res.status(500).json({ error: error.message });
   }
 }
