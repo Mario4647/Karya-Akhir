@@ -27,6 +27,14 @@ export default async function handler(req, res) {
       productId 
     } = req.body;
 
+    // Validasi input
+    if (!orderNumber || !totalAmount || !customerEmail) {
+      return res.status(400).json({ 
+        error: 'Data tidak lengkap',
+        details: { orderNumber, totalAmount, customerEmail }
+      });
+    }
+
     // Konfigurasi Midtrans Sandbox
     const serverKey = 'Mid-server-GO01WdWzdlBnf8IVAP_IQ7BU';
     const base64ServerKey = Buffer.from(serverKey + ':').toString('base64');
@@ -42,7 +50,7 @@ export default async function handler(req, res) {
     // Prepare customer details
     const customerDetails = {
       first_name: customerName || 'Customer',
-      email: customerEmail || 'customer@example.com',
+      email: customerEmail,
       phone: '',
       billing_address: {
         address: customerAddress || ''
@@ -51,8 +59,8 @@ export default async function handler(req, res) {
 
     // Prepare transaction details
     const transactionDetails = {
-      order_id: orderNumber || `ORDER-${Date.now()}`,
-      gross_amount: parseInt(totalAmount) || 0
+      order_id: orderNumber,
+      gross_amount: parseInt(totalAmount)
     };
 
     console.log('Sending to Midtrans:', {
@@ -88,22 +96,42 @@ export default async function handler(req, res) {
       })
     });
 
-    const data = await response.json();
-    console.log('Midtrans Response:', data);
+    // Baca response sebagai text dulu
+    const responseText = await response.text();
+    console.log('Raw Midtrans Response:', responseText);
 
-    if (!response.ok) {
-      throw new Error(data.error_message || data.status_message || 'Failed to create transaction');
+    // Coba parse JSON
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      console.error('Failed to parse Midtrans response:', responseText);
+      return res.status(500).json({ 
+        error: 'Invalid response from Midtrans',
+        raw: responseText.substring(0, 200) // Kirim sebagian untuk debugging
+      });
     }
 
+    if (!response.ok) {
+      console.error('Midtrans error response:', data);
+      return res.status(response.status).json({ 
+        error: data.error_message || data.status_message || 'Failed to create transaction',
+        details: data
+      });
+    }
+
+    // Success response
     return res.status(200).json({
       token: data.token,
       redirect_url: data.redirect_url,
       transaction_id: data.transaction_id
     });
+
   } catch (error) {
     console.error('Midtrans API Error:', error);
     return res.status(500).json({ 
-      error: error.message || 'Internal server error' 
+      error: error.message || 'Internal server error',
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 }
