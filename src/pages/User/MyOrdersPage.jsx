@@ -7,15 +7,14 @@ import {
   BiCheckCircle,
   BiXCircle,
   BiError,
-  BiDetail,
+  BiDetail, // Ganti BiEye dengan BiDetail
   BiCalendar,
   BiMovie,
   BiMoney,
-  BiPurchaseTag, // Ganti BiTicket
+  BiPurchaseTag,
   BiSearch,
   BiFilter,
   BiRefresh,
-  BiEye,
   BiCreditCard
 } from 'react-icons/bi'
 import { QRCode } from 'react-qr-code'
@@ -305,7 +304,7 @@ const MyOrdersPage = () => {
                             onClick={() => handleViewDetail(order)}
                             className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm flex items-center gap-1"
                           >
-                            <BiEye />
+                            <BiDetail /> {/* Ganti BiEye dengan BiDetail */}
                             Detail
                           </button>
 
@@ -314,7 +313,7 @@ const MyOrdersPage = () => {
                               onClick={() => navigate(`/payment-success/${order.id}`)}
                               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm flex items-center gap-1"
                             >
-                              <BiPurchaseTag /> {/* Ganti BiTicket */}
+                              <BiPurchaseTag />
                               Lihat Tiket
                             </button>
                           )}
