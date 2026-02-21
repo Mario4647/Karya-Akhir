@@ -6,6 +6,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Content-Type', 'application/json');
 
   // Handle OPTIONS request (preflight)
   if (req.method === 'OPTIONS') {
@@ -15,10 +16,16 @@ export default async function handler(req, res) {
 
   // Only allow POST
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({ 
+      success: false, 
+      message: 'Method not allowed' 
+    });
   }
 
   try {
+    const body = req.body;
+    console.log('Received body:', body);
+
     const { 
       orderId, 
       orderNumber, 
@@ -27,7 +34,15 @@ export default async function handler(req, res) {
       customerEmail, 
       customerPhone,
       items 
-    } = req.body;
+    } = body;
+
+    // Validasi required fields
+    if (!orderNumber || !amount || !customerName || !customerEmail) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields'
+      });
+    }
 
     // Buat Snap API instance dengan Server Key
     let snap = new Midtrans.Snap({
@@ -39,7 +54,7 @@ export default async function handler(req, res) {
     let parameter = {
       transaction_details: {
         order_id: orderNumber,
-        gross_amount: amount
+        gross_amount: parseInt(amount)
       },
       credit_card: {
         secure: true
@@ -51,8 +66,8 @@ export default async function handler(req, res) {
       },
       item_details: items.map(item => ({
         id: item.id,
-        price: item.price,
-        quantity: item.quantity,
+        price: parseInt(item.price),
+        quantity: parseInt(item.quantity),
         name: item.name
       })),
       callbacks: {
@@ -62,9 +77,13 @@ export default async function handler(req, res) {
       }
     };
 
+    console.log('Midtrans parameter:', JSON.stringify(parameter, null, 2));
+
     // Buat transaksi
     const transaction = await snap.createTransaction(parameter);
+    console.log('Midtrans response:', transaction);
     
+    // Pastikan response dikembalikan sebagai JSON
     res.status(200).json({
       success: true,
       snap_token: transaction.token,
@@ -73,10 +92,17 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error('Midtrans error:', error);
+    console.error('Midtrans error details:', {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data
+    });
+
+    // Kirim error response sebagai JSON
     res.status(500).json({
       success: false,
-      message: error.message || 'Gagal membuat transaksi'
+      message: error.message || 'Gagal membuat transaksi',
+      details: error.response?.data || null
     });
   }
 }
