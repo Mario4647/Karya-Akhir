@@ -64,7 +64,6 @@ const PaymentPage = () => {
   }, [order])
 
   const loadMidtransScript = () => {
-    // Cek apakah script sudah ada
     if (document.querySelector('script[src="https://app.sandbox.midtrans.com/snap/snap.js"]')) {
       setSnapLoaded(true)
       return
@@ -77,8 +76,8 @@ const PaymentPage = () => {
       console.log('Midtrans script loaded')
       setSnapLoaded(true)
     }
-    script.onerror = (err) => {
-      console.error('Failed to load Midtrans script:', err)
+    script.onerror = () => {
+      console.error('Failed to load Midtrans script')
       setError('Gagal memuat metode pembayaran. Silakan refresh halaman.')
     }
     document.body.appendChild(script)
@@ -202,75 +201,10 @@ const PaymentPage = () => {
 
       // Dapatkan token transaksi
       const transaction = await snap.createTransaction(parameter)
+      console.log('Transaction created:', transaction)
       return transaction
     } catch (error) {
-      console.error('Error creating transaction:', error)
-      throw error
-    }
-  }
-
-  // Alternatif: menggunakan fetch dengan proxy
-  const createTransactionWithProxy = async () => {
-    try {
-      // Gunakan CORS proxy (hanya untuk development)
-      const proxyUrl = 'https://cors-anywhere.herokuapp.com/'
-      const targetUrl = 'https://app.sandbox.midtrans.com/snap/v1/transactions'
-      
-      const encodedServerKey = btoa(MIDTRANS_SERVER_KEY + ':')
-
-      const parameter = {
-        transaction_details: {
-          order_id: order.order_number,
-          gross_amount: order.total_amount
-        },
-        credit_card: {
-          secure: true
-        },
-        customer_details: {
-          first_name: order.customer_name,
-          email: order.customer_email,
-          phone: "",
-          billing_address: {
-            address: order.customer_address
-          }
-        },
-        item_details: [{
-          id: order.product_id,
-          name: order.product_name,
-          price: order.product_price,
-          quantity: order.quantity
-        }],
-        callbacks: {
-          finish: `${window.location.origin}/payment-success/${order.id}`,
-          error: `${window.location.origin}/payment/${order.id}`,
-          pending: `${window.location.origin}/payment/${order.id}`
-        },
-        expiry: {
-          duration: 60,
-          unit: "minutes"
-        }
-      }
-
-      const response = await fetch(proxyUrl + targetUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Basic ' + encodedServerKey,
-          'Accept': 'application/json',
-          'Origin': window.location.origin
-        },
-        body: JSON.stringify(parameter)
-      })
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(`HTTP error ${response.status}: ${errorText}`)
-      }
-
-      const data = await response.json()
-      return data
-    } catch (error) {
-      console.error('Error with proxy:', error)
+      console.error('Error creating transaction with midtrans-client:', error)
       throw error
     }
   }
@@ -290,17 +224,10 @@ const PaymentPage = () => {
     setError('')
 
     try {
-      // Coba dengan midtrans-client dulu
-      let transaction
-      try {
-        transaction = await createMidtransTransaction()
-      } catch (err) {
-        console.log('Midtrans client failed, trying proxy...', err)
-        // Fallback ke proxy
-        transaction = await createTransactionWithProxy()
-      }
+      // Gunakan midtrans-client
+      const transaction = await createMidtransTransaction()
       
-      if (transaction.token) {
+      if (transaction && transaction.token) {
         setSnapToken(transaction.token)
         
         // Simpan transaction_id ke database
