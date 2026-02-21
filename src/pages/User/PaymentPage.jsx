@@ -16,11 +16,9 @@ import {
   BiCopy,
   BiRefresh
 } from 'react-icons/bi'
-import Midtrans from 'midtrans-client'
 
 // Konfigurasi Midtrans Sandbox
 const MIDTRANS_CLIENT_KEY = 'Mid-client-PKxh7PoyLs2QwsBh'
-const MIDTRANS_SERVER_KEY = 'Mid-server-GO01WdWzdlBnf8IVAP_IQ7BU'
 
 const PaymentPage = () => {
   const [order, setOrder] = useState(null)
@@ -30,9 +28,8 @@ const PaymentPage = () => {
   const [selectedPayment, setSelectedPayment] = useState(null)
   const [processingPayment, setProcessingPayment] = useState(false)
   const [error, setError] = useState('')
-  const [snapToken, setSnapToken] = useState(null)
-  const [copied, setCopied] = useState(false)
   const [snapLoaded, setSnapLoaded] = useState(false)
+  const [copied, setCopied] = useState(false)
   const { orderId } = useParams()
   const navigate = useNavigate()
 
@@ -64,6 +61,7 @@ const PaymentPage = () => {
   }, [order])
 
   const loadMidtransScript = () => {
+    // Cek apakah script sudah ada
     if (document.querySelector('script[src="https://app.sandbox.midtrans.com/snap/snap.js"]')) {
       setSnapLoaded(true)
       return
@@ -155,57 +153,39 @@ const PaymentPage = () => {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // Fungsi untuk membuat transaksi Midtrans menggunakan midtrans-client
-  const createMidtransTransaction = async () => {
-    try {
-      // Inisialisasi Snap
-      const snap = new Midtrans.Snap({
-        isProduction: false,
-        serverKey: MIDTRANS_SERVER_KEY,
-        clientKey: MIDTRANS_CLIENT_KEY
-      })
-
-      // Buat parameter transaksi
-      const parameter = {
-        transaction_details: {
-          order_id: order.order_number,
-          gross_amount: order.total_amount
-        },
-        credit_card: {
-          secure: true
-        },
-        customer_details: {
-          first_name: order.customer_name,
-          email: order.customer_email,
-          phone: "",
-          billing_address: {
-            address: order.customer_address
-          }
-        },
-        item_details: [{
-          id: order.product_id,
-          name: order.product_name,
-          price: order.product_price,
-          quantity: order.quantity
-        }],
-        callbacks: {
-          finish: `${window.location.origin}/payment-success/${order.id}`,
-          error: `${window.location.origin}/payment/${order.id}`,
-          pending: `${window.location.origin}/payment/${order.id}`
-        },
-        expiry: {
-          duration: 60,
-          unit: "minutes"
+  // Fungsi untuk membuat parameter Snap
+  const getSnapParameters = () => {
+    return {
+      transaction_details: {
+        order_id: order.order_number,
+        gross_amount: order.total_amount
+      },
+      credit_card: {
+        secure: true
+      },
+      customer_details: {
+        first_name: order.customer_name,
+        email: order.customer_email,
+        phone: "",
+        billing_address: {
+          address: order.customer_address
         }
+      },
+      item_details: [{
+        id: order.product_id,
+        name: order.product_name,
+        price: order.product_price,
+        quantity: order.quantity
+      }],
+      callbacks: {
+        finish: `${window.location.origin}/payment-success/${order.id}`,
+        error: `${window.location.origin}/payment/${order.id}`,
+        pending: `${window.location.origin}/payment/${order.id}`
+      },
+      expiry: {
+        duration: 60,
+        unit: "minutes"
       }
-
-      // Dapatkan token transaksi
-      const transaction = await snap.createTransaction(parameter)
-      console.log('Transaction created:', transaction)
-      return transaction
-    } catch (error) {
-      console.error('Error creating transaction with midtrans-client:', error)
-      throw error
     }
   }
 
@@ -224,68 +204,55 @@ const PaymentPage = () => {
     setError('')
 
     try {
-      // Gunakan midtrans-client
-      const transaction = await createMidtransTransaction()
+      // Dapatkan parameter Snap
+      const snapParams = getSnapParameters()
+      console.log('Snap parameters:', snapParams)
+
+      // Buat transaksi dengan Snap
+      // Snap akan handle sendiri komunikasi dengan backend Midtrans
+      window.snap.pay(snapParams, {
+        onSuccess: async (result) => {
+          console.log('Payment success:', result)
+          await handlePaymentSuccess(result)
+        },
+        onPending: (result) => {
+          console.log('Payment pending:', result)
+          supabase
+            .from('orders')
+            .update({ 
+              midtrans_transaction_status: 'pending',
+              payment_details: result,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', order.id)
+          
+          alert('Pembayaran sedang diproses. Silakan cek status secara berkala.')
+          setShowPaymentModal(false)
+        },
+        onError: (result) => {
+          console.error('Payment error:', result)
+          setError('Pembayaran gagal: ' + (result.status_message || 'Silakan coba lagi'))
+          
+          supabase
+            .from('orders')
+            .update({ 
+              midtrans_transaction_status: 'error',
+              payment_details: result,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', order.id)
+          
+          setShowPaymentModal(false)
+        },
+        onClose: () => {
+          console.log('Payment popup closed')
+          setProcessingPayment(false)
+        }
+      })
       
-      if (transaction && transaction.token) {
-        setSnapToken(transaction.token)
-        
-        // Simpan transaction_id ke database
-        await supabase
-          .from('orders')
-          .update({ 
-            midtrans_transaction_id: transaction.transaction_id,
-            midtrans_token: transaction.token,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', order.id)
-        
-        setShowPaymentModal(false)
-        
-        // Buka Snap popup
-        window.snap.pay(transaction.token, {
-          onSuccess: async (result) => {
-            console.log('Payment success:', result)
-            await handlePaymentSuccess(result)
-          },
-          onPending: (result) => {
-            console.log('Payment pending:', result)
-            supabase
-              .from('orders')
-              .update({ 
-                midtrans_transaction_status: 'pending',
-                payment_details: result,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', order.id)
-            
-            alert('Pembayaran sedang diproses. Silakan cek status secara berkala.')
-          },
-          onError: (result) => {
-            console.error('Payment error:', result)
-            setError('Pembayaran gagal: ' + (result.status_message || 'Silakan coba lagi'))
-            
-            supabase
-              .from('orders')
-              .update({ 
-                midtrans_transaction_status: 'error',
-                payment_details: result,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', order.id)
-          },
-          onClose: () => {
-            setSnapToken(null)
-            console.log('Payment popup closed')
-          }
-        })
-      } else {
-        setError('Gagal mendapatkan token pembayaran')
-      }
     } catch (error) {
       console.error('Error processing payment:', error)
       setError('Gagal memproses pembayaran: ' + error.message)
-    } finally {
       setProcessingPayment(false)
     }
   }
