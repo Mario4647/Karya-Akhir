@@ -4,26 +4,35 @@ const axios = require('axios');
 
 const app = express();
 
-// Konfigurasi CORS yang lebih spesifik
+// Konfigurasi CORS
 app.use(cors({
   origin: [
     'http://localhost:3000',
     'http://localhost:5173',
+    'http://localhost:5174',
     'https://karya-akhir.vercel.app',
     process.env.FRONTEND_URL
   ].filter(Boolean),
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 
 app.use(express.json());
+
+// Middleware untuk logging
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
+});
 
 // Route health check
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     message: 'Server is running',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
@@ -44,17 +53,19 @@ app.post('/api/midtrans', async (req, res) => {
     } = req.body;
 
     // Log request
-    console.log('Received payment request:', {
+    console.log('📦 Received payment request:', {
       orderNumber,
       totalAmount,
-      customerEmail
+      customerEmail,
+      orderId
     });
 
     // Validasi input
     if (!orderNumber || !totalAmount || !customerEmail) {
       return res.status(400).json({ 
         error: 'Data tidak lengkap',
-        required: ['orderNumber', 'totalAmount', 'customerEmail']
+        required: ['orderNumber', 'totalAmount', 'customerEmail'],
+        received: { orderNumber, totalAmount, customerEmail }
       });
     }
 
@@ -108,10 +119,15 @@ app.post('/api/midtrans', async (req, res) => {
         finish: `${req.headers.origin}/payment-success/${orderId}`,
         error: `${req.headers.origin}/payment/${orderId}`,
         pending: `${req.headers.origin}/payment/${orderId}`
+      },
+      expiry: {
+        start_time: new Date().toISOString(),
+        duration: 60,
+        unit: "minutes"
       }
     };
 
-    console.log('Sending to Midtrans...');
+    console.log('📤 Sending to Midtrans...');
 
     // Panggil API Midtrans
     const response = await axios.post(
@@ -127,7 +143,8 @@ app.post('/api/midtrans', async (req, res) => {
       }
     );
 
-    console.log('Midtrans response success');
+    console.log('✅ Midtrans response success');
+    console.log('📋 Transaction ID:', response.data.transaction_id);
 
     // Return success response
     return res.status(200).json({
@@ -137,21 +154,37 @@ app.post('/api/midtrans', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Midtrans API Error:', {
+    console.error('❌ Midtrans API Error:', {
       message: error.message,
       response: error.response?.data,
-      status: error.response?.status
+      status: error.response?.status,
+      headers: error.response?.headers
     });
 
-    return res.status(500).json({ 
-      error: error.response?.data?.error_message || error.message 
+    // Return error response yang lebih informatif
+    return res.status(error.response?.status || 500).json({ 
+      error: error.response?.data?.error_message || error.message,
+      details: error.response?.data || null
     });
   }
 });
 
+// Handle OPTIONS requests untuk CORS preflight
+app.options('/api/*', (req, res) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.status(200).end();
+});
+
 // Handle 404 untuk API
 app.use('/api/*', (req, res) => {
-  res.status(404).json({ error: 'API endpoint not found' });
+  res.status(404).json({ 
+    error: 'API endpoint not found',
+    path: req.path,
+    method: req.method
+  });
 });
 
 // Export untuk Vercel
