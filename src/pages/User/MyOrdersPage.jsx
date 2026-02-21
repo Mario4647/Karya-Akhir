@@ -11,7 +11,7 @@ import {
   BiCalendar,
   BiMovie,
   BiMoney,
-  BiTicket,
+  BiPurchaseTag, // Ganti BiTicket
   BiSearch,
   BiFilter,
   BiRefresh,
@@ -314,7 +314,7 @@ const MyOrdersPage = () => {
                               onClick={() => navigate(`/payment-success/${order.id}`)}
                               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm flex items-center gap-1"
                             >
-                              <BiTicket />
+                              <BiPurchaseTag /> {/* Ganti BiTicket */}
                               Lihat Tiket
                             </button>
                           )}
