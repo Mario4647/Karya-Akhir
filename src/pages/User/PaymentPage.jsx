@@ -17,7 +17,6 @@ import {
   BiRefresh,
   BiInfoCircle
 } from 'react-icons/bi'
-import axios from 'axios'
 
 // Konfigurasi Midtrans
 const MIDTRANS_CLIENT_KEY = 'Mid-client-PKxh7PoyLs2QwsBh'
@@ -31,7 +30,7 @@ const PaymentPage = () => {
   const [snapLoaded, setSnapLoaded] = useState(false)
   const [copied, setCopied] = useState(false)
   const [snapToken, setSnapToken] = useState(null)
-  const [apiStatus, setApiStatus] = useState('')
+  const [apiStatus, setApiStatus] = useState('Memeriksa koneksi...')
   const { orderId } = useParams()
   const navigate = useNavigate()
 
@@ -65,15 +64,19 @@ const PaymentPage = () => {
 
   const checkApiHealth = async () => {
     try {
-      setApiStatus('Memeriksa koneksi server...')
-      const response = await axios.get('/api/health', { timeout: 5000 })
-      if (response.data.status === 'OK') {
-        setApiStatus('Server terhubung')
-        console.log('✅ Server health check passed')
+      setApiStatus('Memeriksa koneksi...')
+      const response = await fetch('/api/health')
+      const data = await response.json()
+      
+      if (data.status === 'OK') {
+        setApiStatus('Server terhubung ✓')
+        console.log('✅ Health check passed:', data)
+      } else {
+        setApiStatus('Server error')
       }
     } catch (error) {
-      console.error('❌ Server health check failed:', error)
-      setApiStatus('Server tidak merespons')
+      console.error('❌ Health check failed:', error)
+      setApiStatus('Server tidak merespons ✗')
     }
   }
 
@@ -172,54 +175,34 @@ const PaymentPage = () => {
     try {
       console.log('🔄 Creating transaction for order:', order.order_number)
       
-      const payload = {
-        orderId: order.id,
-        orderNumber: order.order_number,
-        totalAmount: order.total_amount,
-        customerName: order.customer_name,
-        customerEmail: order.customer_email,
-        customerAddress: order.customer_address,
-        productName: order.product_name,
-        productPrice: order.product_price,
-        quantity: order.quantity,
-        productId: order.product_id
-      }
-      
-      console.log('📤 Sending payload:', payload)
-
-      const response = await axios.post('/api/midtrans', payload, {
-        timeout: 30000,
+      const response = await fetch('/api/midtrans', {
+        method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderNumber: order.order_number,
+          totalAmount: order.total_amount,
+          customerName: order.customer_name,
+          customerEmail: order.customer_email,
+          customerAddress: order.customer_address,
+          productName: order.product_name,
+          productPrice: order.product_price,
+          quantity: order.quantity
+        })
       })
 
-      console.log('✅ Transaction response:', response.data)
-      return response.data
-    } catch (error) {
-      console.error('❌ Error creating transaction:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        stack: error.stack
-      })
-      
-      let errorMessage = 'Gagal membuat transaksi'
-      
-      if (error.response) {
-        // Server merespon dengan error
-        errorMessage = error.response.data?.error || error.message
-        console.error('Server error response:', error.response.data)
-      } else if (error.request) {
-        // Tidak ada response dari server
-        errorMessage = 'Tidak dapat terhubung ke server. Periksa koneksi internet Anda.'
-        console.error('No response from server:', error.request)
-      } else {
-        // Error lainnya
-        errorMessage = error.message
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Gagal membuat transaksi')
       }
-      
-      throw new Error(errorMessage)
+
+      console.log('✅ Transaction response:', data)
+      return data
+    } catch (error) {
+      console.error('❌ Error creating transaction:', error)
+      throw error
     }
   }
 
@@ -437,11 +420,15 @@ const PaymentPage = () => {
         {/* Status Bar */}
         <div className="mb-4 flex items-center justify-between bg-white rounded-lg p-3 shadow-sm">
           <div className="flex items-center gap-2">
-            <BiInfoCircle className="text-blue-500" />
+            <BiInfoCircle className={`text-lg ${
+              apiStatus.includes('terhubung') ? 'text-green-500' : 
+              apiStatus.includes('tidak') ? 'text-red-500' : 'text-yellow-500'
+            }`} />
             <span className="text-sm text-gray-600">Status Koneksi:</span>
           </div>
           <span className={`text-sm font-medium ${
-            apiStatus.includes('terhubung') ? 'text-green-600' : 'text-yellow-600'
+            apiStatus.includes('terhubung') ? 'text-green-600' : 
+            apiStatus.includes('tidak') ? 'text-red-600' : 'text-yellow-600'
           }`}>
             {apiStatus}
           </span>
