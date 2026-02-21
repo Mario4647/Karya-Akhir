@@ -9,8 +9,6 @@ import {
   BiCheck,
   BiError,
   BiArrowBack,
-  BiWallet,
-  BiCode,
   BiCheckCircle,
   BiXCircle,
   BiCopy,
@@ -91,8 +89,7 @@ const PaymentPage = () => {
         .from('orders')
         .select(`
           *,
-          products:product_id (*),
-          order_buyers (*)
+          products:product_id (*)
         `)
         .eq('id', orderId)
         .single()
@@ -149,80 +146,76 @@ const PaymentPage = () => {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // Fungsi untuk membayar dengan Snap (TANPA memanggil API Midtrans)
-  const handlePayNow = () => {
+  // Fungsi untuk membuat transaksi di backend API
+  const createTransaction = async () => {
+    setProcessingPayment(true)
+    setError('')
+
+    try {
+      // Panggil API endpoint (Vercel/Netlify)
+      const response = await fetch('/api/create-midtrans-transaction', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderId: order.id,
+          orderNumber: order.order_number,
+          amount: order.total_amount,
+          customerName: order.customer_name,
+          customerEmail: order.customer_email,
+          customerPhone: order.customer_phone || "081234567890",
+          items: [{
+            id: order.product_id,
+            name: order.products?.name || 'Tiket Konser',
+            price: order.product_price,
+            quantity: order.quantity
+          }]
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Gagal membuat transaksi')
+      }
+
+      // Simpan snap_token ke database (opsional)
+      await supabase
+        .from('orders')
+        .update({ 
+          snap_token: result.snap_token,
+          midtrans_transaction_id: result.transaction_id
+        })
+        .eq('id', order.id)
+
+      // Langsung buka Snap dengan token yang didapat
+      openSnapPayment(result.snap_token)
+
+    } catch (error) {
+      console.error('Error creating transaction:', error)
+      setError('Gagal membuat transaksi: ' + error.message)
+      setProcessingPayment(false)
+    }
+  }
+
+  // Fungsi untuk membuka Snap payment
+  const openSnapPayment = (token) => {
     if (!snapLoaded) {
       setError('Metode pembayaran belum siap. Silakan tunggu...')
+      setProcessingPayment(false)
       return
     }
 
     if (!window.snap) {
       setError('Snap Midtrans tidak tersedia. Silakan refresh halaman.')
+      setProcessingPayment(false)
       return
     }
 
-    setProcessingPayment(true)
-    setError('')
-
     try {
-      // Siapkan parameter transaksi untuk Snap
-      // Snap akan menangani pembuatan transaksi secara internal
-      const snapParams = {
-        transaction_details: {
-          order_id: order.order_number,
-          gross_amount: order.total_amount
-        },
-        credit_card: {
-          secure: true
-        },
-        customer_details: {
-          first_name: order.customer_name,
-          email: order.customer_email,
-          phone: "081234567890",
-          billing_address: {
-            first_name: order.customer_name,
-            email: order.customer_email,
-            phone: "081234567890",
-            address: order.customer_address,
-            city: "Jakarta",
-            postal_code: "12345",
-            country_code: "IDN"
-          }
-        },
-        item_details: [{
-          id: order.product_id || "TICKET-001",
-          price: order.product_price,
-          quantity: order.quantity,
-          name: order.product_name
-        }],
-        enabled_payments: [
-          "credit_card",
-          "mandiri_clickpay",
-          "bca_klikbca",
-          "bca_klikpay",
-          "bri_epay",
-          "echannel",
-          "permata_va",
-          "bca_va",
-          "bni_va",
-          "bri_va",
-          "cimb_va",
-          "other_va",
-          "gopay",
-          "shopeepay",
-          "qris"
-        ],
-        callbacks: {
-          finish: `${window.location.origin}/payment-success/${order.id}`,
-          error: `${window.location.origin}/payment/${order.id}`,
-          pending: `${window.location.origin}/payment/${order.id}`
-        }
-      }
-
-      console.log('Snap params:', snapParams)
-
-      // Panggil Snap dengan parameter
-      window.snap.pay(snapParams, {
+      // Buka Snap dengan token
+      window.snap.pay(token, {
         onSuccess: function(result) {
           console.log('Payment success:', result)
           handlePaymentSuccess(result)
@@ -254,6 +247,22 @@ const PaymentPage = () => {
       console.error('Error in snap.pay:', error)
       setError('Gagal memproses pembayaran: ' + error.message)
       setProcessingPayment(false)
+    }
+  }
+
+  // Handler untuk tombol bayar
+  const handlePayNow = () => {
+    if (!snapLoaded) {
+      setError('Metode pembayaran belum siap. Silakan tunggu...')
+      return
+    }
+
+    // Cek apakah order sudah punya snap_token
+    if (order.snap_token) {
+      openSnapPayment(order.snap_token)
+    } else {
+      // Jika belum, buat transaksi baru
+      createTransaction()
     }
   }
 
@@ -454,7 +463,7 @@ const PaymentPage = () => {
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Produk:</span>
-                  <span className="font-medium text-gray-800">{order.product_name}</span>
+                  <span className="font-medium text-gray-800">{order.products?.name || order.product_name}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Harga Satuan:</span>
@@ -506,38 +515,6 @@ const PaymentPage = () => {
             </div>
           </div>
         </div>
-
-        {/* Additional Buyers */}
-        {order.additional_buyers && order.additional_buyers.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <span className="w-1 h-6 bg-blue-500 rounded-full"></span>
-              Pembeli Lainnya
-            </h2>
-            
-            <div className="space-y-3">
-              {order.additional_buyers.map((buyer, index) => (
-                <div key={index} className="bg-gray-50 p-4 rounded-xl">
-                  <p className="text-sm font-medium text-gray-700 mb-2">Pembeli {index + 2}</p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div>
-                      <p className="text-xs text-gray-500">Nama</p>
-                      <p className="text-sm text-gray-800">{buyer.name}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">NIK</p>
-                      <p className="text-sm text-gray-800">{buyer.nik}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Alamat</p>
-                      <p className="text-sm text-gray-800">{buyer.address}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Email Info */}
         <div className="mb-6 p-4 bg-blue-50 rounded-xl border border-blue-200">
