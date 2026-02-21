@@ -761,7 +761,9 @@ const AdminDashboard = () => {
                   {activeTab === 'profiles' ? (
                     <>
                       <option value="admin">Admin</option>
+                      <option value="admin-event">Admin Event</option>
                       <option value="user">User</option>
+                      <option value="user-raport">User Khusus</option>
                     </>
                   ) : (
                     <>
@@ -876,6 +878,8 @@ const AdminDashboard = () => {
                   >
                     <option value="user-raport">User Raport</option>
                     <option value="user">User Biasa</option>
+                    <option value="admin">Admin</option>
+                    <option value="admin-event">Admin Event</option>
                   </select>
                 </div>
               </div>
