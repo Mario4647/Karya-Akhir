@@ -5,12 +5,17 @@ const axios = require('axios');
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
-// Health check
+// Health check - WAJIB ADA untuk testing
 app.get('/api/health', (req, res) => {
-  res.json({ 
+  console.log('✅ Health check accessed');
+  res.status(200).json({ 
     status: 'OK', 
     message: 'Server is running',
     timestamp: new Date().toISOString()
@@ -19,25 +24,24 @@ app.get('/api/health', (req, res) => {
 
 // Midtrans transaction
 app.post('/api/midtrans', async (req, res) => {
+  console.log('📩 Midtrans request received');
+  
   try {
     const { 
-      orderId,
       orderNumber, 
       totalAmount, 
-      customerName, 
-      customerEmail, 
-      customerAddress,
+      customerEmail,
+      customerName,
       productName,
       productPrice,
-      quantity,
-      productId 
+      quantity
     } = req.body;
 
     // Validasi input
     if (!orderNumber || !totalAmount || !customerEmail) {
       return res.status(400).json({ 
         error: 'Data tidak lengkap',
-        details: { orderNumber, totalAmount, customerEmail }
+        required: ['orderNumber', 'totalAmount', 'customerEmail']
       });
     }
 
@@ -49,36 +53,19 @@ app.post('/api/midtrans', async (req, res) => {
         order_id: orderNumber,
         gross_amount: parseInt(totalAmount)
       },
-      credit_card: { secure: true },
       customer_details: {
         first_name: customerName || 'Customer',
-        email: customerEmail,
-        phone: "081234567890",
-        billing_address: {
-          address: customerAddress || 'Jakarta',
-          city: "Jakarta",
-          postal_code: "12345",
-          country_code: "IDN"
-        }
+        email: customerEmail
       },
       item_details: [{
-        id: productId || "TICKET-001",
+        id: "TICKET-001",
         price: parseInt(productPrice) || 0,
         quantity: parseInt(quantity) || 1,
         name: productName || 'Concert Ticket'
-      }],
-      enabled_payments: [
-        "credit_card", "mandiri_clickpay", "bca_klikbca",
-        "bca_klikpay", "bri_epay", "echannel", "permata_va",
-        "bca_va", "bni_va", "bri_va", "cimb_va", "other_va",
-        "gopay", "shopeepay", "qris"
-      ],
-      callbacks: {
-        finish: `${req.headers.origin}/payment-success/${orderId}`,
-        error: `${req.headers.origin}/payment/${orderId}`,
-        pending: `${req.headers.origin}/payment/${orderId}`
-      }
+      }]
     };
+
+    console.log('📤 Sending to Midtrans:', JSON.stringify(parameter));
 
     const response = await axios.post(
       'https://app.sandbox.midtrans.com/snap/v1/transactions',
@@ -88,28 +75,24 @@ app.post('/api/midtrans', async (req, res) => {
           'Authorization': 'Basic ' + base64Key,
           'Content-Type': 'application/json'
         },
-        timeout: 30000
+        timeout: 10000
       }
     );
 
-    res.status(200).json({
-      token: response.data.token,
-      redirect_url: response.data.redirect_url,
-      transaction_id: response.data.transaction_id
-    });
+    console.log('✅ Midtrans response received');
+    res.status(200).json(response.data);
 
   } catch (error) {
-    console.error('Midtrans Error:', {
-      message: error.message,
-      response: error.response?.data,
-      status: error.response?.status
-    });
-
-    // Kirim error message yang jelas
-    res.status(error.response?.status || 500).json({ 
-      error: error.response?.data?.error_message || error.message || 'Terjadi kesalahan pada server'
+    console.error('❌ Midtrans error:', error.message);
+    res.status(500).json({ 
+      error: error.response?.data?.error_message || error.message 
     });
   }
+});
+
+// Handle 404
+app.use('*', (req, res) => {
+  res.status(404).json({ error: 'Route not found' });
 });
 
 module.exports = app;
