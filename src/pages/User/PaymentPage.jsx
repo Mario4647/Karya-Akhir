@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { supabase } from '../../supabaseClient'
-import NavbarEvent from '../../components/NavbarEvent'
+import { supabase } from '../supabaseClient'
+import NavbarEvent from '../components/NavbarEvent'
 import {
   BiCreditCard,
   BiTimer,
@@ -15,9 +15,10 @@ import {
   BiRefresh
 } from 'react-icons/bi'
 
-// Konfigurasi Midtrans Sandbox
+// Konfigurasi
 const MIDTRANS_CLIENT_KEY = 'Mid-client-PKxh7PoyLs2QwsBh'
-const MIDTRANS_MERCHANT_ID = 'G738480656'
+const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || 'https://your-project.supabase.co'
+const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/create-midtrans-transaction`
 
 const PaymentPage = () => {
   const [order, setOrder] = useState(null)
@@ -25,14 +26,24 @@ const PaymentPage = () => {
   const [loading, setLoading] = useState(true)
   const [processingPayment, setProcessingPayment] = useState(false)
   const [error, setError] = useState('')
+  const [snapLoaded, setSnapLoaded] = useState(false)
   const [copied, setCopied] = useState(false)
   const { orderId } = useParams()
   const navigate = useNavigate()
 
+  // Load Midtrans script
   useEffect(() => {
-    fetchOrder()
+    loadMidtransScript()
+  }, [])
+
+  // Fetch order data
+  useEffect(() => {
+    if (orderId) {
+      fetchOrder()
+    }
   }, [orderId])
 
+  // Timer for payment expiry
   useEffect(() => {
     if (order && order.payment_expiry) {
       const expiryTime = new Date(order.payment_expiry).getTime()
@@ -55,8 +66,25 @@ const PaymentPage = () => {
     }
   }, [order])
 
+  const loadMidtransScript = () => {
+    if (document.querySelector('script[src="https://app.sandbox.midtrans.com/snap/snap.js"]')) {
+      setSnapLoaded(true)
+      return
+    }
+    
+    const script = document.createElement('script')
+    script.src = 'https://app.sandbox.midtrans.com/snap/snap.js'
+    script.setAttribute('data-client-key', MIDTRANS_CLIENT_KEY)
+    
+    script.onload = () => setSnapLoaded(true)
+    script.onerror = () => setError('Gagal memuat metode pembayaran')
+    
+    document.body.appendChild(script)
+  }
+
   const fetchOrder = async () => {
     setLoading(true)
+    setError('')
     try {
       const { data, error } = await supabase
         .from('orders')
@@ -68,10 +96,10 @@ const PaymentPage = () => {
         .single()
 
       if (error) throw error
-      console.log('Order fetched:', data)
+      if (!data) throw new Error('Pesanan tidak ditemukan')
+      
       setOrder(data)
     } catch (error) {
-      console.error('Error fetching order:', error)
       setError('Gagal memuat data pesanan: ' + error.message)
     } finally {
       setLoading(false)
@@ -79,7 +107,7 @@ const PaymentPage = () => {
   }
 
   const cancelExpiredOrder = async () => {
-    if (order && order.status === 'pending') {
+    if (order?.status === 'pending') {
       await supabase
         .from('orders')
         .update({ status: 'expired' })
@@ -88,6 +116,7 @@ const PaymentPage = () => {
   }
 
   const formatTime = (seconds) => {
+    if (seconds <= 0) return '00:00'
     const hours = Math.floor(seconds / 3600)
     const mins = Math.floor((seconds % 3600) / 60)
     const secs = seconds % 60
@@ -107,7 +136,6 @@ const PaymentPage = () => {
           .eq('id', order.id)
         navigate('/concerts')
       } catch (error) {
-        console.error('Error cancelling order:', error)
         alert('Gagal membatalkan pesanan')
       }
     }
@@ -119,202 +147,78 @@ const PaymentPage = () => {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // Fungsi untuk membuat Snap Token menggunakan API publik Midtrans
-  const generateSnapToken = async () => {
+  // Fungsi untuk membuat transaksi via Supabase Edge Function
+  const createTransaction = async () => {
     setProcessingPayment(true)
     setError('')
 
     try {
-      // Buat order ID unik
-      const uniqueOrderId = `${order.order_number}-${Date.now()}`
-      
-      // Data transaksi
-      const transactionData = {
-        transaction_details: {
-          order_id: uniqueOrderId,
-          gross_amount: parseInt(order.total_amount)
-        },
-        credit_card: {
-          secure: true
-        },
-        customer_details: {
-          first_name: order.customer_name,
-          email: order.customer_email,
-          phone: order.customer_phone || "081234567890"
-        },
-        item_details: [{
-          id: order.product_id || "TICKET-001",
+      const requestData = {
+        orderId: order.id,
+        orderNumber: order.order_number,
+        amount: parseInt(order.total_amount),
+        customerName: order.customer_name,
+        customerEmail: order.customer_email,
+        customerPhone: order.customer_phone || "081234567890",
+        items: [{
+          id: order.product_id || 'TICKET-001',
+          name: order.products?.name || 'Tiket Konser',
           price: parseInt(order.product_price),
-          quantity: parseInt(order.quantity),
-          name: order.products?.name || 'Tiket Konser'
-        }],
-        callbacks: {
-          finish: `${window.location.origin}/payment-success/${order.id}`,
-          error: `${window.location.origin}/payment/${order.id}`,
-          pending: `${window.location.origin}/payment/${order.id}`
-        }
+          quantity: parseInt(order.quantity) || 1
+        }]
       }
 
-      console.log('Transaction data:', transactionData)
-
-      // Encode credentials untuk Basic Auth
-      // Note: Ini adalah server key, seharusnya tidak di frontend, tapi untuk demo kita gunakan
-      const serverKey = 'Mid-server-GO01WdWzdlBnf8IVAP_IQ7BU'
-      const encodedCredentials = btoa(serverKey + ':')
-
-      // Panggil API Midtrans langsung dari frontend (untuk testing)
-      const response = await fetch('https://app.sandbox.midtrans.com/snap/v1/transactions', {
+      const response = await fetch(EDGE_FUNCTION_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': 'Basic ' + encodedCredentials
+          'Authorization': `Bearer ${process.env.REACT_APP_SUPABASE_ANON_KEY}`
         },
-        body: JSON.stringify(transactionData)
+        body: JSON.stringify(requestData)
       })
 
       const result = await response.json()
-      console.log('Midtrans API response:', result)
 
-      if (!response.ok) {
-        throw new Error(result.status_message || 'Gagal membuat token pembayaran')
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Gagal membuat transaksi')
       }
 
-      // Redirect ke halaman Midtrans
-      if (result.redirect_url) {
-        // Simpan snap_token ke database
-        await supabase
-          .from('orders')
-          .update({ 
-            snap_token: result.token,
-            midtrans_transaction_id: result.transaction_id,
-            midtrans_redirect_url: result.redirect_url
-          })
-          .eq('id', order.id)
+      await supabase
+        .from('orders')
+        .update({ 
+          snap_token: result.snap_token,
+          midtrans_transaction_id: result.transaction_id,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', order.id)
 
-        // Redirect ke halaman Midtrans
-        window.location.href = result.redirect_url
-      } else {
-        throw new Error('Redirect URL tidak ditemukan')
-      }
+      openSnapPayment(result.snap_token)
 
     } catch (error) {
-      console.error('Error generating snap token:', error)
+      console.error('Error:', error)
       setError('Gagal membuat transaksi: ' + error.message)
       setProcessingPayment(false)
     }
   }
 
-  // Fungsi alternatif menggunakan Snap Popup (jika snap.js sudah diload)
-  const loadMidtransScript = () => {
-    return new Promise((resolve, reject) => {
-      if (document.querySelector('script[src="https://app.sandbox.midtrans.com/snap/snap.js"]')) {
-        resolve()
-        return
-      }
-      
-      const script = document.createElement('script')
-      script.src = 'https://app.sandbox.midtrans.com/snap/snap.js'
-      script.setAttribute('data-client-key', MIDTRANS_CLIENT_KEY)
-      
-      script.onload = () => resolve()
-      script.onerror = () => reject(new Error('Gagal memuat script Midtrans'))
-      
-      document.body.appendChild(script)
-    })
-  }
-
-  // Fungsi untuk membayar dengan metode kedua (menggunakan Snap Popup)
-  const payWithSnapPopup = async () => {
-    setProcessingPayment(true)
-    setError('')
+  const openSnapPayment = (token) => {
+    if (!snapLoaded || !window.snap) {
+      setError('Metode pembayaran belum siap')
+      setProcessingPayment(false)
+      return
+    }
 
     try {
-      await loadMidtransScript()
-
-      const uniqueOrderId = `${order.order_number}-${Date.now()}`
-      
-      const transactionData = {
-        transaction_details: {
-          order_id: uniqueOrderId,
-          gross_amount: parseInt(order.total_amount)
-        },
-        customer_details: {
-          first_name: order.customer_name,
-          email: order.customer_email,
-          phone: order.customer_phone || "081234567890"
-        },
-        item_details: [{
-          id: order.product_id || "TICKET-001",
-          price: parseInt(order.product_price),
-          quantity: parseInt(order.quantity),
-          name: order.products?.name || 'Tiket Konser'
-        }]
-      }
-
-      // Gunakan Snap popup
-      window.snap.pay(transactionData, {
-        onSuccess: function(result) {
-          console.log('Payment success:', result)
-          handlePaymentSuccess(result)
-        },
-        onPending: function(result) {
-          console.log('Payment pending:', result)
-          alert('Pembayaran sedang diproses')
-          setProcessingPayment(false)
-        },
-        onError: function(result) {
-          console.error('Payment error:', result)
-          setError('Pembayaran gagal: ' + (result.status_message || 'Silakan coba lagi'))
-          setProcessingPayment(false)
-        },
-        onClose: function() {
-          console.log('Payment popup closed')
-          setProcessingPayment(false)
-        }
+      window.snap.pay(token, {
+        onSuccess: handlePaymentSuccess,
+        onPending: handlePaymentPending,
+        onError: handlePaymentError,
+        onClose: () => setProcessingPayment(false)
       })
-
     } catch (error) {
-      console.error('Error:', error)
-      setError('Gagal memproses pembayaran: ' + error.message)
+      setError('Gagal memproses pembayaran')
       setProcessingPayment(false)
     }
-  }
-
-  // Fungsi untuk membayar dengan metode redirect (lebih sederhana)
-  const payWithRedirect = () => {
-    setProcessingPayment(true)
-    
-    // Data untuk payment link
-    const orderData = {
-      orderId: order.id,
-      orderNumber: order.order_number,
-      amount: order.total_amount,
-      customerName: order.customer_name,
-      customerEmail: order.customer_email
-    }
-
-    // Encode data ke base64 untuk dikirim via URL
-    const encodedData = btoa(JSON.stringify(orderData))
-    
-    // Redirect ke halaman payment Midtrans dengan parameter
-    // Ini adalah URL payment page sederhana yang bisa dibuat
-    const paymentUrl = `https://app.sandbox.midtrans.com/snap/v2/credit-card/${encodedData}`
-    
-    // Alternatif: gunakan URL scheme Midtrans
-    // window.location.href = `midtrans://payment?order_id=${order.order_number}&amount=${order.total_amount}`
-    
-    // Untuk sementara, kita gunakan alert
-    alert('Demo: Arahkan ke halaman pembayaran Midtrans\nOrder: ' + order.order_number + '\nTotal: Rp ' + order.total_amount.toLocaleString('id-ID'))
-    
-    // Simulate payment success
-    setTimeout(() => {
-      handlePaymentSuccess({
-        transaction_id: 'TRX-' + Date.now(),
-        payment_type: 'credit_card',
-        transaction_status: 'settlement'
-      })
-    }, 2000)
   }
 
   const handlePaymentSuccess = async (result) => {
@@ -332,13 +236,37 @@ const PaymentPage = () => {
         .eq('id', order.id)
 
       if (error) throw error
-
       navigate(`/payment-success/${order.id}`)
     } catch (error) {
-      console.error('Error updating order:', error)
-      alert('Pembayaran berhasil tetapi gagal memperbarui status. Hubungi admin.')
+      alert('Pembayaran berhasil tetapi gagal memperbarui status')
       setProcessingPayment(false)
     }
+  }
+
+  const handlePaymentPending = async (result) => {
+    await supabase
+      .from('orders')
+      .update({ 
+        midtrans_transaction_status: 'pending',
+        payment_details: result
+      })
+      .eq('id', order.id)
+    
+    alert('Pembayaran sedang diproses')
+    setProcessingPayment(false)
+  }
+
+  const handlePaymentError = (result) => {
+    setError('Pembayaran gagal: ' + (result.status_message || 'Coba lagi'))
+    setProcessingPayment(false)
+  }
+
+  const handlePayNow = () => {
+    if (!snapLoaded) {
+      setError('Metode pembayaran belum siap')
+      return
+    }
+    createTransaction()
   }
 
   const handleRefreshOrder = () => {
@@ -350,18 +278,23 @@ const PaymentPage = () => {
       style: 'currency',
       currency: 'IDR',
       minimumFractionDigits: 0
-    }).format(number)
+    }).format(number || 0)
   }
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('id-ID', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
+    if (!dateString) return '-'
+    try {
+      return new Date(dateString).toLocaleDateString('id-ID', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    } catch {
+      return '-'
+    }
   }
 
   if (loading) {
@@ -450,10 +383,18 @@ const PaymentPage = () => {
       <NavbarEvent />
 
       <div className="max-w-4xl mx-auto px-4 py-8">
-        {/* Timer */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 rounded-xl border border-red-200">
+            <p className="text-sm text-red-700 flex items-center gap-2">
+              <BiError className="text-red-500 text-lg" />
+              <span>{error}</span>
+            </p>
+          </div>
+        )}
+
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6 relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-red-500"></div>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-4">
             <div className="flex items-center space-x-4">
               <div className={`p-3 rounded-full ${timeLeft < 300 ? 'bg-red-100' : 'bg-blue-100'}`}>
                 <BiTimer className={`text-2xl ${timeLeft < 300 ? 'text-red-500' : 'text-blue-500'}`} />
@@ -468,12 +409,11 @@ const PaymentPage = () => {
             <div className="text-right">
               <p className="text-sm text-gray-500">Batas waktu</p>
               <p className="text-sm font-medium text-gray-800">
-                {order.payment_expiry ? formatDate(order.payment_expiry) : '-'}
+                {formatDate(order.payment_expiry)}
               </p>
               <button 
                 onClick={handleRefreshOrder}
-                className="text-blue-500 hover:text-blue-700 text-sm flex items-center gap-1 mt-1"
-                title="Refresh status"
+                className="text-blue-500 hover:text-blue-700 text-sm flex items-center gap-1 mt-1 ml-auto"
               >
                 <BiRefresh className="text-lg" />
                 <span>Refresh</span>
@@ -482,7 +422,6 @@ const PaymentPage = () => {
           </div>
         </div>
 
-        {/* Order Summary */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
             <span className="w-1 h-6 bg-blue-500 rounded-full"></span>
@@ -499,7 +438,6 @@ const PaymentPage = () => {
                 <button
                   onClick={() => copyToClipboard(order.order_number)}
                   className="text-gray-400 hover:text-blue-500 transition-colors"
-                  title="Salin nomor pesanan"
                 >
                   <BiCopy className="text-lg" />
                 </button>
@@ -544,7 +482,6 @@ const PaymentPage = () => {
           </div>
         </div>
 
-        {/* Customer Data */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
             <span className="w-1 h-6 bg-blue-500 rounded-full"></span>
@@ -567,39 +504,6 @@ const PaymentPage = () => {
           </div>
         </div>
 
-        {/* Additional Buyers */}
-        {order.additional_buyers && order.additional_buyers.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <span className="w-1 h-6 bg-blue-500 rounded-full"></span>
-              Pembeli Lainnya
-            </h2>
-            
-            <div className="space-y-3">
-              {order.additional_buyers.map((buyer, index) => (
-                <div key={index} className="bg-gray-50 p-4 rounded-xl">
-                  <p className="text-sm font-medium text-gray-700 mb-2">Pembeli {index + 2}</p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div>
-                      <p className="text-xs text-gray-500">Nama</p>
-                      <p className="text-sm text-gray-800">{buyer.name}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">NIK</p>
-                      <p className="text-sm text-gray-800">{buyer.nik}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Alamat</p>
-                      <p className="text-sm text-gray-800">{buyer.address}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Email Info */}
         <div className="mb-6 p-4 bg-blue-50 rounded-xl border border-blue-200">
           <p className="text-sm text-blue-700 flex items-center gap-2">
             <BiCheckCircle className="text-blue-500 text-lg" />
@@ -608,32 +512,19 @@ const PaymentPage = () => {
           </p>
         </div>
 
-        {/* Error Message */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 rounded-xl border border-red-200">
-            <p className="text-sm text-red-700 flex items-center gap-2">
-              <BiError className="text-red-500 text-lg" />
-              <span>{error}</span>
-            </p>
-          </div>
-        )}
-
-        {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-4">
           <button
             onClick={handleCancelOrder}
             disabled={processingPayment}
-            className="flex-1 py-4 border-2 border-red-200 text-red-600 rounded-xl hover:bg-red-50 transition-colors flex items-center justify-center space-x-2 font-semibold disabled:opacity-50"
+            className="flex-1 py-4 border-2 border-red-200 text-red-600 rounded-xl hover:bg-red-50 transition-colors flex items-center justify-center space-x-2 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <BiX className="text-xl" />
             <span>Batalkan Pesanan</span>
           </button>
-          
-          {/* Pilih salah satu metode bayar */}
           <button
-            onClick={generateSnapToken}
-            disabled={processingPayment}
-            className="flex-1 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 transition-colors flex items-center justify-center space-x-2 shadow-lg shadow-blue-500/30 disabled:opacity-50"
+            onClick={handlePayNow}
+            disabled={!snapLoaded || processingPayment || timeLeft <= 0}
+            className="flex-1 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 transition-colors flex items-center justify-center space-x-2 shadow-lg shadow-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {processingPayment ? (
               <>
@@ -649,20 +540,17 @@ const PaymentPage = () => {
           </button>
         </div>
 
-        {/* Info tambahan */}
         <div className="mt-4 text-center text-sm text-gray-500">
           <p>Anda akan diarahkan ke halaman pembayaran Midtrans</p>
-          <p className="text-xs mt-1 text-orange-500">Demo Mode: Pembayaran akan disimulasikan</p>
         </div>
       </div>
 
-      {/* Loading Overlay */}
       {processingPayment && (
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-2xl p-8 shadow-2xl">
+          <div className="bg-white rounded-2xl p-8 shadow-2xl max-w-sm mx-4">
             <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
-            <p className="text-gray-700 font-medium">Mempersiapkan pembayaran...</p>
-            <p className="text-sm text-gray-500 mt-2">Mohon tunggu sebentar</p>
+            <p className="text-gray-700 font-medium text-center">Mempersiapkan pembayaran...</p>
+            <p className="text-sm text-gray-500 mt-2 text-center">Mohon tunggu sebentar</p>
           </div>
         </div>
       )}
