@@ -93,48 +93,7 @@ const PromosPage = () => {
   }
 
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!validateForm()) return
-
-    setSubmitting(true)
-
-    try {
-      const promoData = {
-        code: formData.code.toUpperCase(),
-        discount_type: formData.discount_type,
-        discount_value: parseFloat(formData.discount_value),
-        stock: parseInt(formData.stock),
-        used_count: editingPromo ? editingPromo.used_count : 0,
-        valid_from: formData.valid_from,
-        valid_until: formData.valid_until,
-        is_active: true,
-        updated_at: new Date().toISOString()
-      }
-
-      let error
-      if (editingPromo) {
-        ({ error } = await supabase
-          .from('promo_codes')
-          .update(promoData)
-          .eq('id', editingPromo.id))
-      } else {
-        ({ error } = await supabase
-          .from('promo_codes')
-          .insert([{ ...promoData, created_at: new Date().toISOString() }]))
-      }
-
-      if (error) throw error
-
-      await fetchPromos()
-      closeModal()
-    } catch (error) {
-      console.error('Error saving promo:', error)
-      alert('Gagal menyimpan kode promo: ' + error.message)
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
+  
   const checkPromoUsage = async (promoId) => {
     try {
       const { data, error } = await supabase
@@ -155,7 +114,93 @@ const PromosPage = () => {
       return { used: false, count: 0, orders: [], error: error.message }
     }
   }
+    
+const handleSubmit = async (e) => {
+  e.preventDefault()
+  if (!validateForm()) return
 
+  setSubmitting(true)
+
+  try {
+    const promoData = {
+      code: formData.code.toUpperCase(),
+      discount_type: formData.discount_type,
+      discount_value: parseFloat(formData.discount_value),
+      stock: parseInt(formData.stock),
+      used_count: editingPromo ? editingPromo.used_count : 0,
+      valid_from: formData.valid_from,
+      valid_until: formData.valid_until,
+      is_active: true,
+      updated_at: new Date().toISOString()
+    }
+
+    // Cek apakah kode promo sudah ada (untuk insert baru)
+    if (!editingPromo) {
+      const { data: existingPromo, error: checkError } = await supabase
+        .from('promo_codes')
+        .select('id')
+        .eq('code', promoData.code)
+        .maybeSingle()
+
+      if (checkError) throw checkError
+
+      if (existingPromo) {
+        alert(`Kode promo "${promoData.code}" sudah ada. Gunakan kode yang berbeda.`)
+        setSubmitting(false)
+        return
+      }
+    }
+
+    let result
+    if (editingPromo) {
+      // Untuk edit, pastikan tidak mengubah ke kode yang sudah ada (kecuali kode sendiri)
+      if (formData.code.toUpperCase() !== editingPromo.code) {
+        const { data: existingPromo, error: checkError } = await supabase
+          .from('promo_codes')
+          .select('id')
+          .eq('code', promoData.code)
+          .neq('id', editingPromo.id)
+          .maybeSingle()
+
+        if (checkError) throw checkError
+
+        if (existingPromo) {
+          alert(`Kode promo "${promoData.code}" sudah digunakan oleh promo lain.`)
+          setSubmitting(false)
+          return
+        }
+      }
+
+      result = await supabase
+        .from('promo_codes')
+        .update(promoData)
+        .eq('id', editingPromo.id)
+    } else {
+      result = await supabase
+        .from('promo_codes')
+        .insert([{ ...promoData, created_at: new Date().toISOString() }])
+    }
+
+    if (result.error) {
+      // Handle duplicate key error
+      if (result.error.code === '23505') {
+        alert(`Kode promo "${promoData.code}" sudah ada. Gunakan kode yang berbeda.`)
+      } else {
+        throw result.error
+      }
+    } else {
+      await fetchPromos()
+      closeModal()
+      alert(editingPromo ? 'Kode promo berhasil diperbarui!' : 'Kode promo berhasil ditambahkan!')
+    }
+  } catch (error) {
+    console.error('Error saving promo:', error)
+    alert('Gagal menyimpan kode promo: ' + (error.message || 'Unknown error'))
+  } finally {
+    setSubmitting(false)
+  }
+      }
+    
   const handleDeleteClick = async (promo) => {
     setDeletingPromo(promo)
     setSubmitting(true)
