@@ -1,3 +1,4 @@
+// api/midtrans.js
 export default async function handler(req, res) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -108,7 +109,7 @@ export default async function handler(req, res) {
       console.error('Failed to parse Midtrans response:', responseText);
       return res.status(500).json({ 
         error: 'Invalid response from Midtrans',
-        raw: responseText.substring(0, 200) // Kirim sebagian untuk debugging
+        raw: responseText.substring(0, 200)
       });
     }
 
@@ -130,8 +131,7 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Midtrans API Error:', error);
     return res.status(500).json({ 
-      error: error.message || 'Internal server error',
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      error: error.message || 'Internal server error'
     });
   }
 }
