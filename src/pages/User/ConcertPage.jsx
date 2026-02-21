@@ -44,7 +44,8 @@ const ConcertPage = () => {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [error, setError] = useState('')
-  const [selectedProductId, setSelectedProductId] = useState(null)
+  const [fetchError, setFetchError] = useState('')
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -73,19 +74,41 @@ const ConcertPage = () => {
   }
 
   const fetchProducts = async () => {
-    const { data, error } = await supabase
-      .from('products')
-      .select('*')
-      .order('created_at', { ascending: false })
+    setIsLoadingProducts(true)
+    setFetchError('')
     
-    if (!error && data) {
-      setProducts(data)
-      if (data.length > 0) {
-        setSelectedProduct(data[0])
-        if (data[0].ticket_types && data[0].ticket_types.length > 0) {
-          setSelectedTicketType(data[0].ticket_types[0])
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('is_active', true) // Hanya ambil produk yang aktif
+        .order('created_at', { ascending: false })
+      
+      if (error) throw error
+      
+      // Parse ticket_types jika berupa string JSON
+      const processedData = data.map(product => ({
+        ...product,
+        ticket_types: typeof product.ticket_types === 'string' 
+          ? JSON.parse(product.ticket_types) 
+          : product.ticket_types || [],
+        image_url: product.image_data || product.poster_url // Gunakan image_data atau poster_url
+      }))
+      
+      console.log('Fetched products:', processedData) // Untuk debugging
+      setProducts(processedData || [])
+      
+      if (processedData && processedData.length > 0) {
+        setSelectedProduct(processedData[0])
+        if (processedData[0].ticket_types && processedData[0].ticket_types.length > 0) {
+          setSelectedTicketType(processedData[0].ticket_types[0])
         }
       }
+    } catch (error) {
+      console.error('Error fetching products:', error)
+      setFetchError('Gagal memuat data event: ' + error.message)
+    } finally {
+      setIsLoadingProducts(false)
     }
   }
 
@@ -93,6 +116,8 @@ const ConcertPage = () => {
     setSelectedProduct(product)
     if (product.ticket_types && product.ticket_types.length > 0) {
       setSelectedTicketType(product.ticket_types[0])
+    } else {
+      setSelectedTicketType(null)
     }
     setQuantity(1)
     setPromoApplied(null)
@@ -126,29 +151,36 @@ const ConcertPage = () => {
     setPromoError('')
 
     const now = new Date().toISOString()
-    const { data, error } = await supabase
-      .from('promo_codes')
-      .select('*')
-      .eq('code', promoCode.toUpperCase())
-      .lte('valid_from', now)
-      .gte('valid_until', now)
-      .single()
+    try {
+      const { data, error } = await supabase
+        .from('promo_codes')
+        .select('*')
+        .eq('code', promoCode.toUpperCase())
+        .eq('is_active', true)
+        .lte('valid_from', now)
+        .gte('valid_until', now)
+        .single()
 
-    if (error || !data) {
-      setPromoError('Kode promo tidak valid atau sudah kadaluarsa')
+      if (error || !data) {
+        setPromoError('Kode promo tidak valid atau sudah kadaluarsa')
+        setPromoLoading(false)
+        return
+      }
+
+      if (data.used_count >= data.stock) {
+        setPromoError('Kode promo sudah habis digunakan')
+        setPromoLoading(false)
+        return
+      }
+
+      setPromoApplied(data)
+      setPromoError('')
+    } catch (error) {
+      console.error('Error validating promo:', error)
+      setPromoError('Gagal memvalidasi kode promo')
+    } finally {
       setPromoLoading(false)
-      return
     }
-
-    if (data.used_count >= data.stock) {
-      setPromoError('Kode promo sudah habis digunakan')
-      setPromoLoading(false)
-      return
-    }
-
-    setPromoApplied(data)
-    setPromoError('')
-    setPromoLoading(false)
   }
 
   const calculateDiscount = (subtotal) => {
@@ -267,7 +299,8 @@ const ConcertPage = () => {
         buyer_index: 0,
         ticket_type: selectedTicketType.name,
         price: selectedTicketType.price,
-        is_available: true
+        is_available: true,
+        ticket_code: `TCK-${Date.now()}-0-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
       })
 
       // Tickets for additional buyers
@@ -278,7 +311,8 @@ const ConcertPage = () => {
           buyer_index: index + 1,
           ticket_type: selectedTicketType.name,
           price: selectedTicketType.price,
-          is_available: true
+          is_available: true,
+          ticket_code: `TCK-${Date.now()}-${index + 1}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
         })
       })
 
@@ -299,7 +333,7 @@ const ConcertPage = () => {
       await supabase
         .from('products')
         .update({ 
-          ticket_types: updatedTicketTypes,
+          ticket_types: JSON.stringify(updatedTicketTypes),
           stock: selectedProduct.stock - quantity
         })
         .eq('id', selectedProduct.id)
@@ -314,13 +348,56 @@ const ConcertPage = () => {
   }
 
   const totalStock = (product) => {
-    if (product.ticket_types) {
-      return product.ticket_types.reduce((sum, type) => sum + (type.stock || 0), 0)
+    if (product.ticket_types && product.ticket_types.length > 0) {
+      return product.ticket_types.reduce((sum, type) => sum + (parseInt(type.stock) || 0), 0)
     }
     return product.stock || 0
   }
 
-  if (!selectedProduct) {
+  const formatRupiah = (number) => {
+    return new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      minimumFractionDigits: 0
+    }).format(number)
+  }
+
+  if (isLoadingProducts) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
+        <NavbarEvent />
+        <div className="flex items-center justify-center h-[80vh]">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
+            <p className="text-gray-600">Memuat event...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (fetchError) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
+        <NavbarEvent />
+        <div className="max-w-7xl mx-auto px-4 py-12">
+          <div className="text-center py-20">
+            <BiError className="text-6xl text-red-400 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-gray-700">Gagal Memuat Data</h2>
+            <p className="text-gray-500 mt-2">{fetchError}</p>
+            <button
+              onClick={fetchProducts}
+              className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Coba Lagi
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!selectedProduct || products.length === 0) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
         <NavbarEvent />
@@ -341,35 +418,37 @@ const ConcertPage = () => {
 
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Product Selector */}
-        <div className="mb-6 overflow-x-auto">
-          <div className="flex space-x-4 pb-2">
-            {products.map((product) => (
-              <button
-                key={product.id}
-                onClick={() => handleProductChange(product)}
-                className={`flex-shrink-0 px-4 py-2 rounded-lg transition-all ${
-                  selectedProduct.id === product.id
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                <div className="font-medium">{product.name}</div>
-                <div className="text-xs opacity-75">
-                  {new Date(product.event_date).toLocaleDateString('id-ID')}
-                </div>
-              </button>
-            ))}
+        {products.length > 1 && (
+          <div className="mb-6 overflow-x-auto">
+            <div className="flex space-x-4 pb-2">
+              {products.map((product) => (
+                <button
+                  key={product.id}
+                  onClick={() => handleProductChange(product)}
+                  className={`flex-shrink-0 px-4 py-2 rounded-lg transition-all ${
+                    selectedProduct.id === product.id
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  <div className="font-medium">{product.name}</div>
+                  <div className="text-xs opacity-75">
+                    {product.event_date ? new Date(product.event_date).toLocaleDateString('id-ID') : 'TBA'}
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column - Event Details */}
           <div className="lg:col-span-2 space-y-6">
             {/* Poster */}
             <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-              {selectedProduct.image_url ? (
+              {selectedProduct.image_data || selectedProduct.poster_url ? (
                 <img 
-                  src={selectedProduct.image_url} 
+                  src={selectedProduct.image_data || selectedProduct.poster_url} 
                   alt={selectedProduct.name}
                   className="w-full h-96 object-cover"
                 />
@@ -390,19 +469,21 @@ const ConcertPage = () => {
                   <div>
                     <p className="font-semibold text-gray-700">Tanggal & Waktu</p>
                     <p className="text-gray-600">
-                      {new Date(selectedProduct.event_date).toLocaleDateString('id-ID', {
+                      {selectedProduct.event_date ? new Date(selectedProduct.event_date).toLocaleDateString('id-ID', {
                         weekday: 'long',
                         year: 'numeric',
                         month: 'long',
                         day: 'numeric'
-                      })}
+                      }) : 'Belum ditentukan'}
                     </p>
-                    <p className="text-gray-600">
-                      {new Date(selectedProduct.event_date).toLocaleTimeString('id-ID', {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </p>
+                    {selectedProduct.event_date && (
+                      <p className="text-gray-600">
+                        {new Date(selectedProduct.event_date).toLocaleTimeString('id-ID', {
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -410,7 +491,7 @@ const ConcertPage = () => {
                   <BiMap className="text-2xl text-blue-500 mt-1" />
                   <div>
                     <p className="font-semibold text-gray-700">Lokasi</p>
-                    <p className="text-gray-600">{selectedProduct.event_location}</p>
+                    <p className="text-gray-600">{selectedProduct.event_location || 'Belum ditentukan'}</p>
                     {selectedProduct.location_description && (
                       <p className="text-gray-500 text-sm mt-1">{selectedProduct.location_description}</p>
                     )}
@@ -447,7 +528,7 @@ const ConcertPage = () => {
               <h2 className="text-xl font-bold text-gray-800 mb-4">Beli Tiket</h2>
 
               {/* Ticket Type Selection */}
-              {selectedProduct.ticket_types && selectedProduct.ticket_types.length > 0 && (
+              {selectedProduct.ticket_types && selectedProduct.ticket_types.length > 0 ? (
                 <div className="mb-6">
                   <p className="text-sm text-gray-500 mb-2">Pilih Tipe Tiket</p>
                   <div className="space-y-2">
@@ -476,7 +557,7 @@ const ConcertPage = () => {
                             </div>
                             <div className="text-right">
                               <p className="font-bold text-blue-600">
-                                Rp {type.price.toLocaleString()}
+                                {formatRupiah(type.price)}
                               </p>
                               <p className="text-xs text-gray-500">
                                 Stok: {type.stock}
@@ -490,6 +571,10 @@ const ConcertPage = () => {
                       )
                     })}
                   </div>
+                </div>
+              ) : (
+                <div className="mb-6 p-4 bg-yellow-50 rounded-lg">
+                  <p className="text-sm text-yellow-700">Belum ada tipe tiket tersedia</p>
                 </div>
               )}
 
@@ -566,7 +651,7 @@ const ConcertPage = () => {
                         <p className="text-sm text-green-600 mt-1">
                           {promoApplied.discount_type === 'percentage' 
                             ? `Diskon ${promoApplied.discount_value}%`
-                            : `Diskon Rp ${promoApplied.discount_value.toLocaleString()}`
+                            : `Diskon ${formatRupiah(promoApplied.discount_value)}`
                           }
                         </p>
                       </div>
@@ -576,29 +661,31 @@ const ConcertPage = () => {
               </div>
 
               {/* Total */}
-              <div className="border-t border-gray-200 pt-4 mb-6">
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Subtotal</span>
-                    <span className="text-gray-800">Rp {subtotal.toLocaleString()}</span>
-                  </div>
-                  {promoApplied && (
+              {selectedTicketType && (
+                <div className="border-t border-gray-200 pt-4 mb-6">
+                  <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Diskon</span>
-                      <span className="text-green-600">- Rp {discount.toLocaleString()}</span>
+                      <span className="text-gray-600">Subtotal</span>
+                      <span className="text-gray-800">{formatRupiah(subtotal)}</span>
                     </div>
-                  )}
-                  <div className="flex justify-between text-lg font-bold pt-2 border-t border-gray-200">
-                    <span>Total</span>
-                    <span className="text-blue-600">Rp {total.toLocaleString()}</span>
+                    {promoApplied && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Diskon</span>
+                        <span className="text-green-600">- {formatRupiah(discount)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-lg font-bold pt-2 border-t border-gray-200">
+                      <span>Total</span>
+                      <span className="text-blue-600">{formatRupiah(total)}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Buy Button */}
               <button
                 onClick={handleBuyNow}
-                disabled={quantity === 0 || !selectedTicketType || selectedTicketType.stock === 0 || !user}
+                disabled={!selectedTicketType || selectedTicketType.stock === 0 || quantity === 0 || !user}
                 className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {!user ? 'Login untuk Membeli' : 
@@ -699,7 +786,7 @@ const ConcertPage = () => {
                 </div>
               ))}
 
-              {quantity > 1 && buyers.length < quantity && (
+              {selectedTicketType && quantity > 1 && buyers.length < quantity && (
                 <button
                   onClick={handleAddBuyer}
                   className="w-full mb-4 py-2 border-2 border-dashed border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
