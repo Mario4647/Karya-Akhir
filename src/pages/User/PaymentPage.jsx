@@ -15,23 +15,22 @@ import {
   BiXCircle,
   BiCopy,
   BiRefresh
-} from 'react-icons/bi'
+} from 'react-icons-bi'
 
 // Konfigurasi Midtrans Sandbox
 const MIDTRANS_CLIENT_KEY = 'Mid-client-PKxh7PoyLs2QwsBh'
-const MIDTRANS_MERCHANT_ID = 'G738480656'
+const MIDTRANS_SERVER_KEY = 'Mid-server-GO01WdWzdlBnf8IVAP_IQ7BU'
 
 const PaymentPage = () => {
   const [order, setOrder] = useState(null)
   const [timeLeft, setTimeLeft] = useState(3600)
   const [loading, setLoading] = useState(true)
-  const [showPaymentModal, setShowPaymentModal] = useState(false)
-  const [selectedPayment, setSelectedPayment] = useState(null)
   const [processingPayment, setProcessingPayment] = useState(false)
   const [error, setError] = useState('')
+  const [snapToken, setSnapToken] = useState(null)
   const [snapLoaded, setSnapLoaded] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [snapInitialized, setSnapInitialized] = useState(false)
+  const [snapReady, setSnapReady] = useState(false)
   const { orderId } = useParams()
   const navigate = useNavigate()
 
@@ -67,13 +66,6 @@ const PaymentPage = () => {
     if (document.querySelector('script[src="https://app.sandbox.midtrans.com/snap/snap.js"]')) {
       console.log('Midtrans script already loaded')
       setSnapLoaded(true)
-      // Tunggu sebentar untuk memastikan snap siap
-      setTimeout(() => {
-        if (window.snap) {
-          console.log('Snap is ready')
-          setSnapInitialized(true)
-        }
-      }, 500)
       return
     }
     
@@ -85,16 +77,6 @@ const PaymentPage = () => {
     script.onload = () => {
       console.log('Midtrans script loaded successfully')
       setSnapLoaded(true)
-      // Tunggu sebentar untuk memastikan snap siap
-      setTimeout(() => {
-        if (window.snap) {
-          console.log('Snap is ready')
-          setSnapInitialized(true)
-        } else {
-          console.error('Snap not available after load')
-          setError('Gagal menginisialisasi metode pembayaran')
-        }
-      }, 1000)
     }
     
     script.onerror = (err) => {
@@ -164,34 +146,20 @@ const PaymentPage = () => {
     }
   }
 
-  const handlePayOrder = () => {
-    console.log('Pay button clicked, snapInitialized:', snapInitialized)
-    if (!snapInitialized) {
-      setError('Metode pembayaran belum siap. Silakan tunggu atau refresh halaman.')
-      return
-    }
-    setShowPaymentModal(true)
-  }
-
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // Fungsi untuk membayar langsung tanpa pilih metode di modal
-  const payDirect = () => {
-    if (!window.snap) {
-      setError('Metode pembayaran tidak tersedia')
-      return
-    }
-
-    setProcessingPayment(true)
-    setError('')
-
+  // Fungsi untuk membuat transaksi ke Midtrans
+  const createMidtransTransaction = async () => {
     try {
+      // Encode server key untuk basic auth
+      const encodedServerKey = btoa(MIDTRANS_SERVER_KEY + ':')
+
       // Siapkan parameter transaksi
-      const snapParams = {
+      const parameter = {
         transaction_details: {
           order_id: order.order_number,
           gross_amount: order.total_amount
@@ -202,20 +170,11 @@ const PaymentPage = () => {
         customer_details: {
           first_name: order.customer_name,
           email: order.customer_email,
-          phone: "08123456789",
+          phone: "081234567890",
           billing_address: {
             first_name: order.customer_name,
             email: order.customer_email,
-            phone: "08123456789",
-            address: order.customer_address,
-            city: "Jakarta",
-            postal_code: "12345",
-            country_code: "IDN"
-          },
-          shipping_address: {
-            first_name: order.customer_name,
-            email: order.customer_email,
-            phone: "08123456789",
+            phone: "081234567890",
             address: order.customer_address,
             city: "Jakarta",
             postal_code: "12345",
@@ -228,11 +187,6 @@ const PaymentPage = () => {
           quantity: order.quantity,
           name: order.product_name
         }],
-        callbacks: {
-          finish: `${window.location.origin}/payment-success/${order.id}`,
-          error: `${window.location.origin}/payment/${order.id}`,
-          pending: `${window.location.origin}/payment/${order.id}`
-        },
         enabled_payments: [
           "credit_card",
           "mandiri_clickpay",
@@ -257,54 +211,103 @@ const PaymentPage = () => {
         }
       }
 
-      console.log('Snap params:', snapParams)
+      console.log('Creating transaction with params:', parameter)
 
-      // Buka Snap popup
-      window.snap.pay(snapParams, {
-        onSuccess: function(result) {
-          console.log('Payment success:', result)
-          handlePaymentSuccess(result)
+      // Panggil API Midtrans
+      const response = await fetch('https://app.sandbox.midtrans.com/snap/v1/transactions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Basic ' + encodedServerKey,
+          'Accept': 'application/json'
         },
-        onPending: function(result) {
-          console.log('Payment pending:', result)
-          supabase
-            .from('orders')
-            .update({ 
-              midtrans_transaction_status: 'pending',
-              payment_details: result,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', order.id)
-          alert('Pembayaran sedang diproses. Silakan cek status secara berkala.')
-          setProcessingPayment(false)
-          setShowPaymentModal(false)
-        },
-        onError: function(result) {
-          console.error('Payment error:', result)
-          setError('Pembayaran gagal: ' + (result.status_message || 'Silakan coba lagi'))
-          setProcessingPayment(false)
-          setShowPaymentModal(false)
-        },
-        onClose: function() {
-          console.log('Payment popup closed')
-          setProcessingPayment(false)
-          setShowPaymentModal(false)
-        }
+        body: JSON.stringify(parameter)
       })
+
+      const responseText = await response.text()
+      console.log('Midtrans response:', responseText)
+
+      if (!response.ok) {
+        throw new Error(`HTTP error ${response.status}: ${responseText}`)
+      }
+
+      const data = JSON.parse(responseText)
+      return data
     } catch (error) {
-      console.error('Error in snap.pay:', error)
-      setError('Gagal memproses pembayaran: ' + error.message)
-      setProcessingPayment(false)
+      console.error('Error creating transaction:', error)
+      throw error
     }
   }
 
-  const processPayment = () => {
-    if (!selectedPayment) {
-      setError('Pilih metode pembayaran terlebih dahulu')
+  const handlePayNow = async () => {
+    if (!snapLoaded) {
+      setError('Metode pembayaran belum siap. Silakan tunggu...')
       return
     }
 
-    payDirect()
+    if (!window.snap) {
+      setError('Snap Midtrans tidak tersedia. Silakan refresh halaman.')
+      return
+    }
+
+    setProcessingPayment(true)
+    setError('')
+
+    try {
+      // Buat transaksi ke Midtrans
+      const transaction = await createMidtransTransaction()
+      
+      if (transaction && transaction.token) {
+        console.log('Transaction token received:', transaction.token)
+        setSnapToken(transaction.token)
+
+        // Simpan token ke database
+        await supabase
+          .from('orders')
+          .update({ 
+            midtrans_transaction_id: transaction.transaction_id,
+            midtrans_token: transaction.token,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', order.id)
+
+        // Buka Snap popup dengan token yang didapat
+        window.snap.pay(transaction.token, {
+          onSuccess: function(result) {
+            console.log('Payment success:', result)
+            handlePaymentSuccess(result)
+          },
+          onPending: function(result) {
+            console.log('Payment pending:', result)
+            supabase
+              .from('orders')
+              .update({ 
+                midtrans_transaction_status: 'pending',
+                payment_details: result,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', order.id)
+            alert('Pembayaran sedang diproses. Silakan cek status secara berkala.')
+            setProcessingPayment(false)
+          },
+          onError: function(result) {
+            console.error('Payment error:', result)
+            setError('Pembayaran gagal: ' + (result.status_message || 'Silakan coba lagi'))
+            setProcessingPayment(false)
+          },
+          onClose: function() {
+            console.log('Payment popup closed')
+            setProcessingPayment(false)
+          }
+        })
+      } else {
+        throw new Error('Gagal mendapatkan token pembayaran')
+      }
+    } catch (error) {
+      console.error('Error in payment process:', error)
+      setError('Gagal memproses pembayaran: ' + error.message)
+      setProcessingPayment(false)
+    }
   }
 
   const handlePaymentSuccess = async (result) => {
@@ -599,7 +602,7 @@ const PaymentPage = () => {
         </div>
 
         {/* Midtrans Status */}
-        {!snapInitialized && (
+        {!snapLoaded && (
           <div className="mb-6 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
             <p className="text-sm text-yellow-700 flex items-center gap-2">
               <BiTimer className="text-yellow-500 text-lg" />
@@ -627,8 +630,8 @@ const PaymentPage = () => {
             <span>Batalkan Pesanan</span>
           </button>
           <button
-            onClick={payDirect}
-            disabled={!snapInitialized || processingPayment}
+            onClick={handlePayNow}
+            disabled={!snapLoaded || processingPayment}
             className="flex-1 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 transition-colors flex items-center justify-center space-x-2 shadow-lg shadow-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {processingPayment ? (
@@ -657,7 +660,7 @@ const PaymentPage = () => {
           <div className="bg-white rounded-2xl p-8 shadow-2xl">
             <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
             <p className="text-gray-700 font-medium">Mempersiapkan pembayaran...</p>
-            <p className="text-sm text-gray-500 mt-2">Mohon tunggu sebentar</p>
+            <p className="text-sm text-gray-500 mt-2">Menghubungi server Midtrans</p>
           </div>
         </div>
       )}
