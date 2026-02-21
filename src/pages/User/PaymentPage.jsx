@@ -16,8 +16,18 @@ import {
   BiCopy,
   BiRefresh
 } from 'react-icons/bi'
+import Midtrans from 'midtrans-client'
 
+// Konfigurasi Midtrans Sandbox
 const MIDTRANS_CLIENT_KEY = 'Mid-client-PKxh7PoyLs2QwsBh'
+const MIDTRANS_SERVER_KEY = 'Mid-server-GO01WdWzdlBnf8IVAP_IQ7BU'
+
+// Inisialisasi Snap
+const snap = new Midtrans.Snap({
+  isProduction: false,
+  serverKey: MIDTRANS_SERVER_KEY,
+  clientKey: MIDTRANS_CLIENT_KEY
+})
 
 const PaymentPage = () => {
   const [order, setOrder] = useState(null)
@@ -143,32 +153,65 @@ const PaymentPage = () => {
 
   const createTransaction = async () => {
     try {
-      const response = await fetch('/api/midtrans', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const parameter = {
+        transaction_details: {
+          order_id: order.order_number,
+          gross_amount: order.total_amount
         },
-        body: JSON.stringify({
-          orderId: order.id,
-          orderNumber: order.order_number,
-          totalAmount: order.total_amount,
-          customerName: order.customer_name,
-          customerEmail: order.customer_email,
-          customerAddress: order.customer_address,
-          productName: order.product_name,
-          productPrice: order.product_price,
+        credit_card: {
+          secure: true
+        },
+        customer_details: {
+          first_name: order.customer_name,
+          email: order.customer_email,
+          phone: "081234567890",
+          billing_address: {
+            first_name: order.customer_name,
+            email: order.customer_email,
+            phone: "081234567890",
+            address: order.customer_address,
+            city: "Jakarta",
+            postal_code: "12345",
+            country_code: "IDN"
+          }
+        },
+        item_details: [{
+          id: order.product_id || "TICKET-001",
+          price: order.product_price,
           quantity: order.quantity,
-          productId: order.product_id
-        })
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Gagal membuat transaksi')
+          name: order.product_name
+        }],
+        enabled_payments: [
+          "credit_card",
+          "mandiri_clickpay",
+          "bca_klikbca",
+          "bca_klikpay",
+          "bri_epay",
+          "echannel",
+          "permata_va",
+          "bca_va",
+          "bni_va",
+          "bri_va",
+          "cimb_va",
+          "other_va",
+          "gopay",
+          "shopeepay",
+          "qris"
+        ],
+        callbacks: {
+          finish: `${window.location.origin}/payment-success/${order.id}`,
+          error: `${window.location.origin}/payment/${order.id}`,
+          pending: `${window.location.origin}/payment/${order.id}`
+        }
       }
 
-      return data
+      console.log('Creating transaction with params:', parameter)
+
+      // Gunakan midtrans-client untuk membuat transaksi
+      const transaction = await snap.createTransaction(parameter)
+      console.log('Transaction created:', transaction)
+      
+      return transaction
     } catch (error) {
       console.error('Error creating transaction:', error)
       throw error
@@ -190,7 +233,7 @@ const PaymentPage = () => {
     setError('')
 
     try {
-      // Dapatkan token dari API
+      // Buat transaksi menggunakan midtrans-client
       const transaction = await createTransaction()
       
       if (transaction && transaction.token) {
