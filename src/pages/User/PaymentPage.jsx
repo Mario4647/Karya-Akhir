@@ -14,7 +14,8 @@ import {
   BiCheckCircle,
   BiXCircle,
   BiCopy,
-  BiRefresh
+  BiRefresh,
+  BiInfoCircle
 } from 'react-icons/bi'
 import axios from 'axios'
 
@@ -29,12 +30,15 @@ const PaymentPage = () => {
   const [error, setError] = useState('')
   const [snapLoaded, setSnapLoaded] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [snapToken, setSnapToken] = useState(null)
+  const [apiStatus, setApiStatus] = useState('')
   const { orderId } = useParams()
   const navigate = useNavigate()
 
   useEffect(() => {
     fetchOrder()
     loadMidtransScript()
+    checkApiHealth()
   }, [orderId])
 
   useEffect(() => {
@@ -59,18 +63,34 @@ const PaymentPage = () => {
     }
   }, [order])
 
+  const checkApiHealth = async () => {
+    try {
+      setApiStatus('Memeriksa koneksi server...')
+      const response = await axios.get('/api/health', { timeout: 5000 })
+      if (response.data.status === 'OK') {
+        setApiStatus('Server terhubung')
+        console.log('✅ Server health check passed')
+      }
+    } catch (error) {
+      console.error('❌ Server health check failed:', error)
+      setApiStatus('Server tidak merespons')
+    }
+  }
+
   const loadMidtransScript = () => {
     if (document.querySelector('script[src="https://app.sandbox.midtrans.com/snap/snap.js"]')) {
+      console.log('✅ Midtrans script already loaded')
       setSnapLoaded(true)
       return
     }
     
+    console.log('📥 Loading Midtrans script...')
     const script = document.createElement('script')
     script.src = 'https://app.sandbox.midtrans.com/snap/snap.js'
     script.setAttribute('data-client-key', MIDTRANS_CLIENT_KEY)
     
     script.onload = () => {
-      console.log('✅ Midtrans script loaded')
+      console.log('✅ Midtrans script loaded successfully')
       setSnapLoaded(true)
     }
     
@@ -85,6 +105,7 @@ const PaymentPage = () => {
   const fetchOrder = async () => {
     setLoading(true)
     try {
+      console.log('📦 Fetching order:', orderId)
       const { data, error } = await supabase
         .from('orders')
         .select(`
@@ -96,7 +117,7 @@ const PaymentPage = () => {
         .single()
 
       if (error) throw error
-      console.log('📦 Order fetched:', data)
+      console.log('✅ Order fetched:', data)
       setOrder(data)
     } catch (error) {
       console.error('❌ Error fetching order:', error)
@@ -151,7 +172,7 @@ const PaymentPage = () => {
     try {
       console.log('🔄 Creating transaction for order:', order.order_number)
       
-      const response = await axios.post('/api/midtrans', {
+      const payload = {
         orderId: order.id,
         orderNumber: order.order_number,
         totalAmount: order.total_amount,
@@ -162,7 +183,11 @@ const PaymentPage = () => {
         productPrice: order.product_price,
         quantity: order.quantity,
         productId: order.product_id
-      }, {
+      }
+      
+      console.log('📤 Sending payload:', payload)
+
+      const response = await axios.post('/api/midtrans', payload, {
         timeout: 30000,
         headers: {
           'Content-Type': 'application/json'
@@ -175,9 +200,26 @@ const PaymentPage = () => {
       console.error('❌ Error creating transaction:', {
         message: error.message,
         response: error.response?.data,
-        status: error.response?.status
+        status: error.response?.status,
+        stack: error.stack
       })
-      throw new Error(error.response?.data?.error || error.message)
+      
+      let errorMessage = 'Gagal membuat transaksi'
+      
+      if (error.response) {
+        // Server merespon dengan error
+        errorMessage = error.response.data?.error || error.message
+        console.error('Server error response:', error.response.data)
+      } else if (error.request) {
+        // Tidak ada response dari server
+        errorMessage = 'Tidak dapat terhubung ke server. Periksa koneksi internet Anda.'
+        console.error('No response from server:', error.request)
+      } else {
+        // Error lainnya
+        errorMessage = error.message
+      }
+      
+      throw new Error(errorMessage)
     }
   }
 
@@ -201,9 +243,10 @@ const PaymentPage = () => {
       
       if (transaction && transaction.token) {
         console.log('🎫 Transaction token received:', transaction.token)
+        setSnapToken(transaction.token)
 
         // Simpan token ke database
-        await supabase
+        const { error: updateError } = await supabase
           .from('orders')
           .update({ 
             midtrans_transaction_id: transaction.transaction_id,
@@ -211,6 +254,10 @@ const PaymentPage = () => {
             updated_at: new Date().toISOString()
           })
           .eq('id', order.id)
+
+        if (updateError) {
+          console.error('❌ Error saving token to database:', updateError)
+        }
 
         // Buka Snap dengan token
         window.snap.pay(transaction.token, {
@@ -253,6 +300,8 @@ const PaymentPage = () => {
 
   const handlePaymentSuccess = async (result) => {
     try {
+      console.log('💰 Processing payment success:', result)
+      
       const { error } = await supabase
         .from('orders')
         .update({
@@ -268,6 +317,7 @@ const PaymentPage = () => {
 
       if (error) throw error
 
+      console.log('✅ Order updated successfully, redirecting...')
       navigate(`/payment-success/${order.id}`)
     } catch (error) {
       console.error('❌ Error updating order:', error)
@@ -384,6 +434,19 @@ const PaymentPage = () => {
       <NavbarEvent />
 
       <div className="max-w-4xl mx-auto px-4 py-8">
+        {/* Status Bar */}
+        <div className="mb-4 flex items-center justify-between bg-white rounded-lg p-3 shadow-sm">
+          <div className="flex items-center gap-2">
+            <BiInfoCircle className="text-blue-500" />
+            <span className="text-sm text-gray-600">Status Koneksi:</span>
+          </div>
+          <span className={`text-sm font-medium ${
+            apiStatus.includes('terhubung') ? 'text-green-600' : 'text-yellow-600'
+          }`}>
+            {apiStatus}
+          </span>
+        </div>
+
         {/* Timer */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6 relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-red-500"></div>
@@ -407,6 +470,7 @@ const PaymentPage = () => {
               <button 
                 onClick={handleRefreshOrder}
                 className="text-blue-500 hover:text-blue-700 text-sm flex items-center gap-1 mt-1"
+                title="Refresh status"
               >
                 <BiRefresh className="text-lg" />
                 <span>Refresh</span>
@@ -432,6 +496,7 @@ const PaymentPage = () => {
                 <button
                   onClick={() => copyToClipboard(order.order_number)}
                   className="text-gray-400 hover:text-blue-500 transition-colors"
+                  title="Salin nomor pesanan"
                 >
                   <BiCopy className="text-lg" />
                 </button>
