@@ -74,7 +74,8 @@ const PaymentPage = () => {
       setSnapLoaded(true)
     }
     
-    script.onerror = () => {
+    script.onerror = (err) => {
+      console.error('Failed to load Midtrans script:', err)
       setError('Gagal memuat metode pembayaran. Silakan refresh halaman.')
     }
     
@@ -95,8 +96,10 @@ const PaymentPage = () => {
         .single()
 
       if (error) throw error
+      console.log('Order fetched:', data)
       setOrder(data)
     } catch (error) {
+      console.error('Error fetching order:', error)
       setError('Gagal memuat data pesanan: ' + error.message)
     } finally {
       setLoading(false)
@@ -132,6 +135,7 @@ const PaymentPage = () => {
           .eq('id', order.id)
         navigate('/concerts')
       } catch (error) {
+        console.error('Error cancelling order:', error)
         alert('Gagal membatalkan pesanan')
       }
     }
@@ -145,7 +149,8 @@ const PaymentPage = () => {
 
   const createTransaction = async () => {
     try {
-      // Gunakan axios untuk memanggil API kita sendiri
+      console.log('Creating transaction for order:', order.order_number)
+      
       const response = await axios.post('/api/midtrans', {
         orderId: order.id,
         orderNumber: order.order_number,
@@ -159,9 +164,14 @@ const PaymentPage = () => {
         productId: order.product_id
       })
 
+      console.log('Transaction response:', response.data)
       return response.data
     } catch (error) {
-      console.error('Error creating transaction:', error.response?.data || error.message)
+      console.error('Error creating transaction:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      })
       throw new Error(error.response?.data?.error || error.message)
     }
   }
@@ -181,7 +191,7 @@ const PaymentPage = () => {
     setError('')
 
     try {
-      // Dapatkan token dari backend kita
+      // Dapatkan token dari backend
       const transaction = await createTransaction()
       
       if (transaction && transaction.token) {
@@ -213,7 +223,7 @@ const PaymentPage = () => {
                 updated_at: new Date().toISOString()
               })
               .eq('id', order.id)
-            alert('Pembayaran sedang diproses.')
+            alert('Pembayaran sedang diproses. Silakan cek status secara berkala.')
             setProcessingPayment(false)
           },
           onError: function(result) {
@@ -255,6 +265,7 @@ const PaymentPage = () => {
 
       navigate(`/payment-success/${order.id}`)
     } catch (error) {
+      console.error('Error updating order:', error)
       alert('Pembayaran berhasil tetapi gagal memperbarui status. Hubungi admin.')
     }
   }
