@@ -16,6 +16,7 @@ import {
   BiCopy,
   BiRefresh
 } from 'react-icons/bi'
+import Midtrans from 'midtrans-client'
 
 // Konfigurasi Midtrans Sandbox
 const MIDTRANS_CLIENT_KEY = 'Mid-client-PKxh7PoyLs2QwsBh'
@@ -76,8 +77,8 @@ const PaymentPage = () => {
       console.log('Midtrans script loaded')
       setSnapLoaded(true)
     }
-    script.onerror = () => {
-      console.error('Failed to load Midtrans script')
+    script.onerror = (err) => {
+      console.error('Failed to load Midtrans script:', err)
       setError('Gagal memuat metode pembayaran. Silakan refresh halaman.')
     }
     document.body.appendChild(script)
@@ -155,9 +156,16 @@ const PaymentPage = () => {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // Fungsi untuk membuat transaksi Midtrans langsung dari frontend
+  // Fungsi untuk membuat transaksi Midtrans menggunakan midtrans-client
   const createMidtransTransaction = async () => {
     try {
+      // Inisialisasi Snap
+      const snap = new Midtrans.Snap({
+        isProduction: false,
+        serverKey: MIDTRANS_SERVER_KEY,
+        clientKey: MIDTRANS_CLIENT_KEY
+      })
+
       // Buat parameter transaksi
       const parameter = {
         transaction_details: {
@@ -190,34 +198,82 @@ const PaymentPage = () => {
           duration: 60,
           unit: "minutes"
         }
-      };
+      }
 
-      // Encode server key untuk basic auth
-      const encodedServerKey = btoa(MIDTRANS_SERVER_KEY + ':');
+      // Dapatkan token transaksi
+      const transaction = await snap.createTransaction(parameter)
+      return transaction
+    } catch (error) {
+      console.error('Error creating transaction:', error)
+      throw error
+    }
+  }
 
-      // Panggil API Midtrans langsung
-      const response = await fetch('https://app.sandbox.midtrans.com/snap/v1/transactions', {
+  // Alternatif: menggunakan fetch dengan proxy
+  const createTransactionWithProxy = async () => {
+    try {
+      // Gunakan CORS proxy (hanya untuk development)
+      const proxyUrl = 'https://cors-anywhere.herokuapp.com/'
+      const targetUrl = 'https://app.sandbox.midtrans.com/snap/v1/transactions'
+      
+      const encodedServerKey = btoa(MIDTRANS_SERVER_KEY + ':')
+
+      const parameter = {
+        transaction_details: {
+          order_id: order.order_number,
+          gross_amount: order.total_amount
+        },
+        credit_card: {
+          secure: true
+        },
+        customer_details: {
+          first_name: order.customer_name,
+          email: order.customer_email,
+          phone: "",
+          billing_address: {
+            address: order.customer_address
+          }
+        },
+        item_details: [{
+          id: order.product_id,
+          name: order.product_name,
+          price: order.product_price,
+          quantity: order.quantity
+        }],
+        callbacks: {
+          finish: `${window.location.origin}/payment-success/${order.id}`,
+          error: `${window.location.origin}/payment/${order.id}`,
+          pending: `${window.location.origin}/payment/${order.id}`
+        },
+        expiry: {
+          duration: 60,
+          unit: "minutes"
+        }
+      }
+
+      const response = await fetch(proxyUrl + targetUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Basic ' + encodedServerKey,
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          'Origin': window.location.origin
         },
         body: JSON.stringify(parameter)
-      });
-
-      const data = await response.json();
+      })
 
       if (!response.ok) {
-        throw new Error(data.error_message || data.status_message || 'Gagal membuat transaksi');
+        const errorText = await response.text()
+        throw new Error(`HTTP error ${response.status}: ${errorText}`)
       }
 
-      return data;
+      const data = await response.json()
+      return data
     } catch (error) {
-      console.error('Error creating transaction:', error);
-      throw error;
+      console.error('Error with proxy:', error)
+      throw error
     }
-  };
+  }
 
   const processPayment = async () => {
     if (!selectedPayment) {
@@ -234,11 +290,18 @@ const PaymentPage = () => {
     setError('')
 
     try {
-      // Buat transaksi ke Midtrans langsung dari frontend
-      const transaction = await createMidtransTransaction();
+      // Coba dengan midtrans-client dulu
+      let transaction
+      try {
+        transaction = await createMidtransTransaction()
+      } catch (err) {
+        console.log('Midtrans client failed, trying proxy...', err)
+        // Fallback ke proxy
+        transaction = await createTransactionWithProxy()
+      }
       
       if (transaction.token) {
-        setSnapToken(transaction.token);
+        setSnapToken(transaction.token)
         
         // Simpan transaction_id ke database
         await supabase
@@ -248,18 +311,18 @@ const PaymentPage = () => {
             midtrans_token: transaction.token,
             updated_at: new Date().toISOString()
           })
-          .eq('id', order.id);
+          .eq('id', order.id)
         
-        setShowPaymentModal(false);
+        setShowPaymentModal(false)
         
         // Buka Snap popup
         window.snap.pay(transaction.token, {
           onSuccess: async (result) => {
-            console.log('Payment success:', result);
-            await handlePaymentSuccess(result);
+            console.log('Payment success:', result)
+            await handlePaymentSuccess(result)
           },
           onPending: (result) => {
-            console.log('Payment pending:', result);
+            console.log('Payment pending:', result)
             supabase
               .from('orders')
               .update({ 
@@ -267,13 +330,13 @@ const PaymentPage = () => {
                 payment_details: result,
                 updated_at: new Date().toISOString()
               })
-              .eq('id', order.id);
+              .eq('id', order.id)
             
-            alert('Pembayaran sedang diproses. Silakan cek status secara berkala.');
+            alert('Pembayaran sedang diproses. Silakan cek status secara berkala.')
           },
           onError: (result) => {
-            console.error('Payment error:', result);
-            setError('Pembayaran gagal: ' + (result.status_message || 'Silakan coba lagi'));
+            console.error('Payment error:', result)
+            setError('Pembayaran gagal: ' + (result.status_message || 'Silakan coba lagi'))
             
             supabase
               .from('orders')
@@ -282,23 +345,23 @@ const PaymentPage = () => {
                 payment_details: result,
                 updated_at: new Date().toISOString()
               })
-              .eq('id', order.id);
+              .eq('id', order.id)
           },
           onClose: () => {
-            setSnapToken(null);
-            console.log('Payment popup closed');
+            setSnapToken(null)
+            console.log('Payment popup closed')
           }
-        });
+        })
       } else {
-        setError('Gagal mendapatkan token pembayaran');
+        setError('Gagal mendapatkan token pembayaran')
       }
     } catch (error) {
-      console.error('Error processing payment:', error);
-      setError('Gagal memproses pembayaran: ' + error.message);
+      console.error('Error processing payment:', error)
+      setError('Gagal memproses pembayaran: ' + error.message)
     } finally {
-      setProcessingPayment(false);
+      setProcessingPayment(false)
     }
-  };
+  }
 
   const handlePaymentSuccess = async (result) => {
     try {
