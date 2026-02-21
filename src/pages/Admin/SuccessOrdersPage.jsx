@@ -12,16 +12,19 @@ import {
   BiPrinter,
   BiCode,
   BiDuplicate,
-  BiSave
+  BiSave,
+  BiTicket
 } from 'react-icons/bi'
 
 const SuccessOrdersPage = () => {
   const [orders, setOrders] = useState([])
+  const [tickets, setTickets] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState(null)
+  const [selectedTicket, setSelectedTicket] = useState(null)
   const [editForm, setEditForm] = useState({
     name: '',
     nik: '',
@@ -31,6 +34,7 @@ const SuccessOrdersPage = () => {
 
   useEffect(() => {
     fetchSuccessOrders()
+    fetchAllTickets()
   }, [])
 
   const fetchSuccessOrders = async () => {
@@ -49,6 +53,17 @@ const SuccessOrdersPage = () => {
       setOrders(data)
     }
     setLoading(false)
+  }
+
+  const fetchAllTickets = async () => {
+    const { data, error } = await supabase
+      .from('tickets')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (!error && data) {
+      setTickets(data)
+    }
   }
 
   const handleDelete = async (id) => {
@@ -95,12 +110,16 @@ const SuccessOrdersPage = () => {
     setUpdating(false)
   }
 
-  const generateQRCode = (invoiceCode) => {
+  const getOrderTickets = (orderId) => {
+    return tickets.filter(ticket => ticket.order_id === orderId)
+  }
+
+  const generateQRCode = (text, size = 80) => {
     return (
-      <div className="relative">
+      <div className="relative inline-block">
         <QRCode
-          value={invoiceCode}
-          size={100}
+          value={text}
+          size={size}
           bgColor="#ffffff"
           fgColor="#000000"
           level="H"
@@ -142,8 +161,8 @@ const SuccessOrdersPage = () => {
     })
   }
 
-  const handleDownloadQR = (invoiceCode) => {
-    const svg = document.querySelector(`.qr-${invoiceCode.replace(/[^a-zA-Z0-9]/g, '')} svg`)
+  const handleDownloadQR = (ticketCode) => {
+    const svg = document.querySelector(`.qr-${ticketCode.replace(/[^a-zA-Z0-9]/g, '')} svg`)
     if (svg) {
       const canvas = document.createElement('canvas')
       const ctx = canvas.getContext('2d')
@@ -155,7 +174,7 @@ const SuccessOrdersPage = () => {
         ctx.drawImage(img, 0, 0)
         
         const link = document.createElement('a')
-        link.download = `QR-${invoiceCode}.png`
+        link.download = `ticket-${ticketCode}.png`
         link.href = canvas.toDataURL('image/png')
         link.click()
       }
@@ -201,7 +220,7 @@ const SuccessOrdersPage = () => {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Jml</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tanggal</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kode INV</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">QR Code</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tiket</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
                 </tr>
               </thead>
@@ -221,70 +240,68 @@ const SuccessOrdersPage = () => {
                     </td>
                   </tr>
                 ) : (
-                  filteredOrders.map((order, index) => (
-                    <tr key={order.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-4 text-sm text-gray-800">{index + 1}</td>
-                      <td className="px-4 py-4 text-sm text-gray-800">{order.customer_email}</td>
-                      <td className="px-4 py-4 text-sm text-gray-800">{order.customer_name}</td>
-                      <td className="px-4 py-4 text-sm text-gray-800">{order.customer_nik}</td>
-                      <td className="px-4 py-4 text-sm text-gray-800">{order.product_name}</td>
-                      <td className="px-4 py-4 text-sm text-gray-800">Rp {order.product_price.toLocaleString()}</td>
-                      <td className="px-4 py-4 text-sm text-gray-800">{order.quantity}</td>
-                      <td className="px-4 py-4 text-sm text-gray-800">
-                        {formatDate(order.created_at)}
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex items-center space-x-1">
-                          <span className="font-mono text-sm text-blue-600">{order.invoice_code}</span>
-                          <button
-                            onClick={() => copyToClipboard(order.invoice_code)}
-                            className="text-gray-400 hover:text-blue-500"
-                          >
-                            <BiDuplicate className="text-sm" />
-                          </button>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <button
-                          onClick={() => {
-                            setSelectedOrder(order)
-                            setShowDetailModal(true)
-                          }}
-                          className="text-blue-600 hover:text-blue-700"
-                        >
-                          <BiCode className="text-xl" />
-                        </button>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => handleEdit(order)}
-                            className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                            title="Edit"
-                          >
-                            <BiEdit className="text-lg" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              setSelectedOrder(order)
-                              setShowDetailModal(true)
-                            }}
-                            className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
-                            title="Detail"
-                          >
-                            <BiDetail className="text-lg" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(order.id)}
-                            className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-                            title="Hapus"
-                          >
-                            <BiTrash className="text-lg" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                  filteredOrders.map((order, index) => {
+                    const orderTickets = getOrderTickets(order.id)
+                    return (
+                      <tr key={order.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-4 text-sm text-gray-800">{index + 1}</td>
+                        <td className="px-4 py-4 text-sm text-gray-800">{order.customer_email}</td>
+                        <td className="px-4 py-4 text-sm text-gray-800">{order.customer_name}</td>
+                        <td className="px-4 py-4 text-sm text-gray-800">{order.customer_nik}</td>
+                        <td className="px-4 py-4 text-sm text-gray-800">{order.product_name}</td>
+                        <td className="px-4 py-4 text-sm text-gray-800">Rp {order.product_price.toLocaleString()}</td>
+                        <td className="px-4 py-4 text-sm text-gray-800">{order.quantity}</td>
+                        <td className="px-4 py-4 text-sm text-gray-800">
+                          {formatDate(order.created_at)}
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="flex items-center space-x-1">
+                            <span className="font-mono text-sm text-blue-600">{order.invoice_code}</span>
+                            <button
+                              onClick={() => copyToClipboard(order.invoice_code)}
+                              className="text-gray-400 hover:text-blue-500"
+                            >
+                              <BiDuplicate className="text-sm" />
+                            </button>
+                          </div>
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="flex items-center space-x-1">
+                            <BiTicket className="text-blue-500" />
+                            <span className="text-sm">{orderTickets.length}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => {
+                                setSelectedOrder(order)
+                                setShowDetailModal(true)
+                              }}
+                              className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                              title="Detail Tiket"
+                            >
+                              <BiCode className="text-lg" />
+                            </button>
+                            <button
+                              onClick={() => handleEdit(order)}
+                              className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
+                              title="Edit"
+                            >
+                              <BiEdit className="text-lg" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(order.id)}
+                              className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                              title="Hapus"
+                            >
+                              <BiTrash className="text-lg" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })
                 )}
               </tbody>
             </table>
@@ -292,13 +309,15 @@ const SuccessOrdersPage = () => {
         </div>
       </div>
 
-      {/* Detail Modal with QR Code */}
+      {/* Detail Modal with Multiple QR Codes */}
       {showDetailModal && selectedOrder && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold text-gray-800">Detail QR Code</h2>
+                <h2 className="text-2xl font-bold text-gray-800">
+                  Detail Tiket - {selectedOrder.order_number}
+                </h2>
                 <button
                   onClick={() => setShowDetailModal(false)}
                   className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
@@ -307,51 +326,40 @@ const SuccessOrdersPage = () => {
                 </button>
               </div>
 
-              <div className="flex flex-col items-center">
-                {/* QR Code */}
-                <div className={`qr-${selectedOrder.invoice_code?.replace(/[^a-zA-Z0-9]/g, '')} mb-4 p-4 bg-white rounded-xl shadow-inner`}>
-                  <QRCode
-                    value={selectedOrder.invoice_code || selectedOrder.order_number}
-                    size={150}
-                    bgColor="#ffffff"
-                    fgColor="#000000"
-                    level="H"
-                  />
-                </div>
-
-                {/* Info */}
-                <div className="w-full space-y-2 text-center">
-                  <p className="text-sm text-gray-500">Kode Invoice</p>
-                  <p className="font-mono text-lg font-bold text-blue-600">{selectedOrder.invoice_code}</p>
-                  
-                  <div className="border-t border-gray-200 pt-4 mt-4">
-                    <p className="font-medium text-gray-800">{selectedOrder.product_name}</p>
-                    <p className="text-sm text-gray-600">
-                      {selectedOrder.quantity} tiket x Rp {selectedOrder.product_price.toLocaleString()}
-                    </p>
-                    <p className="text-lg font-bold text-blue-600 mt-2">
-                      Rp {selectedOrder.total_amount.toLocaleString()}
-                    </p>
+              <div className="space-y-4">
+                {getOrderTickets(selectedOrder.id).map((ticket, idx) => (
+                  <div key={ticket.id} className={`qr-${ticket.ticket_code.replace(/[^a-zA-Z0-9]/g, '')} border border-gray-200 rounded-xl p-4`}>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-sm text-gray-500">Tiket #{idx + 1}</p>
+                        <p className="font-mono font-bold text-blue-600">{ticket.ticket_code}</p>
+                        <p className="text-sm text-gray-600 mt-1">
+                          Pemilik: {idx === 0 ? selectedOrder.customer_name : selectedOrder.additional_buyers?.[idx-1]?.name}
+                        </p>
+                        <p className="text-sm text-gray-600">Tipe: {ticket.ticket_type || 'Reguler'}</p>
+                      </div>
+                      <div className="flex flex-col items-center">
+                        {generateQRCode(ticket.ticket_code, 100)}
+                        <button
+                          onClick={() => handleDownloadQR(ticket.ticket_code)}
+                          className="mt-2 text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                        >
+                          <BiDownload />
+                          Download
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ))}
+              </div>
 
-                {/* Action Buttons */}
-                <div className="flex space-x-3 mt-6 w-full">
-                  <button
-                    onClick={() => handleDownloadQR(selectedOrder.invoice_code)}
-                    className="flex-1 py-2 border border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors flex items-center justify-center space-x-2"
-                  >
-                    <BiDownload />
-                    <span>Download</span>
-                  </button>
-                  <button
-                    onClick={() => window.print()}
-                    className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2"
-                  >
-                    <BiPrinter />
-                    <span>Print</span>
-                  </button>
-                </div>
+              <div className="flex justify-end mt-6">
+                <button
+                  onClick={() => setShowDetailModal(false)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Tutup
+                </button>
               </div>
             </div>
           </div>
@@ -429,7 +437,7 @@ const SuccessOrdersPage = () => {
                   >
                     {updating ? (
                       <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
                         <span>Menyimpan...</span>
                       </>
                     ) : (
