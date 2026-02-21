@@ -31,7 +31,7 @@ import UserTripDashboard from "./triplist/UserTripDashboard";
 // Import komponen untuk penjualan tiket konser
 import ConcertPage from "./pages/User/ConcertPage";
 import PaymentPage from "./pages/User/PaymentPage";
-import PaymentSuccessPage from "./pages/User/PaymentSuccesPage";
+import PaymentSuccessPage from "./pages/User/PaymentSuccessPage";
 import MyOrdersPage from "./pages/User/MyOrdersPage";
 import OrderDetailPage from "./pages/User/OrderDetailPage";
 
