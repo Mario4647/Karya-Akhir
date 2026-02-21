@@ -172,19 +172,22 @@ const ProductsPage = () => {
       // Harga default dari tipe pertama
       const defaultPrice = ticketTypes.length > 0 ? parseFloat(ticketTypes[0].price || 0) : 0
 
-      const productData = {
-        name: formData.name,
-        price: defaultPrice,
-        stock: totalStock,
-        event_date: formData.event_date,
-        event_location: formData.event_location,
-        location_description: formData.location_description || null,
-        maps_link: formData.maps_link || null,
-        description: formData.description || null,
-        ticket_types: JSON.stringify(ticketTypes), // Simpan sebagai JSON string
-        image_data: imageData || null,
-        updated_at: new Date().toISOString()
-      }
+      // Di bagian handleSubmit, ubah productData menjadi:
+const productData = {
+  name: formData.name,
+  price: defaultPrice,
+  stock: totalStock,
+  event_date: formData.event_date,
+  event_location: formData.event_location,
+  location_description: formData.location_description || null,
+  maps_link: formData.maps_link || null,
+  description: formData.description || null,
+  ticket_types: JSON.stringify(ticketTypes),
+  image_data: imageData || null,
+  poster_url: imageData || null, // Set poster_url sama dengan image_data
+  is_active: true,
+  updated_at: new Date().toISOString()
+}
 
       console.log('Saving product data:', productData)
 
