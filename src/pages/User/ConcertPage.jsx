@@ -17,17 +17,21 @@ import {
   BiHome,
   BiCreditCard,
   BiArrowBack,
-  BiDuplicate, // Ganti BiCopy
+  BiDuplicate,
   BiCheckCircle,
   BiError,
   BiRefresh,
   BiSend,
-  BiPurchaseTag // Ganti BiTicket
+  BiPurchaseTag,
+  BiMovie,
+  BiMoney,
+  BiPackage
 } from 'react-icons/bi'
 
 const ConcertPage = () => {
   const [products, setProducts] = useState([])
   const [selectedProduct, setSelectedProduct] = useState(null)
+  const [selectedTicketType, setSelectedTicketType] = useState(null)
   const [quantity, setQuantity] = useState(1)
   const [showPromoInput, setShowPromoInput] = useState(false)
   const [promoCode, setPromoCode] = useState('')
@@ -40,6 +44,7 @@ const ConcertPage = () => {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [error, setError] = useState('')
+  const [selectedProductId, setSelectedProductId] = useState(null)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -77,13 +82,31 @@ const ConcertPage = () => {
       setProducts(data)
       if (data.length > 0) {
         setSelectedProduct(data[0])
+        if (data[0].ticket_types && data[0].ticket_types.length > 0) {
+          setSelectedTicketType(data[0].ticket_types[0])
+        }
       }
     }
   }
 
+  const handleProductChange = (product) => {
+    setSelectedProduct(product)
+    if (product.ticket_types && product.ticket_types.length > 0) {
+      setSelectedTicketType(product.ticket_types[0])
+    }
+    setQuantity(1)
+    setPromoApplied(null)
+    setPromoCode('')
+  }
+
+  const handleTicketTypeChange = (type) => {
+    setSelectedTicketType(type)
+    setQuantity(1)
+  }
+
   const handleQuantityChange = (type) => {
     if (type === 'add') {
-      if (quantity < (selectedProduct?.stock || 0)) {
+      if (quantity < (selectedTicketType?.stock || 0)) {
         setQuantity(prev => prev + 1)
       }
     } else {
@@ -138,7 +161,7 @@ const ConcertPage = () => {
     }
   }
 
-  const subtotal = selectedProduct ? selectedProduct.price * quantity : 0
+  const subtotal = selectedTicketType ? selectedTicketType.price * quantity : 0
   const discount = calculateDiscount(subtotal)
   const total = subtotal - discount
 
@@ -147,7 +170,7 @@ const ConcertPage = () => {
       navigate('/auth')
       return
     }
-    if (quantity === 0) return
+    if (quantity === 0 || !selectedTicketType) return
     setShowBuyerForm(true)
   }
 
@@ -205,8 +228,9 @@ const ConcertPage = () => {
         order_number: orderNumber,
         user_id: user.id,
         product_id: selectedProduct.id,
-        product_name: selectedProduct.name,
-        product_price: selectedProduct.price,
+        product_name: `${selectedProduct.name} - ${selectedTicketType.name}`,
+        product_price: selectedTicketType.price,
+        ticket_type: selectedTicketType.name,
         quantity: quantity,
         subtotal: subtotal,
         promo_code_id: promoApplied?.id || null,
@@ -233,22 +257,52 @@ const ConcertPage = () => {
 
       if (orderError) throw orderError
 
-      // Insert additional buyers if any
-      if (buyers.length > 1) {
-        const buyersData = buyers.slice(1).map((buyer, index) => ({
+      // Create tickets for each buyer
+      const tickets = []
+      
+      // Ticket for main buyer
+      tickets.push({
+        product_id: selectedProduct.id,
+        order_id: order.id,
+        buyer_index: 0,
+        ticket_type: selectedTicketType.name,
+        price: selectedTicketType.price,
+        is_available: true
+      })
+
+      // Tickets for additional buyers
+      buyers.slice(1).forEach((buyer, index) => {
+        tickets.push({
+          product_id: selectedProduct.id,
           order_id: order.id,
           buyer_index: index + 1,
-          name: buyer.name,
-          nik: buyer.nik,
-          address: buyer.address
-        }))
+          ticket_type: selectedTicketType.name,
+          price: selectedTicketType.price,
+          is_available: true
+        })
+      })
 
-        const { error: buyersError } = await supabase
-          .from('order_buyers')
-          .insert(buyersData)
+      const { error: ticketsError } = await supabase
+        .from('tickets')
+        .insert(tickets)
 
-        if (buyersError) throw buyersError
-      }
+      if (ticketsError) throw ticketsError
+
+      // Update stock
+      const updatedTicketTypes = selectedProduct.ticket_types.map(type => {
+        if (type.name === selectedTicketType.name) {
+          return { ...type, stock: type.stock - quantity }
+        }
+        return type
+      })
+
+      await supabase
+        .from('products')
+        .update({ 
+          ticket_types: updatedTicketTypes,
+          stock: selectedProduct.stock - quantity
+        })
+        .eq('id', selectedProduct.id)
 
       navigate(`/payment/${order.id}`)
     } catch (error) {
@@ -257,6 +311,13 @@ const ConcertPage = () => {
     } finally {
       setLoading(false)
     }
+  }
+
+  const totalStock = (product) => {
+    if (product.ticket_types) {
+      return product.ticket_types.reduce((sum, type) => sum + (type.stock || 0), 0)
+    }
+    return product.stock || 0
   }
 
   if (!selectedProduct) {
@@ -279,14 +340,36 @@ const ConcertPage = () => {
       <NavbarEvent />
 
       <div className="max-w-7xl mx-auto px-4 py-8">
+        {/* Product Selector */}
+        <div className="mb-6 overflow-x-auto">
+          <div className="flex space-x-4 pb-2">
+            {products.map((product) => (
+              <button
+                key={product.id}
+                onClick={() => handleProductChange(product)}
+                className={`flex-shrink-0 px-4 py-2 rounded-lg transition-all ${
+                  selectedProduct.id === product.id
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <div className="font-medium">{product.name}</div>
+                <div className="text-xs opacity-75">
+                  {new Date(product.event_date).toLocaleDateString('id-ID')}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column - Event Details */}
           <div className="lg:col-span-2 space-y-6">
             {/* Poster */}
             <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-              {selectedProduct.poster_url ? (
+              {selectedProduct.image_url ? (
                 <img 
-                  src={selectedProduct.poster_url} 
+                  src={selectedProduct.image_url} 
                   alt={selectedProduct.name}
                   className="w-full h-96 object-cover"
                 />
@@ -363,45 +446,82 @@ const ConcertPage = () => {
             <div className="bg-white rounded-2xl shadow-xl p-6 sticky top-24">
               <h2 className="text-xl font-bold text-gray-800 mb-4">Beli Tiket</h2>
 
-              {/* Product Info */}
-              <div className="mb-6">
-                <p className="text-sm text-gray-500">Produk</p>
-                <p className="font-semibold text-gray-800">{selectedProduct.name}</p>
-                <div className="flex justify-between items-center mt-2">
-                  <span className="text-sm text-gray-500">Harga</span>
-                  <span className="text-lg font-bold text-blue-600">
-                    Rp {selectedProduct.price.toLocaleString()}
-                  </span>
+              {/* Ticket Type Selection */}
+              {selectedProduct.ticket_types && selectedProduct.ticket_types.length > 0 && (
+                <div className="mb-6">
+                  <p className="text-sm text-gray-500 mb-2">Pilih Tipe Tiket</p>
+                  <div className="space-y-2">
+                    {selectedProduct.ticket_types.map((type, index) => {
+                      const isSelected = selectedTicketType?.name === type.name
+                      const isOutOfStock = type.stock === 0
+                      return (
+                        <button
+                          key={index}
+                          onClick={() => !isOutOfStock && handleTicketTypeChange(type)}
+                          disabled={isOutOfStock}
+                          className={`w-full p-3 border-2 rounded-lg text-left transition-all ${
+                            isSelected
+                              ? 'border-blue-500 bg-blue-50'
+                              : isOutOfStock
+                              ? 'border-gray-200 bg-gray-100 opacity-50 cursor-not-allowed'
+                              : 'border-gray-200 hover:border-blue-300'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <div>
+                              <p className="font-medium text-gray-800">{type.name}</p>
+                              {type.description && (
+                                <p className="text-xs text-gray-500">{type.description}</p>
+                              )}
+                            </div>
+                            <div className="text-right">
+                              <p className="font-bold text-blue-600">
+                                Rp {type.price.toLocaleString()}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                Stok: {type.stock}
+                              </p>
+                            </div>
+                          </div>
+                          {isOutOfStock && (
+                            <p className="text-xs text-red-500 mt-1">Tiket telah habis</p>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Quantity Selector */}
-              <div className="mb-6">
-                <p className="text-sm text-gray-500 mb-2">Jumlah Tiket</p>
-                <div className="flex items-center space-x-3">
-                  <button
-                    onClick={() => handleQuantityChange('minus')}
-                    disabled={quantity === 1}
-                    className="w-10 h-10 rounded-lg border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <BiMinus />
-                  </button>
-                  <span className="w-12 text-center font-semibold text-lg">{quantity}</span>
-                  <button
-                    onClick={() => handleQuantityChange('add')}
-                    disabled={quantity >= selectedProduct.stock}
-                    className="w-10 h-10 rounded-lg border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <BiPlus />
-                  </button>
-                  <span className="text-sm text-gray-500 ml-2">
-                    Stok: {selectedProduct.stock}
-                  </span>
+              {selectedTicketType && (
+                <div className="mb-6">
+                  <p className="text-sm text-gray-500 mb-2">Jumlah Tiket</p>
+                  <div className="flex items-center space-x-3">
+                    <button
+                      onClick={() => handleQuantityChange('minus')}
+                      disabled={quantity === 1}
+                      className="w-10 h-10 rounded-lg border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <BiMinus />
+                    </button>
+                    <span className="w-12 text-center font-semibold text-lg">{quantity}</span>
+                    <button
+                      onClick={() => handleQuantityChange('add')}
+                      disabled={quantity >= selectedTicketType.stock}
+                      className="w-10 h-10 rounded-lg border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <BiPlus />
+                    </button>
+                    <span className="text-sm text-gray-500 ml-2">
+                      Stok: {selectedTicketType.stock}
+                    </span>
+                  </div>
+                  {selectedTicketType.stock === 0 && (
+                    <p className="text-red-500 text-sm mt-2">Tiket telah habis</p>
+                  )}
                 </div>
-                {selectedProduct.stock === 0 && (
-                  <p className="text-red-500 text-sm mt-2">Stock telah habis</p>
-                )}
-              </div>
+              )}
 
               {/* Promo Code */}
               <div className="mb-6">
@@ -478,10 +598,12 @@ const ConcertPage = () => {
               {/* Buy Button */}
               <button
                 onClick={handleBuyNow}
-                disabled={quantity === 0 || selectedProduct.stock === 0 || !user}
+                disabled={quantity === 0 || !selectedTicketType || selectedTicketType.stock === 0 || !user}
                 className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {!user ? 'Login untuk Membeli' : 'Beli Tiket'}
+                {!user ? 'Login untuk Membeli' : 
+                 !selectedTicketType ? 'Pilih Tipe Tiket' :
+                 selectedTicketType.stock === 0 ? 'Tiket Habis' : 'Beli Tiket'}
               </button>
             </div>
           </div>
@@ -501,6 +623,12 @@ const ConcertPage = () => {
                 >
                   <BiX className="text-xl" />
                 </button>
+              </div>
+
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-700">
+                  <span className="font-medium">Info:</span> Setiap pembeli akan mendapatkan QR code unik untuk tiketnya.
+                </p>
               </div>
 
               {buyers.map((buyer, index) => (
