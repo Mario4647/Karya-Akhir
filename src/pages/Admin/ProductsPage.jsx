@@ -33,8 +33,6 @@ const ProductsPage = () => {
   
   const [formData, setFormData] = useState({
     name: '',
-    price: '',
-    stock: '',
     event_date: '',
     event_location: '',
     location_description: '',
@@ -55,20 +53,38 @@ const ProductsPage = () => {
 
   const fetchProducts = async () => {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('products')
-      .select('*')
-      .order('created_at', { ascending: false })
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .order('created_at', { ascending: false })
 
-    if (!error && data) {
-      setProducts(data)
+      if (error) throw error
+      
+      // Parse ticket_types jika berupa string JSON
+      const processedData = data.map(product => ({
+        ...product,
+        ticket_types: typeof product.ticket_types === 'string' 
+          ? JSON.parse(product.ticket_types) 
+          : product.ticket_types || []
+      }))
+      
+      setProducts(processedData || [])
+    } catch (error) {
+      console.error('Error fetching products:', error)
+      alert('Gagal memuat data produk: ' + error.message)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   const handleImageChange = (e) => {
     const file = e.target.files[0]
     if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        alert('Ukuran gambar maksimal 2MB')
+        return
+      }
       setSelectedImage(file)
       const reader = new FileReader()
       reader.onloadend = () => {
@@ -125,8 +141,12 @@ const ProductsPage = () => {
     // Validate ticket types
     ticketTypes.forEach((type, index) => {
       if (!type.name) newErrors[`ticket_name_${index}`] = `Nama tiket ${index + 1} harus diisi`
-      if (!type.price) newErrors[`ticket_price_${index}`] = `Harga tiket ${index + 1} harus diisi`
-      if (!type.stock) newErrors[`ticket_stock_${index}`] = `Stok tiket ${index + 1} harus diisi`
+      if (!type.price || parseFloat(type.price) <= 0) {
+        newErrors[`ticket_price_${index}`] = `Harga tiket ${index + 1} harus diisi dan lebih dari 0`
+      }
+      if (!type.stock || parseInt(type.stock) <= 0) {
+        newErrors[`ticket_stock_${index}`] = `Stok tiket ${index + 1} harus diisi dan lebih dari 0`
+      }
     })
 
     setErrors(newErrors)
@@ -141,59 +161,88 @@ const ProductsPage = () => {
 
     try {
       // Upload image jika ada
-      let imageUrl = editingProduct?.image_url || ''
+      let imageData = editingProduct?.image_data || ''
       if (selectedImage) {
-        imageUrl = await uploadImage()
+        imageData = await uploadImage()
       }
 
+      // Hitung total stok dari semua tipe tiket
+      const totalStock = ticketTypes.reduce((sum, type) => sum + parseInt(type.stock || 0), 0)
+      
+      // Harga default dari tipe pertama
+      const defaultPrice = ticketTypes.length > 0 ? parseFloat(ticketTypes[0].price || 0) : 0
+
       const productData = {
-        ...formData,
-        price: parseFloat(ticketTypes[0].price), // harga default dari tipe pertama
-        stock: ticketTypes.reduce((sum, type) => sum + parseInt(type.stock), 0),
-        ticket_types: ticketTypes,
-        image_url: imageUrl,
+        name: formData.name,
+        price: defaultPrice,
+        stock: totalStock,
+        event_date: formData.event_date,
+        event_location: formData.event_location,
+        location_description: formData.location_description || null,
+        maps_link: formData.maps_link || null,
+        description: formData.description || null,
+        ticket_types: JSON.stringify(ticketTypes), // Simpan sebagai JSON string
+        image_data: imageData || null,
         updated_at: new Date().toISOString()
       }
 
+      console.log('Saving product data:', productData)
+
+      let result
       if (editingProduct) {
-        const { error } = await supabase
+        result = await supabase
           .from('products')
           .update(productData)
           .eq('id', editingProduct.id)
-
-        if (error) throw error
       } else {
-        const { error } = await supabase
+        result = await supabase
           .from('products')
           .insert([{ ...productData, created_at: new Date().toISOString() }])
-
-        if (error) throw error
       }
 
-      fetchProducts()
+      if (result.error) throw result.error
+
+      await fetchProducts()
       closeModal()
+      alert(editingProduct ? 'Produk berhasil diperbarui!' : 'Produk berhasil ditambahkan!')
     } catch (error) {
       console.error('Error saving product:', error)
-      alert('Gagal menyimpan produk: ' + error.message)
+      alert('Gagal menyimpan produk: ' + (error.message || 'Unknown error'))
     } finally {
       setUploading(false)
     }
   }
 
   const handleDelete = async (id) => {
-    if (window.confirm('Yakin ingin menghapus produk ini? Semua tiket terkait juga akan dihapus.')) {
-      try {
-        const { error } = await supabase
-          .from('products')
-          .delete()
-          .eq('id', id)
+    if (!window.confirm('Yakin ingin menghapus produk ini? Semua tiket terkait juga akan dihapus.')) return
 
-        if (error) throw error
-        fetchProducts()
-      } catch (error) {
-        console.error('Error deleting product:', error)
-        alert('Gagal menghapus produk: ' + error.message)
+    try {
+      // Cek apakah produk memiliki pesanan
+      const { data: orders, error: checkError } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('product_id', id)
+        .limit(1)
+
+      if (checkError) throw checkError
+
+      if (orders && orders.length > 0) {
+        alert('Produk tidak dapat dihapus karena sudah memiliki pesanan. Anda dapat menonaktifkannya saja.')
+        return
       }
+
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+      
+      await fetchProducts()
+      alert('Produk berhasil dihapus!')
+    } catch (error) {
+      console.error('Error deleting product:', error)
+      alert('Gagal menghapus produk: ' + error.message)
     }
   }
 
@@ -202,29 +251,39 @@ const ProductsPage = () => {
       setEditingProduct(product)
       setFormData({
         name: product.name || '',
-        price: product.price || '',
-        stock: product.stock || '',
         event_date: product.event_date ? product.event_date.slice(0, 16) : '',
         event_location: product.event_location || '',
         location_description: product.location_description || '',
         maps_link: product.maps_link || '',
-        description: product.description || '',
-        ticket_types: product.ticket_types || [{ name: 'Reguler', price: product.price, stock: product.stock, description: '' }]
+        description: product.description || ''
       })
-      setTicketTypes(product.ticket_types || [{ name: 'Reguler', price: product.price, stock: product.stock, description: '' }])
-      setImagePreview(product.image_url || '')
+      
+      // Parse ticket_types
+      let types = product.ticket_types || []
+      if (typeof types === 'string') {
+        try {
+          types = JSON.parse(types)
+        } catch {
+          types = []
+        }
+      }
+      
+      if (types.length > 0) {
+        setTicketTypes(types)
+      } else {
+        setTicketTypes([{ name: 'Reguler', price: product.price || '', stock: product.stock || '', description: '' }])
+      }
+      
+      setImagePreview(product.image_data || '')
     } else {
       setEditingProduct(null)
       setFormData({
         name: '',
-        price: '',
-        stock: '',
         event_date: '',
         event_location: '',
         location_description: '',
         maps_link: '',
-        description: '',
-        ticket_types: []
+        description: ''
       })
       setTicketTypes([{ name: 'Reguler', price: '', stock: '', description: '' }])
       setImagePreview('')
@@ -239,14 +298,11 @@ const ProductsPage = () => {
     setEditingProduct(null)
     setFormData({
       name: '',
-      price: '',
-      stock: '',
       event_date: '',
       event_location: '',
       location_description: '',
       maps_link: '',
-      description: '',
-      ticket_types: []
+      description: ''
     })
     setTicketTypes([{ name: 'Reguler', price: '', stock: '', description: '' }])
     setImagePreview('')
@@ -255,15 +311,23 @@ const ProductsPage = () => {
   }
 
   const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.event_location.toLowerCase().includes(searchTerm.toLowerCase())
+    product.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    product.event_location?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   const totalStock = (product) => {
-    if (product.ticket_types) {
-      return product.ticket_types.reduce((sum, type) => sum + (type.stock || 0), 0)
+    if (product.ticket_types && product.ticket_types.length > 0) {
+      return product.ticket_types.reduce((sum, type) => sum + (parseInt(type.stock) || 0), 0)
     }
     return product.stock || 0
+  }
+
+  const getLowestPrice = (product) => {
+    if (product.ticket_types && product.ticket_types.length > 0) {
+      const prices = product.ticket_types.map(t => parseFloat(t.price) || 0).filter(p => p > 0)
+      return prices.length > 0 ? Math.min(...prices) : product.price || 0
+    }
+    return product.price || 0
   }
 
   return (
@@ -305,7 +369,7 @@ const ProductsPage = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Gambar</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Produk</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipe Tiket</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Harga</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Harga Mulai</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Stok</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tanggal Event</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lokasi</th>
@@ -331,8 +395,8 @@ const ProductsPage = () => {
                   filteredProducts.map((product) => (
                     <tr key={product.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4">
-                        {product.image_url ? (
-                          <img src={product.image_url} alt={product.name} className="w-16 h-16 object-cover rounded-lg" />
+                        {product.image_data ? (
+                          <img src={product.image_data} alt={product.name} className="w-16 h-16 object-cover rounded-lg" />
                         ) : (
                           <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center">
                             <BiImage className="text-2xl text-gray-400" />
@@ -343,11 +407,11 @@ const ProductsPage = () => {
                         <div className="font-medium text-gray-800">{product.name}</div>
                       </td>
                       <td className="px-6 py-4">
-                        {product.ticket_types ? (
+                        {product.ticket_types && product.ticket_types.length > 0 ? (
                           <div className="space-y-1">
                             {product.ticket_types.map((type, idx) => (
                               <div key={idx} className="text-xs">
-                                <span className="font-medium">{type.name}:</span> Rp {type.price?.toLocaleString()} ({type.stock} tiket)
+                                <span className="font-medium">{type.name}:</span> Rp {parseInt(type.price).toLocaleString()} ({type.stock} tiket)
                               </div>
                             ))}
                           </div>
@@ -356,13 +420,7 @@ const ProductsPage = () => {
                         )}
                       </td>
                       <td className="px-6 py-4 text-gray-800">
-                        {product.ticket_types ? (
-                          <div className="text-sm">
-                            Mulai Rp {Math.min(...product.ticket_types.map(t => t.price)).toLocaleString()}
-                          </div>
-                        ) : (
-                          `Rp ${product.price?.toLocaleString()}`
-                        )}
+                        Rp {getLowestPrice(product).toLocaleString()}
                       </td>
                       <td className="px-6 py-4">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${
@@ -374,9 +432,9 @@ const ProductsPage = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-gray-800">
-                        {new Date(product.event_date).toLocaleDateString('id-ID')}
+                        {product.event_date ? new Date(product.event_date).toLocaleDateString('id-ID') : '-'}
                       </td>
-                      <td className="px-6 py-4 text-gray-800">{product.event_location}</td>
+                      <td className="px-6 py-4 text-gray-800">{product.event_location || '-'}</td>
                       <td className="px-6 py-4">
                         <div className="flex space-x-2">
                           <button
@@ -529,6 +587,7 @@ const ProductsPage = () => {
                               type="number"
                               value={type.price}
                               onChange={(e) => handleTicketTypeChange(index, 'price', e.target.value)}
+                              min="1"
                               className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                                 errors[`ticket_price_${index}`] ? 'border-red-500' : 'border-gray-300'
                               }`}
@@ -548,6 +607,7 @@ const ProductsPage = () => {
                               type="number"
                               value={type.stock}
                               onChange={(e) => handleTicketTypeChange(index, 'stock', e.target.value)}
+                              min="1"
                               className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                                 errors[`ticket_stock_${index}`] ? 'border-red-500' : 'border-gray-300'
                               }`}
