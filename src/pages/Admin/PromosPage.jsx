@@ -12,14 +12,18 @@ import {
   BiMoney,
   BiPackage,
   BiCheck,
-  BiError
+  BiError,
+  BiInfoCircle
 } from 'react-icons/bi'
 
 const PromosPage = () => {
   const [promos, setPromos] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [editingPromo, setEditingPromo] = useState(null)
+  const [deletingPromo, setDeletingPromo] = useState(null)
+  const [deleteCheckResult, setDeleteCheckResult] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [formData, setFormData] = useState({
     code: '',
@@ -72,14 +76,12 @@ const PromosPage = () => {
     if (!formData.valid_from) newErrors.valid_from = 'Tanggal mulai harus diisi'
     if (!formData.valid_until) newErrors.valid_until = 'Tanggal berakhir harus diisi'
     
-    // Validasi tanggal
     if (formData.valid_from && formData.valid_until) {
       if (new Date(formData.valid_from) >= new Date(formData.valid_until)) {
         newErrors.valid_until = 'Tanggal berakhir harus setelah tanggal mulai'
       }
     }
 
-    // Validasi diskon berdasarkan tipe
     if (formData.discount_type === 'percentage') {
       if (parseFloat(formData.discount_value) > 100) {
         newErrors.discount_value = 'Diskon persentase maksimal 100%'
@@ -105,6 +107,7 @@ const PromosPage = () => {
         used_count: editingPromo ? editingPromo.used_count : 0,
         valid_from: formData.valid_from,
         valid_until: formData.valid_until,
+        is_active: true,
         updated_at: new Date().toISOString()
       }
 
@@ -132,20 +135,105 @@ const PromosPage = () => {
     }
   }
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Yakin ingin menghapus kode promo ini?')) {
-      try {
-        const { error } = await supabase
-          .from('promo_codes')
-          .delete()
-          .eq('id', id)
+  const checkPromoUsage = async (promoId) => {
+    try {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id, order_number, customer_name, total_amount, created_at', { count: 'exact' })
+        .eq('promo_code_id', promoId)
+        .limit(5)
 
-        if (error) throw error
-        await fetchPromos()
-      } catch (error) {
-        console.error('Error deleting promo:', error)
+      if (error) throw error
+
+      return {
+        used: data.length > 0,
+        count: data.length,
+        orders: data
+      }
+    } catch (error) {
+      console.error('Error checking promo usage:', error)
+      return { used: false, count: 0, orders: [], error: error.message }
+    }
+  }
+
+  const handleDeleteClick = async (promo) => {
+    setDeletingPromo(promo)
+    setSubmitting(true)
+    
+    try {
+      const usage = await checkPromoUsage(promo.id)
+      setDeleteCheckResult(usage)
+      setShowDeleteModal(true)
+    } catch (error) {
+      alert('Gagal memeriksa penggunaan promo: ' + error.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!deletingPromo) return
+
+    setSubmitting(true)
+    try {
+      // Jika promo sudah digunakan, kita tidak bisa menghapus
+      if (deleteCheckResult?.used) {
+        alert(`Promo tidak dapat dihapus karena sudah digunakan di ${deleteCheckResult.count} pesanan. Anda dapat menonaktifkannya secara manual.`)
+        setShowDeleteModal(false)
+        setDeletingPromo(null)
+        setDeleteCheckResult(null)
+        return
+      }
+
+      // Hapus promo
+      const { error } = await supabase
+        .from('promo_codes')
+        .delete()
+        .eq('id', deletingPromo.id)
+
+      if (error) throw error
+
+      await fetchPromos()
+      setShowDeleteModal(false)
+      setDeletingPromo(null)
+      setDeleteCheckResult(null)
+      alert('Kode promo berhasil dihapus!')
+    } catch (error) {
+      console.error('Error deleting promo:', error)
+      
+      // Jika error karena foreign key, beri informasi lebih jelas
+      if (error.message.includes('foreign key constraint')) {
+        alert('Promo tidak dapat dihapus karena sudah digunakan di beberapa pesanan. Silakan nonaktifkan promo ini sebagai gantinya.')
+      } else {
         alert('Gagal menghapus kode promo: ' + error.message)
       }
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleDeactivatePromo = async (promo) => {
+    if (!window.confirm(`Yakin ingin menonaktifkan promo ${promo.code}?`)) return
+
+    setSubmitting(true)
+    try {
+      const { error } = await supabase
+        .from('promo_codes')
+        .update({ 
+          is_active: false,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', promo.id)
+
+      if (error) throw error
+
+      await fetchPromos()
+      alert('Promo berhasil dinonaktifkan!')
+    } catch (error) {
+      console.error('Error deactivating promo:', error)
+      alert('Gagal menonaktifkan promo: ' + error.message)
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -198,6 +286,7 @@ const PromosPage = () => {
     const validFrom = new Date(promo.valid_from)
     const validUntil = new Date(promo.valid_until)
 
+    if (promo.is_active === false) return 'inactive'
     if (now < validFrom) return 'upcoming'
     if (now > validUntil) return 'expired'
     if (promo.used_count >= promo.stock) return 'out-of-stock'
@@ -208,6 +297,8 @@ const PromosPage = () => {
     switch(status) {
       case 'active':
         return <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">Aktif</span>
+      case 'inactive':
+        return <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">Nonaktif</span>
       case 'upcoming':
         return <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-medium">Akan Datang</span>
       case 'expired':
@@ -233,6 +324,15 @@ const PromosPage = () => {
             <BiPlus className="text-xl" />
             <span>Tambah Kode Promo</span>
           </button>
+        </div>
+
+        {/* Info Alert */}
+        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-3">
+          <BiInfoCircle className="text-blue-500 text-xl flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-blue-700">
+            <p className="font-medium mb-1">Informasi:</p>
+            <p>Kode promo yang sudah digunakan di pesanan tidak dapat dihapus, tetapi dapat dinonaktifkan.</p>
+          </div>
         </div>
 
         {/* Search Bar */}
@@ -318,10 +418,22 @@ const PromosPage = () => {
                             >
                               <BiEdit className="text-lg" />
                             </button>
+                            
+                            {status === 'active' && (
+                              <button
+                                onClick={() => handleDeactivatePromo(promo)}
+                                className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                                title="Nonaktifkan"
+                              >
+                                <BiX className="text-lg" />
+                              </button>
+                            )}
+                            
                             <button
-                              onClick={() => handleDelete(promo.id)}
+                              onClick={() => handleDeleteClick(promo)}
                               className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                               title="Hapus"
+                              disabled={status === 'active' && promo.used_count > 0}
                             >
                               <BiTrash className="text-lg" />
                             </button>
@@ -337,7 +449,116 @@ const PromosPage = () => {
         </div>
       </div>
 
-      {/* Modal Form */}
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && deletingPromo && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold text-gray-800">Konfirmasi Hapus</h2>
+                <button
+                  onClick={() => {
+                    setShowDeleteModal(false)
+                    setDeletingPromo(null)
+                    setDeleteCheckResult(null)
+                  }}
+                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+                >
+                  <BiX className="text-xl" />
+                </button>
+              </div>
+
+              {deleteCheckResult?.used ? (
+                <div className="space-y-4">
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <BiError className="text-yellow-500 text-xl flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-medium text-yellow-800">Promo sudah digunakan!</p>
+                        <p className="text-sm text-yellow-700 mt-1">
+                          Kode promo <span className="font-bold">{deletingPromo.code}</span> telah digunakan di {deleteCheckResult.count} pesanan.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {deleteCheckResult.orders.length > 0 && (
+                    <div>
+                      <p className="text-sm font-medium text-gray-700 mb-2">Contoh pesanan yang menggunakan promo ini:</p>
+                      <div className="space-y-2 max-h-40 overflow-y-auto">
+                        {deleteCheckResult.orders.map((order, idx) => (
+                          <div key={idx} className="text-xs bg-gray-50 p-2 rounded">
+                            <span className="font-mono">{order.order_number}</span> - {order.customer_name}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="text-sm text-gray-600">
+                    Promo yang sudah digunakan tidak dapat dihapus. Anda dapat menonaktifkannya sebagai gantinya.
+                  </p>
+
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      onClick={() => {
+                        handleDeactivatePromo(deletingPromo)
+                        setShowDeleteModal(false)
+                        setDeletingPromo(null)
+                        setDeleteCheckResult(null)
+                      }}
+                      className="flex-1 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
+                    >
+                      Nonaktifkan Promo
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowDeleteModal(false)
+                        setDeletingPromo(null)
+                        setDeleteCheckResult(null)
+                      }}
+                      className="flex-1 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                    >
+                      Batal
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-gray-700">
+                    Yakin ingin menghapus kode promo <span className="font-bold">{deletingPromo.code}</span>?
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    Tindakan ini tidak dapat dibatalkan.
+                  </p>
+
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      onClick={handleConfirmDelete}
+                      disabled={submitting}
+                      className="flex-1 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {submitting ? 'Menghapus...' : 'Ya, Hapus'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowDeleteModal(false)
+                        setDeletingPromo(null)
+                        setDeleteCheckResult(null)
+                      }}
+                      className="flex-1 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                    >
+                      Batal
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add/Edit Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
