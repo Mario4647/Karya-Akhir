@@ -386,19 +386,21 @@ const Form = () => {
                 console.log('✅ User logged in successfully:', authData.user.email);
                 
                 setTimeout(() => {
-                    setSubmitSuccess(false);
-                    if (!profileError && profile) {
-                        if (profile.roles === 'admin') {
-                            navigate("/admin/bans");
-                        } else if (profile.roles === 'user-raport') {
-                            navigate("/dashboard-user");
-                        } else {
-                            navigate("/");
-                        }
-                    } else {
-                        navigate("/");
-                    }
-                }, 1500);
+    setSubmitSuccess(false);
+    if (!profileError && profile) {
+        if (profile.roles === 'admin') {
+            navigate("/admin");
+        } else if (profile.roles === 'admin-event') {
+            navigate("/admin/concert-dashboard");
+        } else if (profile.roles === 'user-raport') {
+            navigate("/dashboard-user");
+        } else {
+            navigate("/");
+        }
+    } else {
+        navigate("/");
+    }
+}, 1500);
             }
         } catch (error) {
             console.error("Sign In Error:", error);
