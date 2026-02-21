@@ -15,7 +15,7 @@ import {
   BiXCircle,
   BiCopy,
   BiRefresh
-} from 'react-icons-bi'
+} from 'react-icons/bi'
 
 // Konfigurasi Midtrans Sandbox
 const MIDTRANS_CLIENT_KEY = 'Mid-client-PKxh7PoyLs2QwsBh'
