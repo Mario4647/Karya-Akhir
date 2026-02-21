@@ -1,4 +1,6 @@
-export default async function handler(req, res) {
+const axios = require('axios');
+
+module.exports = async (req, res) => {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -78,25 +80,23 @@ export default async function handler(req, res) {
       }
     };
 
-    const response = await fetch('https://app.sandbox.midtrans.com/snap/v1/transactions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Basic ' + base64ServerKey,
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify(parameter)
-    });
+    const response = await axios.post(
+      'https://app.sandbox.midtrans.com/snap/v1/transactions',
+      parameter,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Basic ' + base64ServerKey,
+          'Accept': 'application/json'
+        }
+      }
+    );
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error_message || data.status_message || 'Failed to create transaction');
-    }
-
-    res.status(200).json(data);
+    res.status(200).json(response.data);
   } catch (error) {
-    console.error('Midtrans API Error:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Midtrans API Error:', error.response?.data || error.message);
+    res.status(500).json({ 
+      error: error.response?.data?.error_message || error.message 
+    });
   }
-}
+};
