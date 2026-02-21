@@ -46,6 +46,7 @@ const ConcertPage = () => {
   const [error, setError] = useState('')
   const [fetchError, setFetchError] = useState('')
   const [isLoadingProducts, setIsLoadingProducts] = useState(true)
+  const [debugInfo, setDebugInfo] = useState('')
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -81,21 +82,19 @@ const ConcertPage = () => {
       const { data, error } = await supabase
         .from('products')
         .select('*')
-        .eq('is_active', true) // Hanya ambil produk yang aktif
+        .eq('is_active', true)
         .order('created_at', { ascending: false })
       
       if (error) throw error
       
-      // Parse ticket_types jika berupa string JSON
       const processedData = data.map(product => ({
         ...product,
         ticket_types: typeof product.ticket_types === 'string' 
           ? JSON.parse(product.ticket_types) 
           : product.ticket_types || [],
-        image_url: product.image_data || product.poster_url // Gunakan image_data atau poster_url
+        image_url: product.image_data || product.poster_url
       }))
       
-      console.log('Fetched products:', processedData) // Untuk debugging
       setProducts(processedData || [])
       
       if (processedData && processedData.length > 0) {
@@ -237,6 +236,10 @@ const ConcertPage = () => {
         setError(`NIK Pembeli ${i + 1} harus 16 digit`)
         return false
       }
+      if (buyer.nik.length > 16) {
+        setError(`NIK Pembeli ${i + 1} maksimal 16 digit`)
+        return false
+      }
       if (!buyer.address.trim()) {
         setError(`Alamat Pembeli ${i + 1} harus diisi`)
         return false
@@ -250,12 +253,30 @@ const ConcertPage = () => {
 
     setLoading(true)
     setError('')
+    setDebugInfo('')
 
     try {
+      // Validasi data
+      if (!user) {
+        throw new Error('Anda harus login terlebih dahulu')
+      }
+
+      if (!selectedProduct || !selectedTicketType) {
+        throw new Error('Pilih produk dan tipe tiket terlebih dahulu')
+      }
+
+      if (quantity > selectedTicketType.stock) {
+        throw new Error('Jumlah tiket melebihi stok yang tersedia')
+      }
+
+      // Generate order number
       const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
+      
+      // Set expiry time (60 menit)
       const expiryTime = new Date()
       expiryTime.setMinutes(expiryTime.getMinutes() + 60)
 
+      // Siapkan data order
       const orderData = {
         order_number: orderNumber,
         user_id: user.id,
@@ -278,16 +299,32 @@ const ConcertPage = () => {
           address: b.address
         })),
         status: 'pending',
-        payment_expiry: expiryTime.toISOString()
+        payment_expiry: expiryTime.toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       }
 
+      setDebugInfo('Menyimpan order...')
+      console.log('Order Data:', orderData)
+
+      // Insert order
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert([orderData])
         .select()
         .single()
 
-      if (orderError) throw orderError
+      if (orderError) {
+        console.error('Order insert error:', orderError)
+        throw new Error(`Gagal menyimpan order: ${orderError.message}`)
+      }
+
+      if (!order) {
+        throw new Error('Gagal membuat order: Data tidak ditemukan setelah insert')
+      }
+
+      setDebugInfo('Order berhasil dibuat, membuat tiket...')
+      console.log('Order created:', order)
 
       // Create tickets for each buyer
       const tickets = []
@@ -300,7 +337,9 @@ const ConcertPage = () => {
         ticket_type: selectedTicketType.name,
         price: selectedTicketType.price,
         is_available: true,
-        ticket_code: `TCK-${Date.now()}-0-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
+        ticket_code: `TCK-${Date.now()}-0-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       })
 
       // Tickets for additional buyers
@@ -312,36 +351,73 @@ const ConcertPage = () => {
           ticket_type: selectedTicketType.name,
           price: selectedTicketType.price,
           is_available: true,
-          ticket_code: `TCK-${Date.now()}-${index + 1}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
+          ticket_code: `TCK-${Date.now()}-${index + 1}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         })
       })
 
+      setDebugInfo(`Membuat ${tickets.length} tiket...`)
+      console.log('Tickets to insert:', tickets)
+
+      // Insert tickets
       const { error: ticketsError } = await supabase
         .from('tickets')
         .insert(tickets)
 
-      if (ticketsError) throw ticketsError
+      if (ticketsError) {
+        console.error('Tickets insert error:', ticketsError)
+        // Jika gagal insert tiket, hapus order yang sudah dibuat
+        await supabase.from('orders').delete().eq('id', order.id)
+        throw new Error(`Gagal membuat tiket: ${ticketsError.message}`)
+      }
+
+      setDebugInfo('Tiket berhasil dibuat, mengupdate stok...')
 
       // Update stock
       const updatedTicketTypes = selectedProduct.ticket_types.map(type => {
         if (type.name === selectedTicketType.name) {
-          return { ...type, stock: type.stock - quantity }
+          return { ...type, stock: parseInt(type.stock) - quantity }
         }
         return type
       })
 
-      await supabase
+      const { error: updateError } = await supabase
         .from('products')
         .update({ 
           ticket_types: JSON.stringify(updatedTicketTypes),
-          stock: selectedProduct.stock - quantity
+          stock: parseInt(selectedProduct.stock) - quantity,
+          updated_at: new Date().toISOString()
         })
         .eq('id', selectedProduct.id)
 
-      navigate(`/payment/${order.id}`)
+      if (updateError) {
+        console.error('Stock update error:', updateError)
+        // Log error tapi jangan throw karena order sudah berhasil
+        console.warn('Gagal update stok:', updateError.message)
+      }
+
+      // Update promo usage jika ada
+      if (promoApplied) {
+        await supabase
+          .from('promo_codes')
+          .update({ 
+            used_count: promoApplied.used_count + 1,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', promoApplied.id)
+      }
+
+      setDebugInfo('Semua berhasil! Redirecting...')
+      
+      // Redirect ke halaman pembayaran
+      setTimeout(() => {
+        navigate(`/payment/${order.id}`)
+      }, 500)
+
     } catch (error) {
       console.error('Error creating order:', error)
-      setError('Gagal membuat pesanan. Silakan coba lagi.')
+      setError(error.message || 'Gagal membuat pesanan. Silakan coba lagi.')
     } finally {
       setLoading(false)
     }
@@ -736,7 +812,7 @@ const ConcertPage = () => {
                   <div className="space-y-3">
                     <div>
                       <label className="block text-sm font-medium text-gray-600 mb-1">
-                        Nama Lengkap
+                        Nama Lengkap <span className="text-red-500">*</span>
                       </label>
                       <div className="relative">
                         <BiUser className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -746,13 +822,14 @@ const ConcertPage = () => {
                           onChange={(e) => handleBuyerChange(index, 'name', e.target.value)}
                           placeholder="Masukkan nama lengkap"
                           className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          required
                         />
                       </div>
                     </div>
 
                     <div>
                       <label className="block text-sm font-medium text-gray-600 mb-1">
-                        NIK
+                        NIK <span className="text-red-500">*</span> (16 digit)
                       </label>
                       <div className="relative">
                         <BiIdCard className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -763,13 +840,17 @@ const ConcertPage = () => {
                           placeholder="16 digit NIK"
                           maxLength="16"
                           className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          required
                         />
                       </div>
+                      {buyer.nik && buyer.nik.length < 16 && (
+                        <p className="text-xs text-red-500 mt-1">NIK harus 16 digit</p>
+                      )}
                     </div>
 
                     <div>
                       <label className="block text-sm font-medium text-gray-600 mb-1">
-                        Alamat
+                        Alamat <span className="text-red-500">*</span>
                       </label>
                       <div className="relative">
                         <BiHome className="absolute left-3 top-3 text-gray-400" />
@@ -779,6 +860,7 @@ const ConcertPage = () => {
                           placeholder="Masukkan alamat lengkap"
                           rows="2"
                           className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          required
                         />
                       </div>
                     </div>
@@ -796,9 +878,21 @@ const ConcertPage = () => {
               )}
 
               {error && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm flex items-center space-x-1">
-                  <BiError />
-                  <span>{error}</span>
+                <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <BiError className="text-red-500 text-xl mt-0.5" />
+                    <div>
+                      <p className="font-medium text-red-800">Gagal membuat pesanan</p>
+                      <p className="text-sm text-red-600 mt-1">{error}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Debug Info (hidden in production) */}
+              {process.env.NODE_ENV === 'development' && debugInfo && (
+                <div className="mb-4 p-2 bg-gray-100 border border-gray-300 rounded text-xs font-mono">
+                  <p className="text-gray-600">Debug: {debugInfo}</p>
                 </div>
               )}
 
@@ -812,9 +906,16 @@ const ConcertPage = () => {
                 <button
                   onClick={createOrder}
                   disabled={loading}
-                  className="flex-1 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 transition-colors disabled:opacity-50"
+                  className="flex-1 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
                 >
-                  {loading ? 'Memproses...' : 'Simpan & Lanjut'}
+                  {loading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                      <span>Memproses...</span>
+                    </>
+                  ) : (
+                    <span>Simpan & Lanjut</span>
+                  )}
                 </button>
               </div>
             </div>
