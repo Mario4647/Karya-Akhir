@@ -172,38 +172,49 @@ const PaymentPage = () => {
   }
 
   const createTransaction = async () => {
-    try {
-      console.log('🔄 Creating transaction for order:', order.order_number)
-      
-      const response = await fetch('/api/midtrans', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          orderNumber: order.order_number,
-          totalAmount: order.total_amount,
-          customerName: order.customer_name,
-          customerEmail: order.customer_email,
-          customerAddress: order.customer_address,
-          productName: order.product_name,
-          productPrice: order.product_price,
-          quantity: order.quantity
-        })
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Gagal membuat transaksi')
-      }
-
-      console.log('✅ Transaction response:', data)
-      return data
-    } catch (error) {
-      console.error('❌ Error creating transaction:', error)
-      throw error
+  try {
+    console.log('🔄 Creating transaction for order:', order.order_number)
+    
+    // Siapkan data yang akan dikirim
+    const payload = {
+      orderNumber: order.order_number,
+      totalAmount: order.total_amount,
+      customerName: order.customer_name,
+      customerEmail: order.customer_email,
+      customerAddress: order.customer_address,
+      productName: order.product_name,
+      productPrice: order.product_price,
+      quantity: order.quantity
     }
+
+    console.log('📦 Payload being sent:', payload)
+
+    const response = await fetch('/api/midtrans', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload)
+    })
+
+    const data = await response.json()
+    console.log('📥 Response from server:', data)
+
+    if (!response.ok) {
+      // Tampilkan error detail dari server
+      let errorMessage = data.error || 'Gagal membuat transaksi'
+      if (data.missingFields) {
+        errorMessage += ` (Field yang kurang: ${data.missingFields.join(', ')})`
+      }
+      throw new Error(errorMessage)
+    }
+
+    console.log('✅ Transaction response:', data)
+    return data
+  } catch (error) {
+    console.error('❌ Error creating transaction:', error)
+    throw error
+  }
   }
 
   const handlePayNow = async () => {
