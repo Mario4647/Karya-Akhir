@@ -23,7 +23,7 @@ const MIDTRANS_MERCHANT_ID = 'G738480656'
 
 const PaymentPage = () => {
   const [order, setOrder] = useState(null)
-  const [timeLeft, setTimeLeft] = useState(3600) // 60 menit dalam detik
+  const [timeLeft, setTimeLeft] = useState(3600)
   const [loading, setLoading] = useState(true)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [selectedPayment, setSelectedPayment] = useState(null)
@@ -32,10 +32,12 @@ const PaymentPage = () => {
   const [snapToken, setSnapToken] = useState(null)
   const [copied, setCopied] = useState(false)
   const [snapLoaded, setSnapLoaded] = useState(false)
+  const [debugInfo, setDebugInfo] = useState('')
   const { orderId } = useParams()
   const navigate = useNavigate()
 
   useEffect(() => {
+    console.log('PaymentPage mounted, orderId:', orderId)
     fetchOrder()
     loadMidtransScript()
   }, [orderId])
@@ -63,8 +65,10 @@ const PaymentPage = () => {
   }, [order])
 
   const loadMidtransScript = () => {
+    console.log('Loading Midtrans script...')
     // Cek apakah script sudah ada
     if (document.querySelector('script[src="https://app.sandbox.midtrans.com/snap/snap.js"]')) {
+      console.log('Midtrans script already loaded')
       setSnapLoaded(true)
       return
     }
@@ -73,11 +77,11 @@ const PaymentPage = () => {
     script.src = 'https://app.sandbox.midtrans.com/snap/snap.js'
     script.setAttribute('data-client-key', MIDTRANS_CLIENT_KEY)
     script.onload = () => {
-      console.log('Midtrans script loaded')
+      console.log('Midtrans script loaded successfully')
       setSnapLoaded(true)
     }
-    script.onerror = () => {
-      console.error('Failed to load Midtrans script')
+    script.onerror = (err) => {
+      console.error('Failed to load Midtrans script:', err)
       setError('Gagal memuat metode pembayaran. Silakan refresh halaman.')
     }
     document.body.appendChild(script)
@@ -85,7 +89,9 @@ const PaymentPage = () => {
 
   const fetchOrder = async () => {
     setLoading(true)
+    setDebugInfo('Fetching order...')
     try {
+      console.log('Fetching order with ID:', orderId)
       const { data, error } = await supabase
         .from('orders')
         .select(`
@@ -96,11 +102,17 @@ const PaymentPage = () => {
         .eq('id', orderId)
         .single()
 
-      if (error) throw error
+      if (error) {
+        console.error('Error fetching order:', error)
+        throw error
+      }
+      console.log('Order fetched:', data)
       setOrder(data)
+      setDebugInfo('Order fetched successfully')
     } catch (error) {
       console.error('Error fetching order:', error)
-      setError('Gagal memuat data pesanan')
+      setError('Gagal memuat data pesanan: ' + error.message)
+      setDebugInfo('Error: ' + error.message)
     } finally {
       setLoading(false)
     }
@@ -142,6 +154,7 @@ const PaymentPage = () => {
   }
 
   const handlePayOrder = () => {
+    console.log('Pay button clicked, snapLoaded:', snapLoaded)
     if (!snapLoaded) {
       setError('Metode pembayaran belum siap. Silakan tunggu atau refresh halaman.')
       return
@@ -155,149 +168,163 @@ const PaymentPage = () => {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  
-            
+  const testApiConnection = async () => {
+    try {
+      setDebugInfo('Testing API connection...')
+      const response = await fetch('/api/midtrans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ test: true })
+      })
+      const text = await response.text()
+      console.log('API test response:', text)
+      setDebugInfo('API test: ' + text.substring(0, 100))
+    } catch (err) {
+      console.error('API test error:', err)
+      setDebugInfo('API test error: ' + err.message)
+    }
+  }
+
+  const processPayment = async () => {
+    console.log('processPayment started')
+    if (!selectedPayment) {
+      setError('Pilih metode pembayaran terlebih dahulu')
+      return
+    }
+
+    if (!window.snap) {
+      console.error('Snap not available')
+      setError('Metode pembayaran tidak tersedia. Silakan refresh halaman.')
+      return
+    }
+
+    setProcessingPayment(true)
+    setError('')
+    setDebugInfo('Processing payment...')
+
+    try {
+      console.log('Order data:', order)
+      console.log('Calling API /api/midtrans')
+
+      // Test API dulu
+      await testApiConnection()
+
+      const response = await fetch('/api/midtrans', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderId: order.id,
+          orderNumber: order.order_number,
+          totalAmount: order.total_amount,
+          customerName: order.customer_name,
+          customerEmail: order.customer_email,
+          customerAddress: order.customer_address,
+          productName: order.product_name,
+          productPrice: order.product_price,
+          quantity: order.quantity,
+          productId: order.product_id
+        })
+      })
+
+      console.log('Response status:', response.status)
+      setDebugInfo('Response status: ' + response.status)
+
+      const responseText = await response.text()
+      console.log('Raw API response:', responseText)
+      setDebugInfo('Response: ' + responseText.substring(0, 100))
+
+      let data
+      try {
+        data = JSON.parse(responseText)
+      } catch (e) {
+        console.error('Failed to parse API response:', responseText)
+        throw new Error('Response dari server tidak valid')
+      }
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP error ${response.status}`)
+      }
+
+      console.log('Midtrans token received:', data)
+
+      if (data.token) {
+        setSnapToken(data.token)
+        
+        await supabase
+          .from('orders')
+          .update({ 
+            midtrans_transaction_id: data.transaction_id,
+            midtrans_token: data.token,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', order.id)
+        
+        setShowPaymentModal(false)
+        setDebugInfo('Opening Snap popup...')
+        
+        setTimeout(() => {
+          if (window.snap) {
+            window.snap.pay(data.token, {
+              onSuccess: async (result) => {
+                console.log('Payment success:', result)
+                await handlePaymentSuccess(result)
+              },
+              onPending: (result) => {
+                console.log('Payment pending:', result)
+                supabase
+                  .from('orders')
+                  .update({ 
+                    midtrans_transaction_status: 'pending',
+                    payment_details: result,
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('id', order.id)
+                
+                alert('Pembayaran sedang diproses. Silakan cek status secara berkala.')
+              },
+              onError: (result) => {
+                console.error('Payment error:', result)
+                setError('Pembayaran gagal: ' + (result.status_message || 'Silakan coba lagi'))
+                
+                supabase
+                  .from('orders')
+                  .update({ 
+                    midtrans_transaction_status: 'error',
+                    payment_details: result,
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('id', order.id)
+              },
+              onClose: () => {
+                setSnapToken(null)
+                console.log('Payment popup closed')
+                setDebugInfo('Snap popup closed')
+              }
+            })
+          } else {
+            setError('Snap Midtrans tidak tersedia')
+          }
+        }, 300)
+        
+      } else {
+        setError('Gagal mendapatkan token pembayaran')
+      }
+    } catch (error) {
+      console.error('Error processing payment:', error)
+      setError('Gagal memproses pembayaran: ' + error.message)
+      setDebugInfo('Error: ' + error.message)
+    } finally {
+      setProcessingPayment(false)
+    }
+  }
 
   const handlePaymentSuccess = async (result) => {
     try {
       console.log('Payment success result:', result)
-
-
-const processPayment = async () => {
-  if (!selectedPayment) {
-    setError('Pilih metode pembayaran terlebih dahulu')
-    return
-  }
-
-  if (!window.snap) {
-    setError('Metode pembayaran tidak tersedia. Silakan refresh halaman.')
-    return
-  }
-
-  setProcessingPayment(true)
-  setError('')
-
-  try {
-    console.log('Processing payment for order:', order)
-
-    // Panggil API endpoint kita sendiri
-    const apiUrl = '/api/midtrans'
-    console.log('Calling API:', apiUrl)
-
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        orderId: order.id,
-        orderNumber: order.order_number,
-        totalAmount: order.total_amount,
-        customerName: order.customer_name,
-        customerEmail: order.customer_email,
-        customerAddress: order.customer_address,
-        productName: order.product_name,
-        productPrice: order.product_price,
-        quantity: order.quantity,
-        productId: order.product_id
-      })
-    })
-
-    console.log('Response status:', response.status)
-
-    // Baca response sebagai text dulu untuk debugging
-    const responseText = await response.text()
-    console.log('Raw API response:', responseText)
-
-    // Coba parse JSON
-    let data
-    try {
-      data = JSON.parse(responseText)
-    } catch (e) {
-      console.error('Failed to parse API response:', responseText)
-      throw new Error('Response dari server tidak valid: ' + responseText.substring(0, 100))
-    }
-
-    if (!response.ok) {
-      throw new Error(data.error || `HTTP error ${response.status}`)
-    }
-
-    console.log('Midtrans token received:', data)
-
-    if (data.token) {
-      setSnapToken(data.token)
       
-      // Simpan transaction_id ke database
-      await supabase
-        .from('orders')
-        .update({ 
-          midtrans_transaction_id: data.transaction_id,
-          midtrans_token: data.token,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', order.id)
-      
-      // Tutup modal terlebih dahulu
-      setShowPaymentModal(false)
-      
-      // Buka Snap popup dengan sedikit delay
-      setTimeout(() => {
-        if (window.snap) {
-          window.snap.pay(data.token, {
-            onSuccess: async (result) => {
-              console.log('Payment success:', result)
-              await handlePaymentSuccess(result)
-            },
-            onPending: (result) => {
-              console.log('Payment pending:', result)
-              supabase
-                .from('orders')
-                .update({ 
-                  midtrans_transaction_status: 'pending',
-                  payment_details: result,
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', order.id)
-              
-              alert('Pembayaran sedang diproses. Silakan cek status secara berkala.')
-            },
-            onError: (result) => {
-              console.error('Payment error:', result)
-              setError('Pembayaran gagal: ' + (result.status_message || 'Silakan coba lagi'))
-              
-              supabase
-                .from('orders')
-                .update({ 
-                  midtrans_transaction_status: 'error',
-                  payment_details: result,
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', order.id)
-            },
-            onClose: () => {
-              setSnapToken(null)
-              console.log('Payment popup closed')
-            }
-          })
-        } else {
-          setError('Snap Midtrans tidak tersedia. Silakan refresh halaman.')
-        }
-      }, 300)
-      
-    } else {
-      setError('Gagal mendapatkan token pembayaran')
-    }
-  } catch (error) {
-    console.error('Error processing payment:', error)
-    setError('Gagal memproses pembayaran: ' + error.message)
-  } finally {
-    setProcessingPayment(false)
-  }
-}
-      
-      
-      // Update order status
- const { error } = await supabase
+      const { error } = await supabase
         .from('orders')
         .update({
           status: 'paid',
@@ -312,7 +339,6 @@ const processPayment = async () => {
 
       if (error) throw error
 
-      // Redirect ke halaman sukses
       navigate(`/payment-success/${order.id}`)
     } catch (error) {
       console.error('Error updating order:', error)
@@ -429,6 +455,24 @@ const processPayment = async () => {
       <NavbarEvent />
 
       <div className="max-w-4xl mx-auto px-4 py-8">
+        {/* Debug Info - Hanya muncul di development */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mb-4 p-4 bg-gray-100 border border-gray-300 rounded-lg text-xs font-mono">
+            <p className="font-bold text-gray-700">Debug Info:</p>
+            <p>Order ID: {order.id}</p>
+            <p>Order Number: {order.order_number}</p>
+            <p>Snap Loaded: {snapLoaded ? '✅' : '❌'}</p>
+            <p>Processing: {processingPayment ? '✅' : '❌'}</p>
+            <p>Status: {debugInfo || 'Idle'}</p>
+            <button 
+              onClick={testApiConnection}
+              className="mt-2 px-2 py-1 bg-blue-500 text-white rounded text-xs"
+            >
+              Test API
+            </button>
+          </div>
+        )}
+
         {/* Timer */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6 relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-red-500"></div>
@@ -593,6 +637,15 @@ const processPayment = async () => {
             <p className="text-sm text-yellow-700 flex items-center gap-2">
               <BiTimer className="text-yellow-500 text-lg" />
               <span>Memuat metode pembayaran... Silakan tunggu.</span>
+            </p>
+          </div>
+        )}
+
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 rounded-xl border border-red-200">
+            <p className="text-sm text-red-700 flex items-center gap-2">
+              <BiError className="text-red-500 text-lg" />
+              <span>{error}</span>
             </p>
           </div>
         )}
