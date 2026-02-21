@@ -12,7 +12,7 @@ import {
   BiUser,
   BiCopy,
   BiArrowBack,
-  BiTicket
+  BiPurchaseTag // Ganti BiTicket
 } from 'react-icons/bi'
 import { QRCode } from 'react-qr-code'
 
@@ -318,7 +318,7 @@ const PaymentSuccessPage = () => {
             onClick={() => navigate('/my-orders')}
             className="px-6 py-3 border-2 border-blue-600 text-blue-600 rounded-xl hover:bg-blue-50 transition-colors flex items-center space-x-2"
           >
-            <BiTicket className="text-xl" />
+            <BiPurchaseTag className="text-xl" /> {/* Ganti BiTicket */}
             <span>Lihat Semua Pesanan</span>
           </button>
         </div>
