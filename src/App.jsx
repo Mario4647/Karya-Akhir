@@ -36,6 +36,7 @@ import MyOrdersPage from "./pages/User/MyOrdersPage";
 import OrderDetailPage from "./pages/User/OrderDetailPage";
 
 // Admin pages untuk tiket konser
+import midtrans from "./api/midtrans";
 import AdminConcertDashboard from "./pages/Admin/DashboardPage";
 import AdminProducts from "./pages/Admin/ProductsPage";
 import AdminPromos from "./pages/Admin/PromosPage";
@@ -200,6 +201,13 @@ function App() {
         } />
 
         {/* ========== EXISTING ROUTES (NON-TIKET) ========== */}
+
+{/* Halaman Admin Utama - Hanya untuk admin (bukan admin-event) */}
+        <Route path="/api/midtrans" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <midtrans />
+          </ProtectedRoute>
+        } />
         
         {/* Halaman Admin Utama - Hanya untuk admin (bukan admin-event) */}
         <Route path="/admin" element={
