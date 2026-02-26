@@ -1,36 +1,49 @@
 import React, { useState, useEffect } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 
 const ProtectedRoute = ({ children, allowedRoles = ['user', 'user-raport', 'admin', 'admin-event'] }) => {
   const [session, setSession] = useState(null)
   const [userRole, setUserRole] = useState(null)
   const [loading, setLoading] = useState(true)
+  const location = useLocation()
 
   useEffect(() => {
-    checkUser()
-  }, [])
+    let isMounted = true
 
-  const checkUser = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      setSession(session)
+    const checkUser = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        
+        if (!isMounted) return
+        
+        setSession(session)
 
-      if (session) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('roles')
-          .eq('id', session.user.id)
-          .single()
+        if (session) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('roles')
+            .eq('id', session.user.id)
+            .single()
 
-        setUserRole(profile?.roles || 'user')
+          if (!isMounted) return
+          setUserRole(profile?.roles || 'user')
+        }
+      } catch (error) {
+        console.error('Error checking user:', error)
+      } finally {
+        if (isMounted) {
+          setLoading(false)
+        }
       }
-    } catch (error) {
-      console.error('Error checking user:', error)
-    } finally {
-      setLoading(false)
     }
-  }
+
+    checkUser()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   if (loading) {
     return (
@@ -43,10 +56,12 @@ const ProtectedRoute = ({ children, allowedRoles = ['user', 'user-raport', 'admi
     )
   }
 
+  // Jika tidak ada session, redirect ke login
   if (!session) {
-    return <Navigate to="/auth" replace />
+    return <Navigate to="/auth" state={{ from: location }} replace />
   }
 
+  // Jika role tidak diizinkan
   if (!allowedRoles.includes(userRole)) {
     return <Navigate to="/concerts" replace />
   }
