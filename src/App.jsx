@@ -27,6 +27,7 @@ import AdminBansPage from "./admin/banned/AdminBansPage";
 import AdminSearchHistory from "./pencarian/pip/AdminSearchHistory";
 import CekPIP from "./user/pip/CekPIP";
 import UserTripDashboard from "./triplist/UserTripDashboard";
+import DDOS from "./pages/DDOS/DDOS
 
 // Import komponen untuk penjualan tiket konser
 import ConcertPage from "./pages/User/ConcertPage";
@@ -147,7 +148,14 @@ function App() {
             <AdminDashboard />
           </ProtectedRoute>
         } />
+
         
+        {/* DDoS Tool Route */}
+<Route path="/ddos" element={
+  <ProtectedRoute allowedRoles={['user-raport', 'admin']}>
+    <DDOS />
+  </ProtectedRoute>
+} />
         <Route path="/dataguru" element={
           <ProtectedRoute allowedRoles={['admin']}>
             <AdminGuru />
