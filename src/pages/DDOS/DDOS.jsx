@@ -23,7 +23,7 @@ const DDOSPage = () => {
   const [userActivities, setUserActivities] = useState([])
   const [showAdminPanel, setShowAdminPanel] = useState(false)
   
-  // Ikon SVG - LANGSUNG DEFINISIKAN, BUKAN PAKE KOMENTAR
+  // Ikon SVG
   const Icons = {
     Shield: () => (
       <svg className="h-8 w-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -64,53 +64,81 @@ const DDOSPage = () => {
       <svg className="h-16 w-16 mx-auto mb-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
+    ),
+    Refresh: () => (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      </svg>
     )
   }
 
   // Cek user session
   useEffect(() => {
     const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      if (!session) {
-        navigate('/auth')
-        return
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
+        
+        if (error) {
+          console.error('Session error:', error)
+          navigate('/auth')
+          return
+        }
+        
+        if (!session) {
+          console.log('No session found')
+          navigate('/auth')
+          return
+        }
+        
+        console.log('User session:', session.user)
+        setUser(session.user)
+        
+        // Cek role dari tabel profiles
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single()
+        
+        if (profileError) {
+          console.error('Profile error:', profileError)
+        }
+        
+        const userRole = profile?.role || session.user.user_metadata?.role || 'user'
+        console.log('User role:', userRole)
+        setIsAdmin(userRole === 'admin')
+        
+        // Ambil aktivitas user
+        await fetchUserActivities(session.user.id)
+        
+        // Kalo admin, ambil semua users
+        if (userRole === 'admin') {
+          await fetchAllUsers()
+        }
+        
+      } catch (error) {
+        console.error('Check user error:', error)
+      } finally {
+        setLoading(false)
       }
-      
-      setUser(session.user)
-      
-      // Cek role dari tabel profiles
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .single()
-      
-      const userRole = profile?.role || session.user.user_metadata?.role || 'user'
-      setIsAdmin(userRole === 'admin')
-      
-      // Ambil aktivitas user
-      fetchUserActivities(session.user.id)
-      
-      // Kalo admin, ambil semua users
-      if (userRole === 'admin') {
-        fetchAllUsers()
-      }
-      
-      setLoading(false)
     }
     
     checkUser()
+  }, [navigate])
+  
+  // Subscribe ke perubahan realtime
+  useEffect(() => {
+    if (!user?.id) return
     
-    // Subscribe ke perubahan realtime
     const subscription = supabase
-      .channel('activities')
+      .channel('activities-channel')
       .on('postgres_changes', { 
         event: 'INSERT', 
         schema: 'public', 
         table: 'user_activities',
-        filter: `user_id=eq.${user?.id}`
+        filter: `user_id=eq.${user.id}`
       }, payload => {
+        console.log('New activity:', payload.new)
         setActivities(prev => [payload.new, ...prev])
       })
       .subscribe()
@@ -118,46 +146,75 @@ const DDOSPage = () => {
     return () => {
       subscription.unsubscribe()
     }
-  }, [navigate, user?.id])
+  }, [user?.id])
   
   // Ambil aktivitas user
   const fetchUserActivities = async (userId) => {
-    const { data, error } = await supabase
-      .from('user_activities')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(50)
-    
-    if (!error && data) {
-      setActivities(data)
+    try {
+      console.log('Fetching activities for user:', userId)
+      
+      const { data, error } = await supabase
+        .from('user_activities')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(50)
+      
+      if (error) {
+        console.error('Fetch activities error:', error)
+        return
+      }
+      
+      console.log('Activities fetched:', data?.length || 0)
+      setActivities(data || [])
+      
+    } catch (error) {
+      console.error('Fetch activities error:', error)
     }
   }
   
   // Ambil semua users (admin only)
   const fetchAllUsers = async () => {
-    const { data: profiles, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false })
-    
-    if (!error && profiles) {
-      setUsers(profiles)
+    try {
+      const { data: profiles, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false })
+      
+      if (error) {
+        console.error('Fetch users error:', error)
+        return
+      }
+      
+      console.log('Users fetched:', profiles?.length || 0)
+      setUsers(profiles || [])
+      
+    } catch (error) {
+      console.error('Fetch users error:', error)
     }
   }
   
   // Ambil aktivitas user tertentu (admin only)
   const fetchUserActivitiesById = async (userId, userEmail, userName) => {
-    setSelectedUser({ id: userId, email: userEmail, name: userName })
-    
-    const { data, error } = await supabase
-      .from('user_activities')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-    
-    if (!error && data) {
-      setUserActivities(data)
+    try {
+      setSelectedUser({ id: userId, email: userEmail, name: userName })
+      
+      const { data, error } = await supabase
+        .from('user_activities')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+      
+      if (error) {
+        console.error('Fetch user activities error:', error)
+        return
+      }
+      
+      console.log('User activities fetched:', data?.length || 0)
+      setUserActivities(data || [])
+      
+    } catch (error) {
+      console.error('Fetch user activities error:', error)
     }
   }
   
@@ -165,31 +222,63 @@ const DDOSPage = () => {
   const deleteActivity = async (activityId) => {
     if (!confirm('Yakin mau hapus aktivitas ini?')) return
     
-    const { error } = await supabase
-      .from('user_activities')
-      .delete()
-      .eq('id', activityId)
-    
-    if (!error) {
+    try {
+      const { error } = await supabase
+        .from('user_activities')
+        .delete()
+        .eq('id', activityId)
+      
+      if (error) {
+        console.error('Delete error:', error)
+        alert('Gagal menghapus: ' + error.message)
+        return
+      }
+      
       // Refresh activities
       if (selectedUser) {
-        fetchUserActivitiesById(selectedUser.id, selectedUser.email, selectedUser.name)
+        await fetchUserActivitiesById(selectedUser.id, selectedUser.email, selectedUser.name)
       } else {
-        fetchUserActivities(user.id)
+        await fetchUserActivities(user.id)
       }
+      
+    } catch (error) {
+      console.error('Delete error:', error)
+      alert('Error: ' + error.message)
     }
   }
   
   // Simpan aktivitas ke database
   const saveActivity = async (result) => {
     try {
-      const { error } = await supabase
+      console.log('Saving activity:', result)
+      
+      // Cek session
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        console.error('No active session')
+        alert('Session expired, silakan login lagi')
+        navigate('/auth')
+        return
+      }
+      
+      // Ambil nama user
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('name')
+        .eq('id', session.user.id)
+        .single()
+      
+      const userName = profile?.name || session.user.user_metadata?.full_name || session.user.email
+      
+      // Insert ke database
+      const { data, error } = await supabase
         .from('user_activities')
         .insert([
           {
-            user_id: user.id,
-            user_email: user.email,
-            user_name: user.user_metadata?.full_name || user.email,
+            user_id: session.user.id,
+            user_email: session.user.email,
+            user_name: userName,
             activity_type: 'ddos_attack',
             details: `Serangan ${result.attackType.toUpperCase()} ke ${result.target}:${result.port} selama ${result.duration} detik (${result.attackCount} packets)`,
             target: result.target,
@@ -200,14 +289,21 @@ const DDOSPage = () => {
             created_at: new Date().toISOString()
           }
         ])
+        .select()
       
       if (error) {
-        console.error('Error saving activity:', error)
-      } else {
-        fetchUserActivities(user.id)
+        console.error('Save activity error:', error)
+        alert('Gagal menyimpan riwayat: ' + error.message)
+        return
       }
-    } catch (dbError) {
-      console.error('Database error:', dbError)
+      
+      console.log('Activity saved:', data)
+      
+      // Refresh activities
+      await fetchUserActivities(session.user.id)
+      
+    } catch (error) {
+      console.error('Save activity error:', error)
     }
   }
   
@@ -220,41 +316,73 @@ const DDOSPage = () => {
       return
     }
     
+    // Validasi target
+    let targetValue = target.trim()
+    if (!targetValue) {
+      alert('Target tidak boleh kosong!')
+      return
+    }
+    
+    // Hapus http/https kalo ada
+    targetValue = targetValue.replace(/^https?:\/\//, '')
+    
     setAttackRunning(true)
     setAttackResult(null)
     
     try {
+      console.log('Starting attack:', { target: targetValue, port, duration, attackType })
+      
       const response = await fetch('/api/ddos', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          target,
+          target: targetValue,
           port: parseInt(port),
           duration: parseInt(duration),
           attackType
         })
       })
       
+      // Cek response
+      const responseText = await response.text()
+      console.log('Raw response:', responseText)
+      
       if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(`API Error: ${response.status} - ${errorText}`)
+        throw new Error(`API Error (${response.status}): ${responseText}`)
       }
       
-      const data = await response.json()
+      // Parse JSON
+      let data
+      try {
+        data = JSON.parse(responseText)
+      } catch (e) {
+        console.error('JSON parse error:', e)
+        throw new Error('Response bukan JSON valid')
+      }
+      
+      console.log('Attack result:', data)
       
       if (data.success) {
         setAttackResult(data)
         await saveActivity(data)
       } else {
-        alert('Gagal: ' + data.error)
+        alert('Gagal: ' + (data.error || 'Unknown error'))
       }
+      
     } catch (error) {
       console.error('Attack error:', error)
       alert('Error: ' + error.message)
     } finally {
       setAttackRunning(false)
+    }
+  }
+  
+  // Refresh data
+  const refreshActivities = async () => {
+    if (user) {
+      await fetchUserActivities(user.id)
     }
   }
   
@@ -276,10 +404,10 @@ const DDOSPage = () => {
               <Icons.Shield />
               <div>
                 <h1 className="text-2xl font-bold">
-                  <span className="text-red-500">darkvxx</span>
+                  
                   <span className="text-gray-400"> DDoS</span>
                 </h1>
-                <p className="text-sm text-gray-400">Powered by valzxxVerse</p>
+                <p className="text-sm text-gray-400">Powered by Kazuyaa</p>
               </div>
             </div>
             
@@ -292,6 +420,14 @@ const DDOSPage = () => {
                   {showAdminPanel ? 'Hide Admin' : 'Admin Panel'}
                 </button>
               )}
+              
+              <button
+                onClick={refreshActivities}
+                className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+                title="Refresh"
+              >
+                <Icons.Refresh />
+              </button>
               
               <div className="flex items-center space-x-3">
                 <div className="text-right">
@@ -325,18 +461,22 @@ const DDOSPage = () => {
                 <div className="lg:col-span-1 bg-gray-900 rounded-lg p-4">
                   <h3 className="text-sm font-medium text-gray-400 mb-3">Users List</h3>
                   <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {users.map((u) => (
-                      <button
-                        key={u.id}
-                        onClick={() => fetchUserActivitiesById(u.id, u.email, u.name || u.email)}
-                        className={`w-full text-left p-3 rounded-lg transition-colors ${
-                          selectedUser?.id === u.id ? 'bg-purple-600' : 'bg-gray-800 hover:bg-gray-700'
-                        }`}
-                      >
-                        <p className="font-medium">{u.name || 'No Name'}</p>
-                        <p className="text-sm text-gray-400 truncate">{u.email}</p>
-                      </button>
-                    ))}
+                    {users.length > 0 ? (
+                      users.map((u) => (
+                        <button
+                          key={u.id}
+                          onClick={() => fetchUserActivitiesById(u.id, u.email, u.name || u.email)}
+                          className={`w-full text-left p-3 rounded-lg transition-colors ${
+                            selectedUser?.id === u.id ? 'bg-purple-600' : 'bg-gray-800 hover:bg-gray-700'
+                          }`}
+                        >
+                          <p className="font-medium">{u.name || 'No Name'}</p>
+                          <p className="text-sm text-gray-400 truncate">{u.email}</p>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="text-gray-500 text-center py-4">No users found</p>
+                    )}
                   </div>
                 </div>
                 
@@ -432,7 +572,7 @@ const DDOSPage = () => {
                     <input
                       type="number"
                       value={port}
-                      onChange={(e) => setPort(e.target.value)}
+                      onChange={(e) => setPort(parseInt(e.target.value) || 80)}
                       min="1"
                       max="65535"
                       className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500 transition-colors"
@@ -447,7 +587,7 @@ const DDOSPage = () => {
                     <input
                       type="number"
                       value={duration}
-                      onChange={(e) => setDuration(e.target.value)}
+                      onChange={(e) => setDuration(parseInt(e.target.value) || 30)}
                       min="5"
                       max="300"
                       className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500 transition-colors"
@@ -534,7 +674,7 @@ const DDOSPage = () => {
                   <div className="mt-4 p-4 bg-green-600 bg-opacity-20 border border-green-600 rounded-lg">
                     <p className="text-green-400 font-medium">✓ Attack Completed!</p>
                     <p className="text-sm text-gray-300 mt-1">
-                      Sent {attackResult.attackCount} packets to {attackResult.target}:{attackResult.port}
+                      Sent {attackResult.attackCount?.toLocaleString()} packets to {attackResult.target}:{attackResult.port}
                     </p>
                     <p className="text-xs text-gray-500 mt-1">
                       Time: {attackResult.executionTime}s | Type: {attackResult.attackType}
@@ -547,10 +687,15 @@ const DDOSPage = () => {
             {/* Activity Log */}
             <div className="lg:col-span-2">
               <div className="bg-gray-800 rounded-xl border border-gray-700 p-6">
-                <h2 className="text-xl font-semibold mb-6 flex items-center">
-                  <Icons.Activity />
-                  <span className="ml-2">Your Activity Log</span>
-                </h2>
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-semibold flex items-center">
+                    <Icons.Activity />
+                    <span className="ml-2">Your Activity Log</span>
+                  </h2>
+                  <span className="text-sm text-gray-400">
+                    Total: {activities.length}
+                  </span>
+                </div>
                 
                 <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
                   {activities.length > 0 ? (
@@ -594,7 +739,7 @@ const DDOSPage = () => {
                             </div>
                             <div className="bg-gray-800 p-2 rounded">
                               <span className="text-gray-500 block">Packets:</span>
-                              <span className="text-purple-400">{activity.attack_count || 'N/A'}</span>
+                              <span className="text-purple-400">{activity.attack_count?.toLocaleString() || 'N/A'}</span>
                             </div>
                           </div>
                         )}
@@ -618,7 +763,7 @@ const DDOSPage = () => {
       <footer className="border-t border-gray-800 mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <p className="text-center text-sm text-gray-500">
-            darkvxx DDoS Tool • Created by valzxxVerse • {new Date().getFullYear()}
+            DDoS Tool • Created by Kazuyaa • {new Date().getFullYear()}
           </p>
         </div>
       </footer>
