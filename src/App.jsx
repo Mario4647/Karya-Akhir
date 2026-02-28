@@ -27,7 +27,7 @@ import AdminBansPage from "./admin/banned/AdminBansPage";
 import AdminSearchHistory from "./pencarian/pip/AdminSearchHistory";
 import CekPIP from "./user/pip/CekPIP";
 import UserTripDashboard from "./triplist/UserTripDashboard";
-import DDOS from "./pages/DDOS/DDOS
+import DDOS from "./pages/DDOS/DDOS";
 
 // Import komponen untuk penjualan tiket konser
 import ConcertPage from "./pages/User/ConcertPage";
