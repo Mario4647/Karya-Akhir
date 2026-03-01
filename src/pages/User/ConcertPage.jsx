@@ -60,8 +60,7 @@ import {
   BiSkipNext,
   BiSkipPrevious,
   BiCart,
-  BiWallet,
-  BiGiftCard
+  BiWallet
 } from 'react-icons/bi'
 
 // Array icon untuk background dekoratif - HANYA icon yang TERSEDIA
@@ -71,7 +70,7 @@ const decorativeIcons = [
   BiPalette, BiBrush, BiPaint, BiPen, BiPencil, BiBook,
   BiBookOpen, BiLibrary, BiMessage, BiMessageDetail, BiMessageRounded, BiMessageDots,
   BiVolumeFull, BiVolumeLow, BiVolumeMute, BiPlay, BiPause, BiStop,
-  BiSkipNext, BiSkipPrevious, BiCart, BiWallet, BiGiftCard, BiPurchaseTag
+  BiSkipNext, BiSkipPrevious, BiCart, BiWallet, BiPurchaseTag
 ]
 
 const ConcertPage = () => {
