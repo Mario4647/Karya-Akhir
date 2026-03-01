@@ -64,7 +64,7 @@ import {
   BiShoppingBag
 } from 'react-icons/bi'
 
-// Array icon untuk background dekoratif - HANYA icon yang TERBUKTI TERSEDIA
+// Array icon untuk background dekoratif
 const decorativeIcons = [
   BiMusic, BiMicrophone, BiCamera, BiVideo, BiImage, BiImages, BiPhotoAlbum,
   BiStar, BiHeart, BiLike, BiDiamond, BiCrown, BiRocket,
@@ -94,48 +94,64 @@ const ConcertPage = () => {
   const [isLoadingProducts, setIsLoadingProducts] = useState(true)
   const navigate = useNavigate()
 
-  // Generate random positions for decorative icons di background utama
+  // Generate random positions untuk background icons
   const [iconPositions] = useState(() => {
     const positions = []
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 50; i++) {
       positions.push({
         top: `${Math.random() * 100}%`,
         left: `${Math.random() * 100}%`,
         rotate: `${Math.random() * 360}deg`,
-        scale: 0.7 + Math.random() * 0.8,
-        opacity: 0.1 + Math.random() * 0.1,
+        scale: 0.8 + Math.random() * 1.2,
+        opacity: 0.15 + Math.random() * 0.15,
         icon: decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
       })
     }
     return positions
   })
 
-  // Generate icon untuk tombol Beli Tiket - HANYA dari decorativeIcons
+  // Generate icon untuk tombol Beli Tiket - lebih banyak dan lebih terlihat
   const [buttonIconPositions] = useState(() => {
+    const positions = []
+    for (let i = 0; i < 25; i++) {
+      positions.push({
+        top: `${Math.random() * 100}%`,
+        left: `${Math.random() * 100}%`,
+        rotate: `${Math.random() * 360}deg`,
+        scale: 0.5 + Math.random() * 0.8,
+        opacity: 0.2 + Math.random() * 0.2,
+        icon: decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
+      })
+    }
+    return positions
+  })
+
+  // Generate icon untuk popup data pembeli
+  const [popupIconPositions] = useState(() => {
+    const positions = []
+    for (let i = 0; i < 30; i++) {
+      positions.push({
+        top: `${Math.random() * 100}%`,
+        left: `${Math.random() * 100}%`,
+        rotate: `${Math.random() * 360}deg`,
+        scale: 0.6 + Math.random() * 0.9,
+        opacity: 0.15 + Math.random() * 0.15,
+        icon: decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
+      })
+    }
+    return positions
+  })
+
+  // Generate icon untuk tombol di popup
+  const [popupButtonIconPositions] = useState(() => {
     const positions = []
     for (let i = 0; i < 15; i++) {
       positions.push({
         top: `${Math.random() * 100}%`,
         left: `${Math.random() * 100}%`,
         rotate: `${Math.random() * 360}deg`,
-        scale: 0.4 + Math.random() * 0.5,
-        opacity: 0.15 + Math.random() * 0.1,
-        icon: decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
-      })
-    }
-    return positions
-  })
-
-  // Generate icon untuk popup data pembeli - HANYA dari decorativeIcons
-  const [popupIconPositions] = useState(() => {
-    const positions = []
-    for (let i = 0; i < 20; i++) {
-      positions.push({
-        top: `${Math.random() * 100}%`,
-        left: `${Math.random() * 100}%`,
-        rotate: `${Math.random() * 360}deg`,
-        scale: 0.5 + Math.random() * 0.6,
-        opacity: 0.1 + Math.random() * 0.1,
+        scale: 0.4 + Math.random() * 0.6,
+        opacity: 0.2 + Math.random() * 0.2,
         icon: decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
       })
     }
@@ -538,16 +554,16 @@ const ConcertPage = () => {
                   zIndex: 0
                 }}
               >
-                <IconComponent size={28} />
+                <IconComponent size={32} />
               </div>
             )
           })}
         </div>
         <NavbarEvent />
         <div className="relative z-10 flex items-center justify-center h-[80vh]">
-          <div className="text-center bg-white/80 p-8 rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.1)]">
+          <div className="text-center bg-white p-8 rounded border-4 border-gray-800 shadow-[12px_12px_0px_0px_rgba(0,0,0,0.3)]">
             <div className="animate-spin rounded-full h-16 w-16 border-4 border-[#4a90e2] border-t-transparent mx-auto mb-4"></div>
-            <p className="text-gray-700 font-medium">Memuat event...</p>
+            <p className="text-gray-800 font-bold text-lg">Memuat event...</p>
           </div>
         </div>
       </div>
@@ -573,22 +589,22 @@ const ConcertPage = () => {
                   zIndex: 0
                 }}
               >
-                <IconComponent size={28} />
+                <IconComponent size={32} />
               </div>
             )
           })}
         </div>
         <NavbarEvent />
         <div className="relative z-10 max-w-7xl mx-auto px-4 py-12">
-          <div className="text-center py-20 bg-white/90 backdrop-blur-sm rounded border-2 border-gray-200 shadow-[12px_12px_0px_0px_rgba(0,0,0,0.15)]">
-            <BiError className="text-6xl text-red-400 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Gagal Memuat Data</h2>
-            <p className="text-gray-600 mt-2">{fetchError}</p>
+          <div className="text-center py-20 bg-white border-4 border-gray-800 shadow-[16px_16px_0px_0px_rgba(0,0,0,0.3)]">
+            <BiError className="text-6xl text-red-500 mx-auto mb-4" />
+            <h2 className="text-3xl font-black text-gray-800 mb-2">Gagal Memuat Data</h2>
+            <p className="text-gray-700 mt-2">{fetchError}</p>
             <button
               onClick={fetchProducts}
-              className="mt-4 px-6 py-3 bg-[#4a90e2] text-white rounded border-2 border-[#357abd] hover:bg-[#357abd] transition-colors font-medium shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] flex items-center gap-2 mx-auto"
+              className="mt-6 px-8 py-4 bg-[#4a90e2] text-white font-bold text-lg border-4 border-[#357abd] shadow-[8px_8px_0px_0px_rgba(0,0,0,0.3)] hover:translate-x-1 hover:translate-y-1 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)] transition-all duration-200 flex items-center gap-3 mx-auto"
             >
-              <BiRefresh className="text-xl" />
+              <BiRefresh className="text-2xl" />
               <span>Coba Lagi</span>
             </button>
           </div>
@@ -616,17 +632,17 @@ const ConcertPage = () => {
                   zIndex: 0
                 }}
               >
-                <IconComponent size={28} />
+                <IconComponent size={32} />
               </div>
             )
           })}
         </div>
         <NavbarEvent />
         <div className="relative z-10 max-w-7xl mx-auto px-4 py-12">
-          <div className="text-center py-20 bg-white/90 backdrop-blur-sm rounded border-2 border-gray-200 shadow-[12px_12px_0px_0px_rgba(0,0,0,0.15)]">
-            <BiInfoCircle className="text-6xl text-gray-400 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Belum ada event tersedia</h2>
-            <p className="text-gray-600 mt-2">Silakan cek kembali nanti</p>
+          <div className="text-center py-20 bg-white border-4 border-gray-800 shadow-[16px_16px_0px_0px_rgba(0,0,0,0.3)]">
+            <BiInfoCircle className="text-6xl text-gray-500 mx-auto mb-4" />
+            <h2 className="text-3xl font-black text-gray-800 mb-2">Belum ada event tersedia</h2>
+            <p className="text-gray-700 mt-2">Silakan cek kembali nanti</p>
           </div>
         </div>
       </div>
@@ -635,23 +651,23 @@ const ConcertPage = () => {
 
   return (
     <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
-      {/* Decorative Icons Background Utama */}
+      {/* Decorative Icons Background Utama - Lebih terlihat */}
       <div className="absolute inset-0 pointer-events-none">
         {iconPositions.map((pos, i) => {
           const IconComponent = pos.icon
           return (
             <div
               key={i}
-              className="absolute text-gray-700"
+              className="absolute text-gray-600"
               style={{
                 top: pos.top,
                 left: pos.left,
                 transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                opacity: pos.opacity,
+                opacity: pos.opacity * 1.2,
                 zIndex: 0
               }}
             >
-              <IconComponent size={28} />
+              <IconComponent size={36} />
             </div>
           )
         })}
@@ -660,7 +676,7 @@ const ConcertPage = () => {
       <NavbarEvent />
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 py-8">
-        {/* Product Selector dengan Icon */}
+        {/* Product Selector dengan Icon dan Neo Brutalizm */}
         {products.length > 1 && (
           <div className="mb-6 overflow-x-auto">
             <div className="flex space-x-4 pb-2">
@@ -668,16 +684,16 @@ const ConcertPage = () => {
                 <button
                   key={product.id}
                   onClick={() => handleProductChange(product)}
-                  className={`flex-shrink-0 px-5 py-3 rounded transition-all font-medium flex items-center gap-2 ${
+                  className={`flex-shrink-0 px-6 py-4 rounded-none transition-all font-bold text-lg flex items-center gap-3 border-4 ${
                     selectedProduct.id === product.id
-                      ? 'bg-[#4a90e2] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.15)] border-2 border-[#357abd]'
-                      : 'bg-white text-gray-700 hover:bg-gray-100 border-2 border-gray-200 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]'
+                      ? 'bg-[#4a90e2] text-white border-[#357abd] shadow-[8px_8px_0px_0px_rgba(0,0,0,0.3)]'
+                      : 'bg-white text-gray-800 hover:bg-gray-100 border-gray-800 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.2)]'
                   }`}
                 >
-                  <BiMovie className="text-xl" />
-                  <div>
-                    <div className="font-medium">{product.name}</div>
-                    <div className="text-xs opacity-75">
+                  <BiMovie className="text-2xl" />
+                  <div className="text-left">
+                    <div className="font-black">{product.name}</div>
+                    <div className="text-sm font-bold opacity-80">
                       {product.event_date ? new Date(product.event_date).toLocaleDateString('id-ID') : 'TBA'}
                     </div>
                   </div>
@@ -690,8 +706,8 @@ const ConcertPage = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column - Event Details */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Poster dengan Icon */}
-            <div className="bg-white rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.15)] overflow-hidden relative">
+            {/* Poster dengan Icon dan Neo Brutalizm */}
+            <div className="bg-white border-4 border-gray-800 shadow-[12px_12px_0px_0px_rgba(0,0,0,0.3)] overflow-hidden relative">
               {selectedProduct.image_data || selectedProduct.poster_url ? (
                 <img 
                   src={selectedProduct.image_data || selectedProduct.poster_url} 
@@ -699,34 +715,34 @@ const ConcertPage = () => {
                   className="w-full h-96 object-cover"
                 />
               ) : (
-                <div className="w-full h-96 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                  <BiMovie className="text-8xl text-gray-400" />
+                <div className="w-full h-96 bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
+                  <BiMovie className="text-8xl text-gray-500" />
                 </div>
               )}
-              <div className="absolute top-4 left-4 bg-white/90 px-3 py-1 rounded border border-gray-200 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] flex items-center gap-2">
-                <BiPurchaseTag className="text-[#4a90e2]" />
-                <span className="font-medium text-gray-700">{selectedProduct.ticket_types?.length || 0} Tipe Tiket</span>
+              <div className="absolute top-4 left-4 bg-white px-4 py-2 border-4 border-gray-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)] flex items-center gap-2 font-bold">
+                <BiPurchaseTag className="text-2xl text-[#4a90e2]" />
+                <span className="text-gray-800">{selectedProduct.ticket_types?.length || 0} Tipe Tiket</span>
               </div>
             </div>
 
-            {/* Event Info dengan Icon */}
-            <div className="bg-white rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.15)] p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <BiInfoCircle className="text-3xl text-[#4a90e2]" />
-                <h1 className="text-3xl font-bold text-gray-800">{selectedProduct.name}</h1>
+            {/* Event Info dengan Icon dan Neo Brutalizm */}
+            <div className="bg-white border-4 border-gray-800 shadow-[12px_12px_0px_0px_rgba(0,0,0,0.3)] p-8">
+              <div className="flex items-center gap-4 mb-6">
+                <BiInfoCircle className="text-4xl text-[#4a90e2]" />
+                <h1 className="text-4xl font-black text-gray-800">{selectedProduct.name}</h1>
               </div>
               
-              <div className="space-y-4">
-                <div className="flex items-start space-x-3">
-                  <div className="p-2 bg-[#e6f0ff] rounded border border-[#4a90e2] shadow-[2px_2px_0px_0px_rgba(74,144,226,0.2)]">
-                    <BiCalendar className="text-xl text-[#4a90e2]" />
+              <div className="space-y-6">
+                <div className="flex items-start space-x-4">
+                  <div className="p-3 bg-[#e6f0ff] border-4 border-[#4a90e2] shadow-[4px_4px_0px_0px_rgba(74,144,226,0.3)]">
+                    <BiCalendar className="text-2xl text-[#4a90e2]" />
                   </div>
                   <div>
-                    <p className="font-semibold text-gray-700 flex items-center gap-2">
-                      <BiTime className="text-gray-500" />
+                    <p className="font-black text-gray-800 text-lg flex items-center gap-2">
+                      <BiTime className="text-gray-600" />
                       Tanggal & Waktu
                     </p>
-                    <p className="text-gray-600">
+                    <p className="text-gray-700 font-bold text-base">
                       {selectedProduct.event_date ? new Date(selectedProduct.event_date).toLocaleDateString('id-ID', {
                         weekday: 'long',
                         year: 'numeric',
@@ -735,7 +751,7 @@ const ConcertPage = () => {
                       }) : 'Belum ditentukan'}
                     </p>
                     {selectedProduct.event_date && (
-                      <p className="text-gray-600 font-medium">
+                      <p className="text-gray-700 font-bold">
                         {new Date(selectedProduct.event_date).toLocaleTimeString('id-ID', {
                           hour: '2-digit',
                           minute: '2-digit'
@@ -745,16 +761,16 @@ const ConcertPage = () => {
                   </div>
                 </div>
 
-                <div className="flex items-start space-x-3">
-                  <div className="p-2 bg-[#e6f0ff] rounded border border-[#4a90e2] shadow-[2px_2px_0px_0px_rgba(74,144,226,0.2)]">
-                    <BiMap className="text-xl text-[#4a90e2]" />
+                <div className="flex items-start space-x-4">
+                  <div className="p-3 bg-[#e6f0ff] border-4 border-[#4a90e2] shadow-[4px_4px_0px_0px_rgba(74,144,226,0.3)]">
+                    <BiMap className="text-2xl text-[#4a90e2]" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-semibold text-gray-700">Lokasi</p>
-                    <p className="text-gray-600">{selectedProduct.event_location || 'Belum ditentukan'}</p>
+                    <p className="font-black text-gray-800 text-lg">Lokasi</p>
+                    <p className="text-gray-700 font-bold">{selectedProduct.event_location || 'Belum ditentukan'}</p>
                     {selectedProduct.location_description && (
-                      <p className="text-gray-500 text-sm mt-1 flex items-center gap-1">
-                        <BiInfoCircle className="text-gray-400" />
+                      <p className="text-gray-600 font-medium text-sm mt-2 flex items-center gap-1">
+                        <BiInfoCircle className="text-gray-500" />
                         {selectedProduct.location_description}
                       </p>
                     )}
@@ -763,9 +779,9 @@ const ConcertPage = () => {
                         href={selectedProduct.maps_link}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 mt-2 px-4 py-2 bg-[#e6f0ff] text-[#4a90e2] rounded border border-[#4a90e2] shadow-[2px_2px_0px_0px_rgba(74,144,226,0.2)] hover:bg-[#d4e4ff] transition-colors font-medium"
+                        className="inline-flex items-center gap-3 mt-4 px-6 py-3 bg-[#e6f0ff] text-[#4a90e2] font-bold text-base border-4 border-[#4a90e2] shadow-[6px_6px_0px_0px_rgba(74,144,226,0.3)] hover:translate-x-1 hover:translate-y-1 hover:shadow-[4px_4px_0px_0px_rgba(74,144,226,0.3)] transition-all duration-200"
                       >
-                        <BiMap className="text-lg" />
+                        <BiMap className="text-xl" />
                         <span>Lihat Melalui Google Maps</span>
                       </a>
                     )}
@@ -773,13 +789,13 @@ const ConcertPage = () => {
                 </div>
 
                 {selectedProduct.description && (
-                  <div className="flex items-start space-x-3">
-                    <div className="p-2 bg-[#e6f0ff] rounded border border-[#4a90e2] shadow-[2px_2px_0px_0px_rgba(74,144,226,0.2)]">
-                      <BiInfoCircle className="text-xl text-[#4a90e2]" />
+                  <div className="flex items-start space-x-4">
+                    <div className="p-3 bg-[#e6f0ff] border-4 border-[#4a90e2] shadow-[4px_4px_0px_0px_rgba(74,144,226,0.3)]">
+                      <BiInfoCircle className="text-2xl text-[#4a90e2]" />
                     </div>
                     <div>
-                      <p className="font-semibold text-gray-700">Deskripsi Event</p>
-                      <p className="text-gray-600">{selectedProduct.description}</p>
+                      <p className="font-black text-gray-800 text-lg">Deskripsi Event</p>
+                      <p className="text-gray-700 font-medium">{selectedProduct.description}</p>
                     </div>
                   </div>
                 )}
@@ -787,22 +803,22 @@ const ConcertPage = () => {
             </div>
           </div>
 
-          {/* Right Column - Ticket Purchase dengan Icon */}
+          {/* Right Column - Ticket Purchase dengan Icon dan Neo Brutalizm */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.15)] p-6 sticky top-24">
-              <div className="flex items-center gap-2 mb-4">
-                <BiPurchaseTag className="text-2xl text-[#4a90e2]" />
-                <h2 className="text-xl font-bold text-gray-800">Beli Tiket</h2>
+            <div className="bg-white border-4 border-gray-800 shadow-[12px_12px_0px_0px_rgba(0,0,0,0.3)] p-8 sticky top-24">
+              <div className="flex items-center gap-3 mb-6">
+                <BiPurchaseTag className="text-3xl text-[#4a90e2]" />
+                <h2 className="text-2xl font-black text-gray-800">Beli Tiket</h2>
               </div>
 
-              {/* Ticket Type Selection dengan Icon */}
+              {/* Ticket Type Selection dengan Icon dan Neo Brutalizm */}
               {selectedProduct.ticket_types && selectedProduct.ticket_types.length > 0 ? (
                 <div className="mb-6">
-                  <p className="text-sm font-medium text-gray-600 mb-2 flex items-center gap-1">
-                    <BiPackage className="text-gray-500" />
-                    Pilih Tipe Tiket
+                  <p className="text-sm font-black text-gray-700 mb-3 flex items-center gap-2">
+                    <BiPackage className="text-gray-600 text-lg" />
+                    PILIH TIPE TIKET
                   </p>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {selectedProduct.ticket_types.map((type, index) => {
                       const isSelected = selectedTicketType?.name === type.name
                       const isOutOfStock = type.stock === 0
@@ -811,35 +827,35 @@ const ConcertPage = () => {
                           key={index}
                           onClick={() => !isOutOfStock && handleTicketTypeChange(type)}
                           disabled={isOutOfStock}
-                          className={`w-full p-4 rounded text-left transition-all border-2 flex items-start gap-3 ${
+                          className={`w-full p-5 text-left transition-all border-4 flex items-start gap-4 ${
                             isSelected
-                              ? 'bg-[#e6f0ff] border-[#4a90e2] shadow-[4px_4px_0px_0px_rgba(74,144,226,0.3)]'
+                              ? 'bg-[#e6f0ff] border-[#4a90e2] shadow-[6px_6px_0px_0px_rgba(74,144,226,0.3)]'
                               : isOutOfStock
-                              ? 'bg-gray-100 border-gray-200 opacity-50 cursor-not-allowed'
-                              : 'bg-white border-gray-200 hover:border-[#4a90e2] hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]'
+                              ? 'bg-gray-100 border-gray-400 opacity-60 cursor-not-allowed'
+                              : 'bg-white border-gray-800 hover:border-[#4a90e2] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.2)]'
                           }`}
                         >
-                          <BiPurchaseTag className={`text-2xl ${isSelected ? 'text-[#4a90e2]' : 'text-gray-500'}`} />
+                          <BiPurchaseTag className={`text-3xl ${isSelected ? 'text-[#4a90e2]' : 'text-gray-500'}`} />
                           <div className="flex-1">
                             <div className="flex justify-between items-center">
-                              <p className={`font-medium ${isSelected ? 'text-[#4a90e2]' : 'text-gray-800'}`}>
+                              <p className={`font-black text-lg ${isSelected ? 'text-[#4a90e2]' : 'text-gray-800'}`}>
                                 {type.name}
                               </p>
-                              <p className={`font-bold ${isSelected ? 'text-[#4a90e2]' : 'text-gray-800'}`}>
+                              <p className={`font-black text-xl ${isSelected ? 'text-[#4a90e2]' : 'text-gray-800'}`}>
                                 {formatRupiah(type.price)}
                               </p>
                             </div>
                             {type.description && (
-                              <p className="text-xs text-gray-500 mt-1">{type.description}</p>
+                              <p className="text-sm font-bold text-gray-600 mt-1">{type.description}</p>
                             )}
-                            <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                            <p className="text-sm font-black text-gray-500 mt-2 flex items-center gap-1">
                               <BiPackage className="text-gray-400" />
                               Stok: {type.stock}
                             </p>
                             {isOutOfStock && (
-                              <p className="text-xs text-red-500 mt-2 font-medium flex items-center gap-1">
+                              <p className="text-sm text-red-600 mt-2 font-black flex items-center gap-1">
                                 <BiError />
-                                Tiket telah habis
+                                TIKET HABIS
                               </p>
                             )}
                           </div>
@@ -849,99 +865,99 @@ const ConcertPage = () => {
                   </div>
                 </div>
               ) : (
-                <div className="mb-6 p-4 bg-yellow-50 rounded border-2 border-yellow-200 flex items-center gap-3">
-                  <BiError className="text-yellow-600 text-xl" />
-                  <p className="text-sm text-yellow-700 font-medium">Belum ada tipe tiket tersedia</p>
+                <div className="mb-6 p-5 bg-yellow-100 border-4 border-yellow-600 flex items-center gap-4 shadow-[6px_6px_0px_0px_rgba(202,138,4,0.3)]">
+                  <BiError className="text-yellow-600 text-3xl" />
+                  <p className="text-base text-yellow-700 font-black">BELUM ADA TIPE TIKET</p>
                 </div>
               )}
 
-              {/* Quantity Selector dengan Icon */}
+              {/* Quantity Selector dengan Icon dan Neo Brutalizm */}
               {selectedTicketType && (
                 <div className="mb-6">
-                  <p className="text-sm font-medium text-gray-600 mb-2 flex items-center gap-1">
-                    <BiPlus className="text-gray-500" />
-                    Jumlah Tiket
+                  <p className="text-sm font-black text-gray-700 mb-3 flex items-center gap-2">
+                    <BiPlus className="text-gray-600 text-lg" />
+                    JUMLAH TIKET
                   </p>
                   <div className="flex items-center space-x-3">
                     <button
                       onClick={() => handleQuantityChange('minus')}
                       disabled={quantity === 1}
-                      className="w-10 h-10 rounded border-2 border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]"
+                      className="w-14 h-14 border-4 border-gray-800 flex items-center justify-center text-gray-800 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)] text-2xl font-black"
                     >
                       <BiMinus />
                     </button>
-                    <span className="w-12 text-center font-bold text-lg text-gray-800">{quantity}</span>
+                    <span className="w-16 text-center font-black text-2xl text-gray-800">{quantity}</span>
                     <button
                       onClick={() => handleQuantityChange('add')}
                       disabled={quantity >= selectedTicketType.stock}
-                      className="w-10 h-10 rounded border-2 border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]"
+                      className="w-14 h-14 border-4 border-gray-800 flex items-center justify-center text-gray-800 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)] text-2xl font-black"
                     >
                       <BiPlus />
                     </button>
-                    <span className="text-sm font-medium text-gray-600 ml-2 flex items-center gap-1">
-                      <BiPackage className="text-gray-500" />
+                    <span className="text-sm font-black text-gray-700 ml-2 flex items-center gap-1">
+                      <BiPackage className="text-gray-600 text-lg" />
                       Stok: {selectedTicketType.stock}
                     </span>
                   </div>
                   {selectedTicketType.stock === 0 && (
-                    <p className="text-red-500 text-sm mt-2 font-medium flex items-center gap-1">
+                    <p className="text-red-600 text-sm mt-3 font-black flex items-center gap-1">
                       <BiError />
-                      Tiket telah habis
+                      TIKET TELAH HABIS
                     </p>
                   )}
                 </div>
               )}
 
-              {/* Promo Code dengan Icon */}
+              {/* Promo Code dengan Icon dan Neo Brutalizm */}
               <div className="mb-6">
                 <button
                   onClick={() => setShowPromoInput(!showPromoInput)}
-                  className="text-[#4a90e2] hover:text-[#357abd] flex items-center gap-2 text-sm font-medium"
+                  className="text-[#4a90e2] hover:text-[#357abd] flex items-center gap-2 text-base font-black"
                 >
-                  <BiGift className="text-lg" />
+                  <BiGift className="text-2xl" />
                   <span>Gunakan Kode Promo</span>
                 </button>
 
                 {showPromoInput && (
-                  <div className="mt-3 space-y-2">
-                    <div className="flex space-x-2">
+                  <div className="mt-4 space-y-3">
+                    <div className="flex space-x-3">
                       <input
                         type="text"
                         value={promoCode}
                         onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-                        placeholder="Masukkan kode promo"
-                        className="flex-1 px-3 py-2 border-2 border-gray-200 rounded focus:outline-none focus:border-[#4a90e2] bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]"
+                        placeholder="MASUKKAN KODE PROMO"
+                        className="flex-1 px-4 py-3 border-4 border-gray-800 focus:outline-none focus:border-[#4a90e2] bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)] font-bold text-gray-800"
                       />
                       <button
                         onClick={validatePromo}
                         disabled={promoLoading}
-                        className="px-4 py-2 bg-[#4a90e2] text-white rounded hover:bg-[#357abd] transition-colors disabled:opacity-50 font-medium border-2 border-[#357abd] shadow-[2px_2px_0px_0px_rgba(0,0,0,0.15)] flex items-center gap-1"
+                        className="px-6 py-3 bg-[#4a90e2] text-white font-black hover:bg-[#357abd] transition-colors disabled:opacity-50 border-4 border-[#357abd] shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)] flex items-center gap-2 text-base"
                       >
                         {promoLoading ? (
                           <>
-                            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                            <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
                             <span>...</span>
                           </>
                         ) : (
                           <>
-                            <BiCheck />
+                            <BiCheck className="text-xl" />
                             <span>Gunakan</span>
                           </>
                         )}
                       </button>
                     </div>
                     {promoError && (
-                      <p className="text-red-500 text-sm flex items-center gap-1 font-medium">
+                      <p className="text-red-600 text-sm flex items-center gap-1 font-black">
                         <BiError />
                         <span>{promoError}</span>
                       </p>
                     )}
                     {promoApplied && (
-                      <div className="p-3 bg-green-50 border-2 border-green-200 rounded flex items-start gap-3">
-                        <BiCheckCircle className="text-green-600 text-xl flex-shrink-0 mt-0.5" />
+                      <div className="p-4 bg-green-100 border-4 border-green-600 flex items-start gap-4 shadow-[6px_6px_0px_0px_rgba(22,163,74,0.3)]">
+                        <BiCheckCircle className="text-green-600 text-3xl flex-shrink-0" />
                         <div>
-                          <p className="text-green-700 font-medium">Promo berhasil diterapkan!</p>
-                          <p className="text-sm text-green-600 mt-1 font-medium">
+                          <p className="text-green-700 font-black">PROMO BERHASIL DITERAPKAN!</p>
+                          <p className="text-base text-green-600 mt-1 font-black">
                             {promoApplied.discount_type === 'percentage' 
                               ? `Diskon ${promoApplied.discount_value}%`
                               : `Diskon ${formatRupiah(promoApplied.discount_value)}`
@@ -954,30 +970,30 @@ const ConcertPage = () => {
                 )}
               </div>
 
-              {/* Total dengan Icon */}
+              {/* Total dengan Icon dan Neo Brutalizm */}
               {selectedTicketType && (
-                <div className="border-t-2 border-gray-200 pt-4 mb-6">
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600 flex items-center gap-1">
-                        <BiMoney className="text-gray-500" />
-                        Subtotal
+                <div className="border-t-4 border-gray-800 pt-6 mb-6">
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-base">
+                      <span className="text-gray-700 font-black flex items-center gap-2">
+                        <BiMoney className="text-gray-600 text-xl" />
+                        SUBTOTAL
                       </span>
-                      <span className="text-gray-800 font-medium">{formatRupiah(subtotal)}</span>
+                      <span className="text-gray-800 font-black text-lg">{formatRupiah(subtotal)}</span>
                     </div>
                     {promoApplied && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600 flex items-center gap-1">
-                          <BiGift className="text-green-500" />
-                          Diskon
+                      <div className="flex justify-between text-base">
+                        <span className="text-gray-700 font-black flex items-center gap-2">
+                          <BiGift className="text-green-600 text-xl" />
+                          DISKON
                         </span>
-                        <span className="text-green-600 font-medium">- {formatRupiah(discount)}</span>
+                        <span className="text-green-600 font-black text-lg">- {formatRupiah(discount)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between font-bold text-lg pt-2 border-t-2 border-gray-200">
-                      <span className="flex items-center gap-1">
+                    <div className="flex justify-between font-black text-2xl pt-4 border-t-4 border-gray-800">
+                      <span className="flex items-center gap-2">
                         <BiWallet className="text-[#4a90e2]" />
-                        Total
+                        TOTAL
                       </span>
                       <span className="text-[#4a90e2]">{formatRupiah(total)}</span>
                     </div>
@@ -985,25 +1001,25 @@ const ConcertPage = () => {
                 </div>
               )}
 
-              {/* Buy Button dengan Icon Transparan */}
+              {/* Buy Button dengan Icon Transparan dan Neo Brutalizm */}
               <div className="relative overflow-hidden">
-                {/* Decorative Icons di dalam tombol */}
+                {/* Decorative Icons di dalam tombol - Lebih terlihat */}
                 <div className="absolute inset-0 pointer-events-none">
                   {buttonIconPositions.map((pos, i) => {
                     const IconComponent = pos.icon
                     return (
                       <div
                         key={i}
-                        className="absolute text-white/30"
+                        className="absolute text-white/40"
                         style={{
                           top: pos.top,
                           left: pos.left,
                           transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                          opacity: pos.opacity,
+                          opacity: pos.opacity * 1.5,
                           zIndex: 1
                         }}
                       >
-                        <IconComponent size={20} />
+                        <IconComponent size={24} />
                       </div>
                     )
                   })}
@@ -1012,27 +1028,27 @@ const ConcertPage = () => {
                 <button
                   onClick={handleBuyNow}
                   disabled={!selectedTicketType || selectedTicketType.stock === 0 || quantity === 0 || !user}
-                  className="relative z-10 w-full py-4 bg-[#4a90e2] text-white rounded font-bold hover:bg-[#357abd] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed border-2 border-[#357abd] shadow-[6px_6px_0px_0px_rgba(0,0,0,0.2)] flex items-center justify-center gap-2 overflow-hidden"
+                  className="relative z-10 w-full py-5 bg-[#4a90e2] text-white font-black text-xl hover:bg-[#357abd] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed border-4 border-[#357abd] shadow-[8px_8px_0px_0px_rgba(0,0,0,0.3)] hover:translate-x-1 hover:translate-y-1 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)] flex items-center justify-center gap-3 overflow-hidden"
                 >
                   {!user ? (
                     <>
-                      <BiUser className="relative z-20" />
-                      <span className="relative z-20">Login untuk Membeli</span>
+                      <BiUser className="relative z-20 text-2xl" />
+                      <span className="relative z-20">LOGIN UNTUK MEMBELI</span>
                     </>
                   ) : !selectedTicketType ? (
                     <>
-                      <BiPurchaseTag className="relative z-20" />
-                      <span className="relative z-20">Pilih Tipe Tiket</span>
+                      <BiPurchaseTag className="relative z-20 text-2xl" />
+                      <span className="relative z-20">PILIH TIPE TIKET</span>
                     </>
                   ) : selectedTicketType.stock === 0 ? (
                     <>
-                      <BiError className="relative z-20" />
-                      <span className="relative z-20">Tiket Habis</span>
+                      <BiError className="relative z-20 text-2xl" />
+                      <span className="relative z-20">TIKET HABIS</span>
                     </>
                   ) : (
                     <>
-                      <BiCreditCard className="relative z-20" />
-                      <span className="relative z-20">Beli Tiket</span>
+                      <BiCreditCard className="relative z-20 text-2xl" />
+                      <span className="relative z-20">BELI TIKET</span>
                     </>
                   )}
                 </button>
@@ -1042,12 +1058,12 @@ const ConcertPage = () => {
         </div>
       </div>
 
-      {/* Buyer Form Modal dengan Icon Transparan */}
+      {/* Buyer Form Modal dengan Icon Transparan dan Neo Brutalizm */}
       {showBuyerForm && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded shadow-[12px_12px_0px_0px_rgba(0,0,0,0.2)] max-w-2xl w-full max-h-[90vh] overflow-y-auto border-2 border-gray-200 relative">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white border-4 border-gray-800 shadow-[20px_20px_0px_0px_rgba(0,0,0,0.4)] max-w-2xl w-full max-h-[90vh] overflow-y-auto relative">
             
-            {/* Decorative Icons di dalam popup */}
+            {/* Decorative Icons di dalam popup - Lebih terlihat */}
             <div className="absolute inset-0 pointer-events-none overflow-hidden">
               {popupIconPositions.map((pos, i) => {
                 const IconComponent = pos.icon
@@ -1059,135 +1075,135 @@ const ConcertPage = () => {
                       top: pos.top,
                       left: pos.left,
                       transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                      opacity: pos.opacity * 0.8,
+                      opacity: pos.opacity * 1.2,
                       zIndex: 0
                     }}
                   >
-                    <IconComponent size={24} />
+                    <IconComponent size={30} />
                   </div>
                 )
               })}
             </div>
             
-            <div className="relative z-10 p-6">
-              <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center gap-2">
-                  <BiUser className="text-2xl text-[#4a90e2]" />
-                  <h2 className="text-2xl font-bold text-gray-800">Data Pembeli</h2>
+            <div className="relative z-10 p-8">
+              <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-3">
+                  <BiUser className="text-3xl text-[#4a90e2]" />
+                  <h2 className="text-3xl font-black text-gray-800">DATA PEMBELI</h2>
                 </div>
                 <button
                   onClick={() => setShowBuyerForm(false)}
-                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                  className="p-3 text-gray-600 hover:text-gray-800 hover:bg-gray-100 border-4 border-gray-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)] transition-colors"
                 >
-                  <BiX className="text-xl" />
+                  <BiX className="text-2xl" />
                 </button>
               </div>
 
-              <div className="mb-4 p-3 bg-[#e6f0ff] border-2 border-[#4a90e2] rounded flex items-center gap-3">
-                <BiInfoCircle className="text-[#4a90e2] text-xl flex-shrink-0" />
-                <p className="text-sm text-[#4a90e2] font-medium">
-                  Setiap pembeli akan mendapatkan QR code unik untuk tiketnya.
+              <div className="mb-6 p-4 bg-[#e6f0ff] border-4 border-[#4a90e2] flex items-center gap-4 shadow-[6px_6px_0px_0px_rgba(74,144,226,0.3)]">
+                <BiInfoCircle className="text-[#4a90e2] text-2xl flex-shrink-0" />
+                <p className="text-base text-[#4a90e2] font-black">
+                  SETIAP PEMBELI AKAN MENDAPATKAN QR CODE UNIK UNTUK TIKETNYA
                 </p>
               </div>
 
               {buyers.map((buyer, index) => (
-                <div key={index} className="mb-6 p-4 border-2 border-gray-200 rounded bg-gray-50 relative">
+                <div key={index} className="mb-8 p-6 border-4 border-gray-800 bg-gray-50 relative shadow-[6px_6px_0px_0px_rgba(0,0,0,0.2)]">
                   {/* Decorative icons kecil di setiap section pembeli */}
                   <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                    {[...Array(5)].map((_, j) => {
+                    {[...Array(8)].map((_, j) => {
                       const randomIcon = decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
                       const IconComponent = randomIcon
                       return (
                         <div
                           key={j}
-                          className="absolute text-gray-300"
+                          className="absolute text-gray-400"
                           style={{
                             top: `${Math.random() * 100}%`,
                             left: `${Math.random() * 100}%`,
-                            transform: `rotate(${Math.random() * 360}deg) scale(${0.3 + Math.random() * 0.4})`,
-                            opacity: 0.1,
+                            transform: `rotate(${Math.random() * 360}deg) scale(${0.4 + Math.random() * 0.6})`,
+                            opacity: 0.15,
                             zIndex: 0
                           }}
                         >
-                          <IconComponent size={16} />
+                          <IconComponent size={20} />
                         </div>
                       )
                     })}
                   </div>
                   
-                  <div className="flex justify-between items-center mb-3 relative z-10">
-                    <h3 className="font-bold text-gray-700 flex items-center gap-2">
+                  <div className="flex justify-between items-center mb-4 relative z-10">
+                    <h3 className="font-black text-gray-800 text-xl flex items-center gap-2">
                       <BiUser className="text-[#4a90e2]" />
-                      Pembeli {index + 1}
+                      PEMBELI {index + 1}
                     </h3>
                     {buyers.length > 1 && (
                       <button
                         onClick={() => handleRemoveBuyer(index)}
-                        className="text-red-500 hover:text-red-600 text-sm font-medium flex items-center gap-1"
+                        className="text-red-600 hover:text-red-700 font-black text-sm flex items-center gap-1 border-4 border-red-600 px-3 py-1 bg-white shadow-[4px_4px_0px_0px_rgba(220,38,38,0.3)]"
                       >
-                        <BiX />
-                        <span>Hapus</span>
+                        <BiX className="text-lg" />
+                        <span>HAPUS</span>
                       </button>
                     )}
                   </div>
 
-                  <div className="space-y-3 relative z-10">
+                  <div className="space-y-4 relative z-10">
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1 flex items-center gap-1">
-                        <BiUser className="text-gray-500" />
-                        Nama Lengkap <span className="text-red-500">*</span>
+                      <label className="block text-sm font-black text-gray-700 mb-2 flex items-center gap-1">
+                        <BiUser className="text-gray-600" />
+                        NAMA LENGKAP <span className="text-red-600">*</span>
                       </label>
                       <div className="relative">
-                        <BiUser className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                        <BiUser className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 text-xl" />
                         <input
                           type="text"
                           value={buyer.name}
                           onChange={(e) => handleBuyerChange(index, 'name', e.target.value)}
                           placeholder="Masukkan nama lengkap"
-                          className="w-full pl-10 pr-3 py-2 border-2 border-gray-200 rounded focus:outline-none focus:border-[#4a90e2] bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]"
+                          className="w-full pl-12 pr-4 py-3 border-4 border-gray-800 focus:outline-none focus:border-[#4a90e2] bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] font-bold text-gray-800"
                           required
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1 flex items-center gap-1">
-                        <BiIdCard className="text-gray-500" />
-                        NIK <span className="text-red-500">*</span> (16 digit)
+                      <label className="block text-sm font-black text-gray-700 mb-2 flex items-center gap-1">
+                        <BiIdCard className="text-gray-600" />
+                        NIK <span className="text-red-600">*</span> (16 DIGIT)
                       </label>
                       <div className="relative">
-                        <BiIdCard className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                        <BiIdCard className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 text-xl" />
                         <input
                           type="text"
                           value={buyer.nik}
                           onChange={(e) => handleBuyerChange(index, 'nik', e.target.value.replace(/\D/g, '').slice(0, 16))}
                           placeholder="16 digit NIK"
                           maxLength="16"
-                          className="w-full pl-10 pr-3 py-2 border-2 border-gray-200 rounded focus:outline-none focus:border-[#4a90e2] bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]"
+                          className="w-full pl-12 pr-4 py-3 border-4 border-gray-800 focus:outline-none focus:border-[#4a90e2] bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] font-bold text-gray-800"
                           required
                         />
                       </div>
                       {buyer.nik && buyer.nik.length < 16 && (
-                        <p className="text-xs text-red-500 mt-1 font-medium flex items-center gap-1">
+                        <p className="text-xs text-red-600 mt-2 font-black flex items-center gap-1">
                           <BiError />
-                          NIK harus 16 digit
+                          NIK HARUS 16 DIGIT
                         </p>
                       )}
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1 flex items-center gap-1">
-                        <BiHome className="text-gray-500" />
-                        Alamat <span className="text-red-500">*</span>
+                      <label className="block text-sm font-black text-gray-700 mb-2 flex items-center gap-1">
+                        <BiHome className="text-gray-600" />
+                        ALAMAT <span className="text-red-600">*</span>
                       </label>
                       <div className="relative">
-                        <BiHome className="absolute left-3 top-3 text-gray-400" />
+                        <BiHome className="absolute left-4 top-4 text-gray-500 text-xl" />
                         <textarea
                           value={buyer.address}
                           onChange={(e) => handleBuyerChange(index, 'address', e.target.value)}
                           placeholder="Masukkan alamat lengkap"
                           rows="2"
-                          className="w-full pl-10 pr-3 py-2 border-2 border-gray-200 rounded focus:outline-none focus:border-[#4a90e2] bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]"
+                          className="w-full pl-12 pr-4 py-3 border-4 border-gray-800 focus:outline-none focus:border-[#4a90e2] bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] font-bold text-gray-800"
                           required
                         />
                       </div>
@@ -1199,48 +1215,95 @@ const ConcertPage = () => {
               {selectedTicketType && quantity > 1 && buyers.length < quantity && (
                 <button
                   onClick={handleAddBuyer}
-                  className="w-full mb-4 py-3 border-2 border-dashed border-[#4a90e2] text-[#4a90e2] rounded hover:bg-[#e6f0ff] transition-colors font-medium flex items-center justify-center gap-2"
+                  className="w-full mb-6 py-4 border-4 border-dashed border-[#4a90e2] text-[#4a90e2] font-black text-lg hover:bg-[#e6f0ff] transition-colors shadow-[6px_6px_0px_0px_rgba(74,144,226,0.3)] flex items-center justify-center gap-3"
                 >
-                  <BiPlus />
-                  <span>Tambah Pembeli</span>
+                  <BiPlus className="text-2xl" />
+                  <span>TAMBAH PEMBELI</span>
                 </button>
               )}
 
               {error && (
-                <div className="mb-4 p-4 bg-red-50 border-2 border-red-200 rounded flex items-start gap-3">
-                  <BiError className="text-red-500 text-xl mt-0.5" />
+                <div className="mb-6 p-5 bg-red-100 border-4 border-red-600 flex items-start gap-4 shadow-[6px_6px_0px_0px_rgba(220,38,38,0.3)]">
+                  <BiError className="text-red-600 text-3xl mt-1" />
                   <div>
-                    <p className="font-medium text-red-800">Gagal membuat pesanan</p>
-                    <p className="text-sm text-red-600 mt-1">{error}</p>
+                    <p className="font-black text-red-800 text-lg">GAGAL MEMBUAT PESANAN</p>
+                    <p className="text-base text-red-700 font-bold mt-1">{error}</p>
                   </div>
                 </div>
               )}
 
-              <div className="flex space-x-3">
-                <button
-                  onClick={() => setShowBuyerForm(false)}
-                  className="flex-1 py-3 border-2 border-gray-200 text-gray-700 rounded hover:bg-gray-50 transition-colors font-medium shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] flex items-center justify-center gap-2"
-                >
-                  <BiX />
-                  <span>Batal</span>
-                </button>
-                <button
-                  onClick={createOrder}
-                  disabled={loading}
-                  className="flex-1 py-3 bg-[#4a90e2] text-white rounded font-bold hover:bg-[#357abd] transition-colors disabled:opacity-50 border-2 border-[#357abd] shadow-[4px_4px_0px_0px_rgba(0,0,0,0.15)] flex items-center justify-center gap-2"
-                >
-                  {loading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                      <span>Memproses...</span>
-                    </>
-                  ) : (
-                    <>
-                      <BiCheck />
-                      <span>Simpan & Lanjut</span>
-                    </>
-                  )}
-                </button>
+              <div className="flex space-x-4 mt-8">
+                {/* Tombol Batal dengan Icon Transparan */}
+                <div className="flex-1 relative overflow-hidden">
+                  <div className="absolute inset-0 pointer-events-none">
+                    {popupButtonIconPositions.slice(0, 7).map((pos, i) => {
+                      const IconComponent = pos.icon
+                      return (
+                        <div
+                          key={i}
+                          className="absolute text-gray-500/30"
+                          style={{
+                            top: pos.top,
+                            left: pos.left,
+                            transform: `rotate(${pos.rotate}) scale(${pos.scale * 0.8})`,
+                            opacity: 0.3,
+                            zIndex: 1
+                          }}
+                        >
+                          <IconComponent size={20} />
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <button
+                    onClick={() => setShowBuyerForm(false)}
+                    className="relative z-10 w-full py-4 border-4 border-gray-800 text-gray-800 font-black text-lg hover:bg-gray-100 transition-colors shadow-[6px_6px_0px_0px_rgba(0,0,0,0.3)] flex items-center justify-center gap-2 bg-white"
+                  >
+                    <BiX className="text-2xl" />
+                    <span>BATAL</span>
+                  </button>
+                </div>
+
+                {/* Tombol Simpan dengan Icon Transparan */}
+                <div className="flex-1 relative overflow-hidden">
+                  <div className="absolute inset-0 pointer-events-none">
+                    {popupButtonIconPositions.slice(7, 15).map((pos, i) => {
+                      const IconComponent = pos.icon
+                      return (
+                        <div
+                          key={i}
+                          className="absolute text-white/40"
+                          style={{
+                            top: pos.top,
+                            left: pos.left,
+                            transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
+                            opacity: 0.3,
+                            zIndex: 1
+                          }}
+                        >
+                          <IconComponent size={24} />
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <button
+                    onClick={createOrder}
+                    disabled={loading}
+                    className="relative z-10 w-full py-4 bg-[#4a90e2] text-white font-black text-lg hover:bg-[#357abd] transition-colors disabled:opacity-50 border-4 border-[#357abd] shadow-[8px_8px_0px_0px_rgba(0,0,0,0.3)] flex items-center justify-center gap-2"
+                  >
+                    {loading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-6 w-6 border-2 border-white border-t-transparent"></div>
+                        <span>MEMPROSES...</span>
+                      </>
+                    ) : (
+                      <>
+                        <BiCheck className="text-2xl" />
+                        <span>SIMPAN & LANJUT</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
