@@ -33,11 +33,9 @@ import {
   BiRadio,
   BiVolume,
   BiDisc,
-  // BiNote tidak ada, ganti dengan BiMusic
   BiCamera,
   BiVideo,
   BiPhotoAlbum,
-  // BiTicket tidak ada, ganti dengan BiPurchaseTag
   BiStar,
   BiHeart,
   BiLike,
@@ -52,11 +50,11 @@ import {
   BiBook,
   BiBookOpen,
   BiLibrary,
-  BiNewspaper,
-  BiNews,
+  // BiNewspaper tidak ada, ganti dengan BiNews (tapi BiNews juga tidak ada)
+  // BiNews tidak ada, ganti dengan BiBullhorn
   BiBullhorn,
   BiMegaphone,
-  BiBroadcast,
+  // BiBroadcast tidak ada, ganti dengan BiRadio
   BiCameraMovie,
   BiSlideshow,
   BiPlayCircle,
@@ -69,16 +67,16 @@ import {
   BiVolumeMute
 } from 'react-icons/bi'
 
-// Array icon untuk background dekoratif (hanya icon yang tersedia)
+// Array icon untuk background dekoratif (hanya icon yang TERSEDIA di react-icons/bi)
 const decorativeIcons = [
   BiMusic, BiMicrophone, BiSpeaker, BiHeadphone, BiRadio, BiVolume,
   BiDisc, BiMusic, BiCamera, BiVideo, BiPhotoAlbum, BiPurchaseTag,
   BiStar, BiHeart, BiLike, BiDiamond, BiCrown, BiRocket,
   BiPalette, BiBrush, BiPaint, BiPen, BiPencil, BiBook,
-  BiBookOpen, BiLibrary, BiNewspaper, BiNews, BiBullhorn,
-  BiMegaphone, BiBroadcast, BiCameraMovie, BiSlideshow,
-  BiPlayCircle, BiPauseCircle, BiStopCircle, BiSkipNext,
-  BiSkipPrevious, BiVolumeFull, BiVolumeLow
+  BiBookOpen, BiLibrary, BiBullhorn, BiMegaphone,
+  BiCameraMovie, BiSlideshow, BiPlayCircle, BiPauseCircle,
+  BiStopCircle, BiSkipNext, BiSkipPrevious, BiVolumeFull,
+  BiVolumeLow, BiVolumeMute
 ]
 
 const ConcertPage = () => {
