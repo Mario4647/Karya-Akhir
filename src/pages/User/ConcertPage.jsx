@@ -61,20 +61,17 @@ import {
   BiSkipPrevious,
   BiCart,
   BiWallet,
-  BiShoppingBag,
-  BiTicket,
-  BiBadgeCheck
+  BiShoppingBag
 } from 'react-icons/bi'
 
-// Array icon untuk background dekoratif di seluruh halaman
+// Array icon untuk background dekoratif - HANYA icon yang TERBUKTI TERSEDIA
 const decorativeIcons = [
   BiMusic, BiMicrophone, BiCamera, BiVideo, BiImage, BiImages, BiPhotoAlbum,
   BiStar, BiHeart, BiLike, BiDiamond, BiCrown, BiRocket,
   BiPalette, BiBrush, BiPaint, BiPen, BiPencil, BiBook,
   BiBookOpen, BiLibrary, BiMessage, BiMessageDetail, BiMessageRounded, BiMessageDots,
   BiVolumeFull, BiVolumeLow, BiVolumeMute, BiPlay, BiPause, BiStop,
-  BiSkipNext, BiSkipPrevious, BiCart, BiWallet, BiPurchaseTag, BiShoppingBag,
-  BiTicket, BiBadgeCheck
+  BiSkipNext, BiSkipPrevious, BiCart, BiWallet, BiShoppingBag, BiPurchaseTag
 ]
 
 const ConcertPage = () => {
@@ -113,7 +110,7 @@ const ConcertPage = () => {
     return positions
   })
 
-  // Generate icon untuk tombol Beli Tiket
+  // Generate icon untuk tombol Beli Tiket - HANYA dari decorativeIcons
   const [buttonIconPositions] = useState(() => {
     const positions = []
     for (let i = 0; i < 15; i++) {
@@ -129,7 +126,7 @@ const ConcertPage = () => {
     return positions
   })
 
-  // Generate icon untuk popup data pembeli
+  // Generate icon untuk popup data pembeli - HANYA dari decorativeIcons
   const [popupIconPositions] = useState(() => {
     const positions = []
     for (let i = 0; i < 20; i++) {
