@@ -60,17 +60,21 @@ import {
   BiSkipNext,
   BiSkipPrevious,
   BiCart,
-  BiWallet
+  BiWallet,
+  BiShoppingBag,
+  BiTicket,
+  BiBadgeCheck
 } from 'react-icons/bi'
 
-// Array icon untuk background dekoratif - HANYA icon yang TERSEDIA
+// Array icon untuk background dekoratif di seluruh halaman
 const decorativeIcons = [
   BiMusic, BiMicrophone, BiCamera, BiVideo, BiImage, BiImages, BiPhotoAlbum,
   BiStar, BiHeart, BiLike, BiDiamond, BiCrown, BiRocket,
   BiPalette, BiBrush, BiPaint, BiPen, BiPencil, BiBook,
   BiBookOpen, BiLibrary, BiMessage, BiMessageDetail, BiMessageRounded, BiMessageDots,
   BiVolumeFull, BiVolumeLow, BiVolumeMute, BiPlay, BiPause, BiStop,
-  BiSkipNext, BiSkipPrevious, BiCart, BiWallet, BiPurchaseTag
+  BiSkipNext, BiSkipPrevious, BiCart, BiWallet, BiPurchaseTag, BiShoppingBag,
+  BiTicket, BiBadgeCheck
 ]
 
 const ConcertPage = () => {
@@ -93,7 +97,7 @@ const ConcertPage = () => {
   const [isLoadingProducts, setIsLoadingProducts] = useState(true)
   const navigate = useNavigate()
 
-  // Generate random positions for decorative icons - opacity lebih tinggi
+  // Generate random positions for decorative icons di background utama
   const [iconPositions] = useState(() => {
     const positions = []
     for (let i = 0; i < 40; i++) {
@@ -102,7 +106,39 @@ const ConcertPage = () => {
         left: `${Math.random() * 100}%`,
         rotate: `${Math.random() * 360}deg`,
         scale: 0.7 + Math.random() * 0.8,
-        opacity: 0.1 + Math.random() * 0.1, // Dinaikkan dari 0.03-0.08 jadi 0.1-0.2
+        opacity: 0.1 + Math.random() * 0.1,
+        icon: decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
+      })
+    }
+    return positions
+  })
+
+  // Generate icon untuk tombol Beli Tiket
+  const [buttonIconPositions] = useState(() => {
+    const positions = []
+    for (let i = 0; i < 15; i++) {
+      positions.push({
+        top: `${Math.random() * 100}%`,
+        left: `${Math.random() * 100}%`,
+        rotate: `${Math.random() * 360}deg`,
+        scale: 0.4 + Math.random() * 0.5,
+        opacity: 0.15 + Math.random() * 0.1,
+        icon: decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
+      })
+    }
+    return positions
+  })
+
+  // Generate icon untuk popup data pembeli
+  const [popupIconPositions] = useState(() => {
+    const positions = []
+    for (let i = 0; i < 20; i++) {
+      positions.push({
+        top: `${Math.random() * 100}%`,
+        left: `${Math.random() * 100}%`,
+        rotate: `${Math.random() * 360}deg`,
+        scale: 0.5 + Math.random() * 0.6,
+        opacity: 0.1 + Math.random() * 0.1,
         icon: decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
       })
     }
@@ -489,7 +525,7 @@ const ConcertPage = () => {
   if (isLoadingProducts) {
     return (
       <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
-        {/* Decorative Icons - Lebih jelas */}
+        {/* Decorative Icons */}
         <div className="absolute inset-0 pointer-events-none">
           {iconPositions.map((pos, i) => {
             const IconComponent = pos.icon
@@ -524,7 +560,7 @@ const ConcertPage = () => {
   if (fetchError) {
     return (
       <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
-        {/* Decorative Icons - Lebih jelas */}
+        {/* Decorative Icons */}
         <div className="absolute inset-0 pointer-events-none">
           {iconPositions.map((pos, i) => {
             const IconComponent = pos.icon
@@ -567,7 +603,7 @@ const ConcertPage = () => {
   if (!selectedProduct || products.length === 0) {
     return (
       <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
-        {/* Decorative Icons - Lebih jelas */}
+        {/* Decorative Icons */}
         <div className="absolute inset-0 pointer-events-none">
           {iconPositions.map((pos, i) => {
             const IconComponent = pos.icon
@@ -602,7 +638,7 @@ const ConcertPage = () => {
 
   return (
     <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
-      {/* Decorative Icons Background - Lebih jelas */}
+      {/* Decorative Icons Background Utama */}
       <div className="absolute inset-0 pointer-events-none">
         {iconPositions.map((pos, i) => {
           const IconComponent = pos.icon
@@ -952,44 +988,91 @@ const ConcertPage = () => {
                 </div>
               )}
 
-              {/* Buy Button dengan Icon */}
-              <button
-                onClick={handleBuyNow}
-                disabled={!selectedTicketType || selectedTicketType.stock === 0 || quantity === 0 || !user}
-                className="w-full py-4 bg-[#4a90e2] text-white rounded font-bold hover:bg-[#357abd] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed border-2 border-[#357abd] shadow-[6px_6px_0px_0px_rgba(0,0,0,0.2)] flex items-center justify-center gap-2"
-              >
-                {!user ? (
-                  <>
-                    <BiUser />
-                    <span>Login untuk Membeli</span>
-                  </>
-                ) : !selectedTicketType ? (
-                  <>
-                    <BiPurchaseTag />
-                    <span>Pilih Tipe Tiket</span>
-                  </>
-                ) : selectedTicketType.stock === 0 ? (
-                  <>
-                    <BiError />
-                    <span>Tiket Habis</span>
-                  </>
-                ) : (
-                  <>
-                    <BiCreditCard />
-                    <span>Beli Tiket</span>
-                  </>
-                )}
-              </button>
+              {/* Buy Button dengan Icon Transparan */}
+              <div className="relative overflow-hidden">
+                {/* Decorative Icons di dalam tombol */}
+                <div className="absolute inset-0 pointer-events-none">
+                  {buttonIconPositions.map((pos, i) => {
+                    const IconComponent = pos.icon
+                    return (
+                      <div
+                        key={i}
+                        className="absolute text-white/30"
+                        style={{
+                          top: pos.top,
+                          left: pos.left,
+                          transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
+                          opacity: pos.opacity,
+                          zIndex: 1
+                        }}
+                      >
+                        <IconComponent size={20} />
+                      </div>
+                    )
+                  })}
+                </div>
+                
+                <button
+                  onClick={handleBuyNow}
+                  disabled={!selectedTicketType || selectedTicketType.stock === 0 || quantity === 0 || !user}
+                  className="relative z-10 w-full py-4 bg-[#4a90e2] text-white rounded font-bold hover:bg-[#357abd] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed border-2 border-[#357abd] shadow-[6px_6px_0px_0px_rgba(0,0,0,0.2)] flex items-center justify-center gap-2 overflow-hidden"
+                >
+                  {!user ? (
+                    <>
+                      <BiUser className="relative z-20" />
+                      <span className="relative z-20">Login untuk Membeli</span>
+                    </>
+                  ) : !selectedTicketType ? (
+                    <>
+                      <BiPurchaseTag className="relative z-20" />
+                      <span className="relative z-20">Pilih Tipe Tiket</span>
+                    </>
+                  ) : selectedTicketType.stock === 0 ? (
+                    <>
+                      <BiError className="relative z-20" />
+                      <span className="relative z-20">Tiket Habis</span>
+                    </>
+                  ) : (
+                    <>
+                      <BiCreditCard className="relative z-20" />
+                      <span className="relative z-20">Beli Tiket</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Buyer Form Modal dengan Icon */}
+      {/* Buyer Form Modal dengan Icon Transparan */}
       {showBuyerForm && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded shadow-[12px_12px_0px_0px_rgba(0,0,0,0.2)] max-w-2xl w-full max-h-[90vh] overflow-y-auto border-2 border-gray-200">
-            <div className="p-6">
+          <div className="bg-white rounded shadow-[12px_12px_0px_0px_rgba(0,0,0,0.2)] max-w-2xl w-full max-h-[90vh] overflow-y-auto border-2 border-gray-200 relative">
+            
+            {/* Decorative Icons di dalam popup */}
+            <div className="absolute inset-0 pointer-events-none overflow-hidden">
+              {popupIconPositions.map((pos, i) => {
+                const IconComponent = pos.icon
+                return (
+                  <div
+                    key={i}
+                    className="absolute text-gray-400"
+                    style={{
+                      top: pos.top,
+                      left: pos.left,
+                      transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
+                      opacity: pos.opacity * 0.8,
+                      zIndex: 0
+                    }}
+                  >
+                    <IconComponent size={24} />
+                  </div>
+                )
+              })}
+            </div>
+            
+            <div className="relative z-10 p-6">
               <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center gap-2">
                   <BiUser className="text-2xl text-[#4a90e2]" />
@@ -1011,8 +1094,31 @@ const ConcertPage = () => {
               </div>
 
               {buyers.map((buyer, index) => (
-                <div key={index} className="mb-6 p-4 border-2 border-gray-200 rounded bg-gray-50">
-                  <div className="flex justify-between items-center mb-3">
+                <div key={index} className="mb-6 p-4 border-2 border-gray-200 rounded bg-gray-50 relative">
+                  {/* Decorative icons kecil di setiap section pembeli */}
+                  <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                    {[...Array(5)].map((_, j) => {
+                      const randomIcon = decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
+                      const IconComponent = randomIcon
+                      return (
+                        <div
+                          key={j}
+                          className="absolute text-gray-300"
+                          style={{
+                            top: `${Math.random() * 100}%`,
+                            left: `${Math.random() * 100}%`,
+                            transform: `rotate(${Math.random() * 360}deg) scale(${0.3 + Math.random() * 0.4})`,
+                            opacity: 0.1,
+                            zIndex: 0
+                          }}
+                        >
+                          <IconComponent size={16} />
+                        </div>
+                      )
+                    })}
+                  </div>
+                  
+                  <div className="flex justify-between items-center mb-3 relative z-10">
                     <h3 className="font-bold text-gray-700 flex items-center gap-2">
                       <BiUser className="text-[#4a90e2]" />
                       Pembeli {index + 1}
@@ -1028,7 +1134,7 @@ const ConcertPage = () => {
                     )}
                   </div>
 
-                  <div className="space-y-3">
+                  <div className="space-y-3 relative z-10">
                     <div>
                       <label className="block text-sm font-medium text-gray-600 mb-1 flex items-center gap-1">
                         <BiUser className="text-gray-500" />
