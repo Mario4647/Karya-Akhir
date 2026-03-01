@@ -5,6 +5,42 @@ import { useNavigate } from "react-router-dom";
 import { useDeviceFingerprint } from "../hooks/useDeviceFingerprint";
 import { banService } from "../services/banService";
 import BanPopup from "../components/bans/BanPopup";
+import {
+  BiUser,
+  BiEnvelope,
+  BiLock,
+  BiLogIn,
+  BiUserPlus,
+  BiKey,
+  BiArrowBack,
+  BiCheckCircle,
+  BiErrorCircle,
+  BiMailSend,
+  BiShield,
+  BiMoney,
+  BiMusic,
+  BiMicrophone,
+  BiCamera,
+  BiVideo,
+  BiStar,
+  BiHeart,
+  BiDiamond,
+  BiCrown,
+  BiRocket,
+  BiPalette,
+  BiBrush,
+  BiPaint,
+  BiBook,
+  BiMessage,
+  BiVolumeFull
+} from 'react-icons/bi';
+
+// Array icon untuk background dekoratif
+const decorativeIcons = [
+  BiMusic, BiMicrophone, BiCamera, BiVideo, BiStar, BiHeart,
+  BiDiamond, BiCrown, BiRocket, BiPalette, BiBrush, BiPaint,
+  BiBook, BiMessage, BiVolumeFull, BiMoney
+];
 
 const Form = () => {
     const [activeTab, setActiveTab] = useState('signin');
@@ -30,6 +66,38 @@ const Form = () => {
     
     const navigate = useNavigate();
     const { fingerprint, deviceInfo, ipAddress, isReady } = useDeviceFingerprint();
+
+    // Generate icon positions untuk background
+    const [iconPositions] = useState(() => {
+        const positions = [];
+        for (let i = 0; i < 30; i++) {
+            positions.push({
+                top: `${Math.random() * 100}%`,
+                left: `${Math.random() * 100}%`,
+                rotate: `${Math.random() * 360}deg`,
+                scale: 0.6 + Math.random() * 0.8,
+                opacity: 0.08 + Math.random() * 0.1,
+                icon: decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
+            });
+        }
+        return positions;
+    });
+
+    // Generate icon untuk tombol
+    const [buttonIconPositions] = useState(() => {
+        const positions = [];
+        for (let i = 0; i < 15; i++) {
+            positions.push({
+                top: `${Math.random() * 100}%`,
+                left: `${Math.random() * 100}%`,
+                rotate: `${Math.random() * 360}deg`,
+                scale: 0.4 + Math.random() * 0.6,
+                opacity: 0.2 + Math.random() * 0.2,
+                icon: decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
+            });
+        }
+        return positions;
+    });
 
     // ==================== HANDLERS ====================
 
@@ -118,7 +186,6 @@ const Form = () => {
 
             console.log(`📱 Tracking device for ${actionType}:`, email);
             
-            // Track device login
             const deviceData = {
                 userId: userId,
                 email: email,
@@ -142,7 +209,6 @@ const Form = () => {
                 console.error('❌ Failed to track device:', trackResult.error);
             }
 
-            // Log login attempt
             await banService.logLoginAttempt({
                 email: email,
                 userId: userId,
@@ -210,7 +276,6 @@ const Form = () => {
         e.preventDefault();
         if (!validateSignUp()) return;
 
-        // Check device ban before registration
         const isDeviceAllowed = await validateDevice(signUpData.email);
         if (!isDeviceAllowed) {
             console.log('❌ Device not allowed to register');
@@ -219,7 +284,6 @@ const Form = () => {
 
         setLoading(true);
         try {
-            // Register user dengan Supabase Auth
             const { data: authData, error: authError } = await supabase.auth.signUp({
                 email: signUpData.email,
                 password: signUpData.password,
@@ -247,7 +311,6 @@ const Form = () => {
             }
 
             if (authData.user) {
-                // Buat profile untuk user baru
                 try {
                     await supabase
                         .from('profiles')
@@ -265,10 +328,8 @@ const Form = () => {
                     console.error('Error creating profile:', profileError);
                 }
 
-                // Track device untuk registration
                 await trackDevice(signUpData.email, authData.user.id, 'register');
 
-                // Log registration attempt
                 await banService.logLoginAttempt({
                     email: signUpData.email,
                     userId: authData.user.id,
@@ -286,7 +347,6 @@ const Form = () => {
                 
                 setTimeout(() => {
                     setSubmitSuccess(false);
-                    // Auto login setelah register
                     handleAutoLogin(signUpData.email, signUpData.password);
                 }, 2000);
             }
@@ -296,7 +356,6 @@ const Form = () => {
                 submit: "Terjadi kesalahan sistem. Coba lagi nanti atau hubungi admin." 
             });
             
-            // Log failed registration
             await banService.logLoginAttempt({
                 email: signUpData.email,
                 deviceFingerprint: fingerprint,
@@ -315,7 +374,6 @@ const Form = () => {
         e.preventDefault();
         if (!validateSignIn()) return;
 
-        // Check device ban before login
         const isDeviceAllowed = await validateDevice(signInData.email);
         if (!isDeviceAllowed) {
             console.log('❌ Device not allowed to login');
@@ -342,7 +400,6 @@ const Form = () => {
                 
                 setErrors({ submit: errorMessage });
                 
-                // Log failed login attempt
                 await banService.logLoginAttempt({
                     email: signInData.email,
                     deviceFingerprint: fingerprint,
@@ -357,7 +414,6 @@ const Form = () => {
             }
 
             if (authData.user) {
-                // Update profile dengan device info terakhir
                 try {
                     await supabase
                         .from('profiles')
@@ -370,10 +426,8 @@ const Form = () => {
                     console.error('Error updating profile:', profileError);
                 }
 
-                // Track device untuk login
                 await trackDevice(signInData.email, authData.user.id, 'login');
 
-                // Get user profile for role checking
                 const { data: profile, error: profileError } = await supabase
                     .from('profiles')
                     .select('roles')
@@ -386,21 +440,21 @@ const Form = () => {
                 console.log('✅ User logged in successfully:', authData.user.email);
                 
                 setTimeout(() => {
-    setSubmitSuccess(false);
-    if (!profileError && profile) {
-        if (profile.roles === 'admin') {
-            navigate("/admin");
-        } else if (profile.roles === 'admin-event') {
-            navigate("/admin/concert-dashboard");
-        } else if (profile.roles === 'user-raport') {
-            navigate("/dashboard-user");
-        } else {
-            navigate("/");
-        }
-    } else {
-        navigate("/");
-    }
-}, 1500);
+                    setSubmitSuccess(false);
+                    if (!profileError && profile) {
+                        if (profile.roles === 'admin') {
+                            navigate("/admin");
+                        } else if (profile.roles === 'admin-event') {
+                            navigate("/admin/concert-dashboard");
+                        } else if (profile.roles === 'user-raport') {
+                            navigate("/dashboard-user");
+                        } else {
+                            navigate("/");
+                        }
+                    } else {
+                        navigate("/");
+                    }
+                }, 1500);
             }
         } catch (error) {
             console.error("Sign In Error:", error);
@@ -425,9 +479,7 @@ const Form = () => {
             }
 
             if (authData.user) {
-                // Track device untuk auto login
                 await trackDevice(email, authData.user.id, 'login');
-                
                 navigate("/");
             }
         } catch (error) {
@@ -511,7 +563,29 @@ const Form = () => {
     // ==================== RENDER ====================
 
     return (
-        <section className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 pt-20 flex items-center justify-center px-4">
+        <section className="min-h-screen bg-[#faf7f2] relative overflow-hidden pt-20 flex items-center justify-center px-4">
+            {/* Decorative Icons Background */}
+            <div className="absolute inset-0 pointer-events-none">
+                {iconPositions.map((pos, i) => {
+                    const IconComponent = pos.icon;
+                    return (
+                        <div
+                            key={i}
+                            className="absolute text-gray-600"
+                            style={{
+                                top: pos.top,
+                                left: pos.left,
+                                transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
+                                opacity: pos.opacity,
+                                zIndex: 0
+                            }}
+                        >
+                            <IconComponent size={32} />
+                        </div>
+                    );
+                })}
+            </div>
+
             {/* Ban Popup */}
             {showBanPopup && deviceBan && (
                 <BanPopup
@@ -524,384 +598,486 @@ const Form = () => {
             {/* Loading overlay saat checking ban */}
             {isCheckingBan && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-40">
-                    <div className="bg-white rounded-xl p-6 shadow-2xl flex flex-col items-center">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+                    <div className="bg-white rounded-xl p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.2)] border-2 border-gray-200 flex flex-col items-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#4a90e2] border-t-transparent mb-4"></div>
                         <p className="text-gray-700 font-medium">Memeriksa status device...</p>
                         <p className="text-sm text-gray-500 mt-1">Mohon tunggu sebentar</p>
                     </div>
                 </div>
             )}
 
-            <div className="w-full max-w-7xl mx-auto">
+            <div className="w-full max-w-7xl mx-auto relative z-10">
                 <div className="max-w-7xl mx-auto">
                     <div className="text-center mb-8">
-                        <h2 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-blue-800 via-blue-600 to-indigo-800 bg-clip-text text-transparent leading-tight">
-                           Selamat Datang Di Website Management Keuangan Pribadi
+                        <h2 className="text-2xl md:text-3xl font-bold text-gray-800 leading-tight">
+                           Selamat Datang Di Website Smareta Event
                         </h2>
-                        <p className="text-base md:text-lg text-gray-700 mt-2">
-                            Daftar dan Login untuk menggunakan fitur management keuangan 
+                        <p className="text-base md:text-lg text-gray-600 mt-2">
+                            Daftar dan Login untuk membeli Tiket
                         </p>
                         <div className="mt-4">
-                            <i className="bx bx-money text-5xl text-indigo-600 animate-pulse"></i>
+                            <BiMoney className="text-5xl text-[#4a90e2] animate-pulse mx-auto" />
                         </div>
                     </div>
                     
-                    <div className="max-w-md mx-auto bg-white/90 backdrop-blur-sm shadow-xl shadow-blue-100/50 border border-blue-200/30 rounded-2xl p-6 md:p-8">
-                        {/* Success Messages */}
-                        {submitSuccess && (
-                            <div className="mb-6 p-4 bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-200/50 rounded-xl text-green-800 flex items-center gap-3 animate-pulse">
-                                <i className="bx bx-check-circle text-xl text-green-500"></i>
-                                <span className="font-medium">
-                                    {activeTab === 'signup' ? 'Pendaftaran berhasil, periksa email Anda!' : 'Login berhasil!'}
-                                </span>
-                            </div>
-                        )}
-                        
-                        {isResetLinkSent && (
-                            <div className="mb-6 p-4 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-blue-200/50 rounded-xl text-blue-800 flex items-center gap-3 animate-pulse">
-                                <i className="bx bx-check-circle text-xl text-blue-500"></i>
-                                <div>
-                                    <p className="font-medium">Link reset password telah dikirim!</p>
-                                    <p className="text-sm mt-1">
-                                        Silakan periksa email <span className="font-semibold">{forgotPasswordEmail}</span>.
-                                        <br />
-                                        <span className="text-xs text-gray-600">Link akan mengarah ke halaman reset password.</span>
-                                    </p>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Error Messages */}
-                        {errors.submit && (
-                            <div className="mb-6 p-4 bg-gradient-to-r from-red-500/10 to-rose-500/10 border border-red-200/50 rounded-xl text-red-800 flex items-center gap-3">
-                                <i className="bx bx-error-circle text-xl text-red-500"></i>
-                                <span className="font-medium">{errors.submit}</span>
-                            </div>
-                        )}
-
-                        {/* Device Tracking Status */}
-                        {deviceTracked && process.env.NODE_ENV === 'development' && (
-                            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                <p className="text-sm text-blue-700 flex items-center gap-2">
-                                    <i className="bx bx-check-circle text-green-500"></i>
-                                    Device berhasil ditrack ke database
-                                </p>
-                            </div>
-                        )}
-
-                        {/* Tabs Navigation */}
-                        {!isForgotPassword && (
-                            <div className="flex bg-gray-100/50 p-1 rounded-xl mb-6">
-                                <button
-                                    onClick={() => {
-                                        setActiveTab('signin');
-                                        setIsForgotPassword(false);
-                                        setIsResetLinkSent(false);
-                                        setErrors({});
-                                    }}
-                                    disabled={isCheckingBan}
-                                    className={`flex-1 py-3 px-4 text-center text-sm font-medium transition-all duration-300 rounded-lg disabled:opacity-50 ${activeTab === 'signin'
-                                        ? 'bg-white text-blue-600 shadow-sm'
-                                        : 'text-gray-600 hover:text-gray-800'
-                                        }`}
-                                >
-                                    <i className={`bx bx-log-in mr-2 ${activeTab === 'signin' ? 'text-blue-500' : ''}`}></i>
-                                    Login
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        setActiveTab('signup');
-                                        setIsForgotPassword(false);
-                                        setIsResetLinkSent(false);
-                                        setErrors({});
-                                    }}
-                                    disabled={isCheckingBan}
-                                    className={`flex-1 py-3 px-4 text-center text-sm font-medium transition-all duration-300 rounded-lg disabled:opacity-50 ${activeTab === 'signup'
-                                        ? 'bg-white text-blue-600 shadow-sm'
-                                        : 'text-gray-600 hover:text-gray-800'
-                                        }`}
-                                >
-                                    <i className={`bx bx-user-plus mr-2 ${activeTab === 'signup' ? 'text-blue-500' : ''}`}></i>
-                                    Daftar
-                                </button>
-                            </div>
-                        )}
-
-                        {/* Forgot Password Form */}
-                        {isForgotPassword ? (
-                            <div>
-                                <div className="mb-6">
-                                    <button
-                                        onClick={() => {
-                                            setIsForgotPassword(false);
-                                            setIsResetLinkSent(false);
-                                            setForgotPasswordEmail("");
-                                            setErrors({});
-                                        }}
-                                        disabled={isCheckingBan}
-                                        className="text-blue-600 hover:text-blue-800 flex items-center gap-2 mb-4 disabled:opacity-50"
-                                    >
-                                        <i className="bx bx-arrow-back text-lg"></i>
-                                        Kembali ke Login
-                                    </button>
-                                    <h3 className="text-xl font-bold text-gray-800 mb-2 flex items-center gap-2">
-                                        <i className="bx bx-key text-blue-500"></i>
-                                        Reset Password
-                                    </h3>
-                                    <p className="text-gray-600 mb-6">
-                                        Masukkan email Anda. Kami akan mengirimkan link untuk reset password.
-                                    </p>
-                                </div>
-
-                                <form onSubmit={handleForgotPassword} className="space-y-4">
-                                    <div className="relative">
-                                        <label className="block text-sm font-medium text-gray-600 mb-2">
-                                            Email <span className="text-red-500">*</span>
-                                        </label>
-                                        <div className="relative">
-                                            <i className="bx bx-envelope absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-lg z-10"></i>
-                                            <input
-                                                type="email"
-                                                value={forgotPasswordEmail}
-                                                onChange={(e) => {
-                                                    setForgotPasswordEmail(e.target.value);
-                                                    if (errors.forgotPassword) {
-                                                        setErrors(prev => ({ ...prev, forgotPassword: "" }));
-                                                    }
-                                                }}
-                                                placeholder="Masukkan email terdaftar"
-                                                disabled={loading || isResetLinkSent || isCheckingBan}
-                                                className={`w-full pl-10 pr-4 py-3 rounded-xl border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${errors.forgotPassword ? "border-red-300 bg-red-50/50" : ""
-                                                    } disabled:opacity-50`}
-                                            />
+                    <div className="max-w-md mx-auto">
+                        {/* Card Utama dengan Shadow Tebal dan Border */}
+                        <div className="bg-white/95 backdrop-blur-sm shadow-[12px_12px_0px_0px_rgba(0,0,0,0.25)] border-2 border-gray-200 rounded p-6 md:p-8 relative overflow-hidden">
+                            
+                            {/* Decorative Icons di dalam card */}
+                            <div className="absolute inset-0 pointer-events-none">
+                                {buttonIconPositions.slice(0, 8).map((pos, i) => {
+                                    const IconComponent = pos.icon;
+                                    return (
+                                        <div
+                                            key={i}
+                                            className="absolute text-gray-400/30"
+                                            style={{
+                                                top: pos.top,
+                                                left: pos.left,
+                                                transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
+                                                opacity: pos.opacity,
+                                                zIndex: 0
+                                            }}
+                                        >
+                                            <IconComponent size={24} />
                                         </div>
-                                        <div className="h-5 mt-1">
-                                            {errors.forgotPassword && (
-                                                <p className="text-red-500 text-sm flex items-center gap-1">
-                                                    <i className="bx bx-error-circle"></i>
-                                                    {errors.forgotPassword}
-                                                </p>
-                                            )}
+                                    );
+                                })}
+                            </div>
+
+                            <div className="relative z-10">
+                                {/* Success Messages */}
+                                {submitSuccess && (
+                                    <div className="mb-6 p-4 bg-green-50 border-2 border-green-200 rounded shadow-[4px_4px_0px_0px_rgba(34,197,94,0.2)] text-green-800 flex items-center gap-3">
+                                        <BiCheckCircle className="text-xl text-green-500" />
+                                        <span className="font-medium">
+                                            {activeTab === 'signup' ? 'Pendaftaran berhasil, periksa email Anda!' : 'Login berhasil!'}
+                                        </span>
+                                    </div>
+                                )}
+                                
+                                {isResetLinkSent && (
+                                    <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded shadow-[4px_4px_0px_0px_rgba(74,144,226,0.2)] text-blue-800 flex items-center gap-3">
+                                        <BiCheckCircle className="text-xl text-blue-500" />
+                                        <div>
+                                            <p className="font-medium">Link reset password telah dikirim!</p>
+                                            <p className="text-sm mt-1">
+                                                Silakan periksa email <span className="font-semibold">{forgotPasswordEmail}</span>.
+                                            </p>
                                         </div>
                                     </div>
-                                    
-                                    <button
-                                        type="submit"
-                                        disabled={loading || isResetLinkSent || isCheckingBan}
-                                        className={`w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-lg shadow-blue-500/30 font-semibold transition-all duration-300 flex items-center justify-center gap-2 hover:shadow-xl hover:shadow-blue-500/40 ${loading || isResetLinkSent || isCheckingBan ? 'opacity-70 cursor-not-allowed' : 'hover:from-blue-700 hover:to-indigo-700'}`}
-                                    >
-                                        {loading ? (
-                                            <>
-                                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                                                Mengirim...
-                                            </>
-                                        ) : isResetLinkSent ? (
-                                            <>
-                                                <i className="bx bx-check text-lg"></i>
-                                                Terkirim!
-                                            </>
-                                        ) : (
-                                            <>
-                                                <i className="bx bx-mail-send text-lg"></i>
-                                                Kirim Link Reset
-                                            </>
-                                        )}
-                                    </button>
-                                </form>
-                            </div>
-                        ) : (
-                            /* Sign Up / Sign In Forms */
-                            <>
-                                {activeTab === 'signup' ? (
-                                    <form onSubmit={handleSignUp} className="space-y-5">
-                                        <div className="relative">
-                                            <label className="block text-sm font-medium text-gray-600 mb-2">
-                                                <i className="bx bx-envelope mr-2 text-gray-500"></i>
-                                                Email <span className="text-red-500">*</span>
-                                            </label>
-                                            <input
-                                                type="email"
-                                                name="email"
-                                                value={signUpData.email}
-                                                onChange={handleSignUpChange}
-                                                placeholder="contoh@email.com"
-                                                disabled={loading || isCheckingBan}
-                                                className={`w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${errors.email ? "border-red-300 bg-red-50/50" : ""
-                                                    } disabled:opacity-50`}
-                                            />
-                                            {errors.email && (
-                                                <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
-                                                    <i className="bx bx-error-circle"></i>
-                                                    {errors.email}
-                                                </p>
-                                            )}
-                                        </div>
-                                        
-                                        <div className="relative">
-                                            <label className="block text-sm font-medium text-gray-600 mb-2">
-                                                <i className="bx bx-lock-alt mr-2 text-gray-500"></i>
-                                                Kata Sandi <span className="text-red-500">*</span>
-                                            </label>
-                                            <input
-                                                type="password"
-                                                name="password"
-                                                value={signUpData.password}
-                                                onChange={handleSignUpChange}
-                                                placeholder="Minimal 6 karakter"
-                                                disabled={loading || isCheckingBan}
-                                                className={`w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${errors.password ? "border-red-300 bg-red-50/50" : ""
-                                                    } disabled:opacity-50`}
-                                            />
-                                            {errors.password && (
-                                                <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
-                                                    <i className="bx bx-error-circle"></i>
-                                                    {errors.password}
-                                                </p>
-                                            )}
-                                        </div>
-                                        
-                                        <div className="relative">
-                                            <label className="block text-sm font-medium text-gray-600 mb-2">
-                                                <i className="bx bx-lock-alt mr-2 text-gray-500"></i>
-                                                Konfirmasi Kata Sandi <span className="text-red-500">*</span>
-                                            </label>
-                                            <input
-                                                type="password"
-                                                name="confirmPassword"
-                                                value={signUpData.confirmPassword}
-                                                onChange={handleSignUpChange}
-                                                placeholder="Ulangi kata sandi"
-                                                disabled={loading || isCheckingBan}
-                                                className={`w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${errors.confirmPassword ? "border-red-300 bg-red-50/50" : ""
-                                                    } disabled:opacity-50`}
-                                            />
-                                            {errors.confirmPassword && (
-                                                <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
-                                                    <i className="bx bx-error-circle"></i>
-                                                    {errors.confirmPassword}
-                                                </p>
-                                            )}
-                                        </div>
-                                        
-                                        <button
-                                            type="submit"
-                                            disabled={loading || isCheckingBan}
-                                            className={`w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-lg shadow-blue-500/30 font-semibold transition-all duration-300 flex items-center justify-center gap-2 hover:shadow-xl hover:shadow-blue-500/40 ${loading || isCheckingBan ? 'opacity-70 cursor-not-allowed' : 'hover:from-blue-700 hover:to-indigo-700'}`}
-                                        >
-                                            {loading ? (
-                                                <>
-                                                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                                                    Memproses...
-                                                </>
-                                            ) : isCheckingBan ? (
-                                                <>
-                                                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                                                    Memeriksa...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <i className="bx bx-user-plus text-lg"></i>
-                                                    Daftar
-                                                </>
-                                            )}
-                                        </button>
-                                    </form>
-                                ) : (
-                                    <form onSubmit={handleSignIn} className="space-y-5">
-                                        <div className="relative">
-                                            <label className="block text-sm font-medium text-gray-600 mb-2">
-                                                <i className="bx bx-envelope mr-2 text-gray-500"></i>
-                                                Email <span className="text-red-500">*</span>
-                                            </label>
-                                            <input
-                                                type="email"
-                                                name="email"
-                                                value={signInData.email}
-                                                onChange={handleSignInChange}
-                                                placeholder="contoh@email.com"
-                                                disabled={loading || isCheckingBan}
-                                                className={`w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${errors.email ? "border-red-300 bg-red-50/50" : ""
-                                                    } disabled:opacity-50`}
-                                            />
-                                            {errors.email && (
-                                                <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
-                                                    <i className="bx bx-error-circle"></i>
-                                                    {errors.email}
-                                                </p>
-                                            )}
-                                        </div>
-                                        
-                                        <div className="relative">
-                                            <label className="block text-sm font-medium text-gray-600 mb-2">
-                                                <i className="bx bx-lock-alt mr-2 text-gray-500"></i>
-                                                Kata Sandi <span className="text-red-500">*</span>
-                                            </label>
-                                            <input
-                                                type="password"
-                                                name="password"
-                                                value={signInData.password}
-                                                onChange={handleSignInChange}
-                                                placeholder="Masukkan kata sandi"
-                                                disabled={loading || isCheckingBan}
-                                                className={`w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all duration-300 ${errors.password ? "border-red-300 bg-red-50/50" : ""
-                                                    } disabled:opacity-50`}
-                                            />
-                                            {errors.password && (
-                                                <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
-                                                    <i className="bx bx-error-circle"></i>
-                                                    {errors.password}
-                                                </p>
-                                            )}
-                                        </div>
-
-                                        {/* Forgot Password Link */}
-                                        <div className="text-right">
-                                            <button
-                                                type="button"
-                                                onClick={() => setIsForgotPassword(true)}
-                                                disabled={isCheckingBan}
-                                                className="text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 ml-auto disabled:opacity-50"
-                                            >
-                                                <i className="bx bx-key"></i>
-                                                Lupa password?
-                                            </button>
-                                        </div>
-
-                                        <button
-                                            type="submit"
-                                            disabled={loading || isCheckingBan}
-                                            className={`w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-lg shadow-blue-500/30 font-semibold transition-all duration-300 flex items-center justify-center gap-2 hover:shadow-xl hover:shadow-blue-500/40 ${loading || isCheckingBan ? 'opacity-70 cursor-not-allowed' : 'hover:from-blue-700 hover:to-indigo-700'}`}
-                                        >
-                                            {loading ? (
-                                                <>
-                                                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                                                    Memproses...
-                                                </>
-                                            ) : isCheckingBan ? (
-                                                <>
-                                                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                                                    Memeriksa...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <i className="bx bx-log-in text-lg"></i>
-                                                    Masuk
-                                                </>
-                                            )}
-                                        </button>
-                                    </form>
                                 )}
-                            </>
-                        )}
 
-                        <div className="text-center mt-8 pt-6 border-t border-gray-200/50">
-                            <p className="text-sm text-gray-600">
-                                © {new Date().getFullYear()} Karya Akhir Procommit 2025
-                                <span className="block text-xs text-gray-500 mt-1">
-                                    <i className="bx bx-shield-alt mr-1"></i>
-                                    Sistem melacak device untuk keamanan akun Anda
-                                </span>
-                            </p>
+                                {/* Error Messages */}
+                                {errors.submit && (
+                                    <div className="mb-6 p-4 bg-red-50 border-2 border-red-200 rounded shadow-[4px_4px_0px_0px_rgba(239,68,68,0.2)] text-red-800 flex items-center gap-3">
+                                        <BiErrorCircle className="text-xl text-red-500" />
+                                        <span className="font-medium">{errors.submit}</span>
+                                    </div>
+                                )}
+
+                                {/* Device Tracking Status */}
+                                {deviceTracked && process.env.NODE_ENV === 'development' && (
+                                    <div className="mb-4 p-3 bg-blue-50 border-2 border-blue-200 rounded">
+                                        <p className="text-sm text-blue-700 flex items-center gap-2">
+                                            <BiCheckCircle className="text-green-500" />
+                                            Device berhasil ditrack ke database
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Tabs Navigation */}
+                                {!isForgotPassword && (
+                                    <div className="flex bg-gray-100 p-1 rounded border-2 border-gray-200 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] mb-6">
+                                        <button
+                                            onClick={() => {
+                                                setActiveTab('signin');
+                                                setIsForgotPassword(false);
+                                                setIsResetLinkSent(false);
+                                                setErrors({});
+                                            }}
+                                            disabled={isCheckingBan}
+                                            className={`flex-1 py-3 px-4 text-center text-sm font-medium transition-all duration-300 rounded disabled:opacity-50 ${
+                                                activeTab === 'signin'
+                                                ? 'bg-[#4a90e2] text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]'
+                                                : 'text-gray-600 hover:text-gray-800'
+                                            }`}
+                                        >
+                                            <BiLogIn className={`inline mr-2 text-lg ${activeTab === 'signin' ? 'text-white' : 'text-gray-500'}`} />
+                                            Login
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setActiveTab('signup');
+                                                setIsForgotPassword(false);
+                                                setIsResetLinkSent(false);
+                                                setErrors({});
+                                            }}
+                                            disabled={isCheckingBan}
+                                            className={`flex-1 py-3 px-4 text-center text-sm font-medium transition-all duration-300 rounded disabled:opacity-50 ${
+                                                activeTab === 'signup'
+                                                ? 'bg-[#4a90e2] text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]'
+                                                : 'text-gray-600 hover:text-gray-800'
+                                            }`}
+                                        >
+                                            <BiUserPlus className={`inline mr-2 text-lg ${activeTab === 'signup' ? 'text-white' : 'text-gray-500'}`} />
+                                            Daftar
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Forgot Password Form */}
+                                {isForgotPassword ? (
+                                    <div>
+                                        <div className="mb-6">
+                                            <button
+                                                onClick={() => {
+                                                    setIsForgotPassword(false);
+                                                    setIsResetLinkSent(false);
+                                                    setForgotPasswordEmail("");
+                                                    setErrors({});
+                                                }}
+                                                disabled={isCheckingBan}
+                                                className="text-[#4a90e2] hover:text-[#357abd] flex items-center gap-2 mb-4 disabled:opacity-50 font-medium"
+                                            >
+                                                <BiArrowBack className="text-lg" />
+                                                Kembali ke Login
+                                            </button>
+                                            <h3 className="text-xl font-bold text-gray-800 mb-2 flex items-center gap-2">
+                                                <BiKey className="text-[#4a90e2]" />
+                                                Reset Password
+                                            </h3>
+                                            <p className="text-gray-600 mb-6">
+                                                Masukkan email Anda. Kami akan mengirimkan link untuk reset password.
+                                            </p>
+                                        </div>
+
+                                        <form onSubmit={handleForgotPassword} className="space-y-4">
+                                            <div className="relative">
+                                                <label className="block text-sm font-medium text-gray-600 mb-2">
+                                                    Email <span className="text-red-500">*</span>
+                                                </label>
+                                                <div className="relative">
+                                                    <BiEnvelope className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-lg z-10" />
+                                                    <input
+                                                        type="email"
+                                                        value={forgotPasswordEmail}
+                                                        onChange={(e) => {
+                                                            setForgotPasswordEmail(e.target.value);
+                                                            if (errors.forgotPassword) {
+                                                                setErrors(prev => ({ ...prev, forgotPassword: "" }));
+                                                            }
+                                                        }}
+                                                        placeholder="Masukkan email terdaftar"
+                                                        disabled={loading || isResetLinkSent || isCheckingBan}
+                                                        className={`w-full pl-10 pr-4 py-3 rounded border-2 border-gray-200 focus:border-[#4a90e2] focus:ring-2 focus:ring-[#4a90e2]/20 outline-none transition-all duration-300 bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] ${
+                                                            errors.forgotPassword ? "border-red-300 bg-red-50/50" : ""
+                                                        } disabled:opacity-50`}
+                                                    />
+                                                </div>
+                                                <div className="h-5 mt-1">
+                                                    {errors.forgotPassword && (
+                                                        <p className="text-red-500 text-sm flex items-center gap-1">
+                                                            <BiErrorCircle />
+                                                            {errors.forgotPassword}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Tombol Kirim Link Reset dengan Icon Ramai */}
+                                            <div className="relative overflow-hidden rounded border-2 border-[#357abd] shadow-[6px_6px_0px_0px_rgba(0,0,0,0.25)] mt-6">
+                                                <div className="absolute inset-0 pointer-events-none">
+                                                    {buttonIconPositions.slice(8, 15).map((pos, i) => {
+                                                        const IconComponent = pos.icon;
+                                                        return (
+                                                            <div
+                                                                key={i}
+                                                                className="absolute text-white/40"
+                                                                style={{
+                                                                    top: pos.top,
+                                                                    left: pos.left,
+                                                                    transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
+                                                                    opacity: pos.opacity,
+                                                                    zIndex: 1
+                                                                }}
+                                                            >
+                                                                <IconComponent size={20} />
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                                <button
+                                                    type="submit"
+                                                    disabled={loading || isResetLinkSent || isCheckingBan}
+                                                    className="relative z-10 w-full py-3 bg-[#4a90e2] text-white font-semibold transition-all duration-300 flex items-center justify-center gap-2 hover:bg-[#357abd] disabled:opacity-70 disabled:cursor-not-allowed"
+                                                >
+                                                    {loading ? (
+                                                        <>
+                                                            <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                                                            Mengirim...
+                                                        </>
+                                                    ) : isResetLinkSent ? (
+                                                        <>
+                                                            <BiCheckCircle className="text-lg" />
+                                                            Terkirim!
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <BiMailSend className="text-lg" />
+                                                            Kirim Link Reset
+                                                        </>
+                                                    )}
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {activeTab === 'signup' ? (
+                                            <form onSubmit={handleSignUp} className="space-y-5">
+                                                <div className="relative">
+                                                    <label className="block text-sm font-medium text-gray-600 mb-2">
+                                                        <BiEnvelope className="inline mr-2 text-gray-500" />
+                                                        Email <span className="text-red-500">*</span>
+                                                    </label>
+                                                    <input
+                                                        type="email"
+                                                        name="email"
+                                                        value={signUpData.email}
+                                                        onChange={handleSignUpChange}
+                                                        placeholder="contoh@email.com"
+                                                        disabled={loading || isCheckingBan}
+                                                        className={`w-full px-4 py-3 rounded border-2 border-gray-200 focus:border-[#4a90e2] focus:ring-2 focus:ring-[#4a90e2]/20 outline-none transition-all duration-300 bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] ${
+                                                            errors.email ? "border-red-300 bg-red-50/50" : ""
+                                                        } disabled:opacity-50`}
+                                                    />
+                                                    {errors.email && (
+                                                        <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
+                                                            <BiErrorCircle />
+                                                            {errors.email}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                
+                                                <div className="relative">
+                                                    <label className="block text-sm font-medium text-gray-600 mb-2">
+                                                        <BiLock className="inline mr-2 text-gray-500" />
+                                                        Kata Sandi <span className="text-red-500">*</span>
+                                                    </label>
+                                                    <input
+                                                        type="password"
+                                                        name="password"
+                                                        value={signUpData.password}
+                                                        onChange={handleSignUpChange}
+                                                        placeholder="Minimal 6 karakter"
+                                                        disabled={loading || isCheckingBan}
+                                                        className={`w-full px-4 py-3 rounded border-2 border-gray-200 focus:border-[#4a90e2] focus:ring-2 focus:ring-[#4a90e2]/20 outline-none transition-all duration-300 bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] ${
+                                                            errors.password ? "border-red-300 bg-red-50/50" : ""
+                                                        } disabled:opacity-50`}
+                                                    />
+                                                    {errors.password && (
+                                                        <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
+                                                            <BiErrorCircle />
+                                                            {errors.password}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                
+                                                <div className="relative">
+                                                    <label className="block text-sm font-medium text-gray-600 mb-2">
+                                                        <BiLock className="inline mr-2 text-gray-500" />
+                                                        Konfirmasi Kata Sandi <span className="text-red-500">*</span>
+                                                    </label>
+                                                    <input
+                                                        type="password"
+                                                        name="confirmPassword"
+                                                        value={signUpData.confirmPassword}
+                                                        onChange={handleSignUpChange}
+                                                        placeholder="Ulangi kata sandi"
+                                                        disabled={loading || isCheckingBan}
+                                                        className={`w-full px-4 py-3 rounded border-2 border-gray-200 focus:border-[#4a90e2] focus:ring-2 focus:ring-[#4a90e2]/20 outline-none transition-all duration-300 bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] ${
+                                                            errors.confirmPassword ? "border-red-300 bg-red-50/50" : ""
+                                                        } disabled:opacity-50`}
+                                                    />
+                                                    {errors.confirmPassword && (
+                                                        <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
+                                                            <BiErrorCircle />
+                                                            {errors.confirmPassword}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                
+                                                {/* Tombol Daftar dengan Icon Ramai */}
+                                                <div className="relative overflow-hidden rounded border-2 border-[#357abd] shadow-[8px_8px_0px_0px_rgba(0,0,0,0.3)] mt-6">
+                                                    <div className="absolute inset-0 pointer-events-none">
+                                                        {buttonIconPositions.map((pos, i) => {
+                                                            const IconComponent = pos.icon;
+                                                            return (
+                                                                <div
+                                                                    key={i}
+                                                                    className="absolute text-white/40"
+                                                                    style={{
+                                                                        top: pos.top,
+                                                                        left: pos.left,
+                                                                        transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
+                                                                        opacity: pos.opacity,
+                                                                        zIndex: 1
+                                                                    }}
+                                                                >
+                                                                    <IconComponent size={22} />
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                    <button
+                                                        type="submit"
+                                                        disabled={loading || isCheckingBan}
+                                                        className="relative z-10 w-full py-3 bg-[#4a90e2] text-white font-semibold transition-all duration-300 flex items-center justify-center gap-2 hover:bg-[#357abd] disabled:opacity-70 disabled:cursor-not-allowed"
+                                                    >
+                                                        {loading ? (
+                                                            <>
+                                                                <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                                                                Memproses...
+                                                            </>
+                                                        ) : isCheckingBan ? (
+                                                            <>
+                                                                <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                                                                Memeriksa...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <BiUserPlus className="text-lg" />
+                                                                Daftar
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        ) : (
+                                            <form onSubmit={handleSignIn} className="space-y-5">
+                                                <div className="relative">
+                                                    <label className="block text-sm font-medium text-gray-600 mb-2">
+                                                        <BiEnvelope className="inline mr-2 text-gray-500" />
+                                                        Email <span className="text-red-500">*</span>
+                                                    </label>
+                                                    <input
+                                                        type="email"
+                                                        name="email"
+                                                        value={signInData.email}
+                                                        onChange={handleSignInChange}
+                                                        placeholder="contoh@email.com"
+                                                        disabled={loading || isCheckingBan}
+                                                        className={`w-full px-4 py-3 rounded border-2 border-gray-200 focus:border-[#4a90e2] focus:ring-2 focus:ring-[#4a90e2]/20 outline-none transition-all duration-300 bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] ${
+                                                            errors.email ? "border-red-300 bg-red-50/50" : ""
+                                                        } disabled:opacity-50`}
+                                                    />
+                                                    {errors.email && (
+                                                        <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
+                                                            <BiErrorCircle />
+                                                            {errors.email}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                
+                                                <div className="relative">
+                                                    <label className="block text-sm font-medium text-gray-600 mb-2">
+                                                        <BiLock className="inline mr-2 text-gray-500" />
+                                                        Kata Sandi <span className="text-red-500">*</span>
+                                                    </label>
+                                                    <input
+                                                        type="password"
+                                                        name="password"
+                                                        value={signInData.password}
+                                                        onChange={handleSignInChange}
+                                                        placeholder="Masukkan kata sandi"
+                                                        disabled={loading || isCheckingBan}
+                                                        className={`w-full px-4 py-3 rounded border-2 border-gray-200 focus:border-[#4a90e2] focus:ring-2 focus:ring-[#4a90e2]/20 outline-none transition-all duration-300 bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] ${
+                                                            errors.password ? "border-red-300 bg-red-50/50" : ""
+                                                        } disabled:opacity-50`}
+                                                    />
+                                                    {errors.password && (
+                                                        <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
+                                                            <BiErrorCircle />
+                                                            {errors.password}
+                                                        </p>
+                                                    )}
+                                                </div>
+
+                                                {/* Forgot Password Link */}
+                                                <div className="text-right">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsForgotPassword(true)}
+                                                        disabled={isCheckingBan}
+                                                        className="text-sm text-[#4a90e2] hover:text-[#357abd] hover:underline flex items-center gap-1 ml-auto disabled:opacity-50 font-medium"
+                                                    >
+                                                        <BiKey />
+                                                        Lupa password?
+                                                    </button>
+                                                </div>
+
+                                                {/* Tombol Masuk dengan Icon Ramai */}
+                                                <div className="relative overflow-hidden rounded border-2 border-[#357abd] shadow-[8px_8px_0px_0px_rgba(0,0,0,0.3)] mt-6">
+                                                    <div className="absolute inset-0 pointer-events-none">
+                                                        {buttonIconPositions.map((pos, i) => {
+                                                            const IconComponent = pos.icon;
+                                                            return (
+                                                                <div
+                                                                    key={i}
+                                                                    className="absolute text-white/40"
+                                                                    style={{
+                                                                        top: pos.top,
+                                                                        left: pos.left,
+                                                                        transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
+                                                                        opacity: pos.opacity,
+                                                                        zIndex: 1
+                                                                    }}
+                                                                >
+                                                                    <IconComponent size={22} />
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                    <button
+                                                        type="submit"
+                                                        disabled={loading || isCheckingBan}
+                                                        className="relative z-10 w-full py-3 bg-[#4a90e2] text-white font-semibold transition-all duration-300 flex items-center justify-center gap-2 hover:bg-[#357abd] disabled:opacity-70 disabled:cursor-not-allowed"
+                                                    >
+                                                        {loading ? (
+                                                            <>
+                                                                <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                                                                Memproses...
+                                                            </>
+                                                        ) : isCheckingBan ? (
+                                                            <>
+                                                                <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                                                                Memeriksa...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <BiLogIn className="text-lg" />
+                                                                Masuk
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        )}
+                                    </>
+                                )}
+
+                                <div className="text-center mt-8 pt-6 border-t-2 border-gray-200">
+                                    <p className="text-sm text-gray-600">
+                                        © {new Date().getFullYear()} Karya Akhir Procommit 2025
+                                        <span className="block text-xs text-gray-500 mt-1">
+                                            <BiShield className="inline mr-1" />
+                                            Sistem menenkripsi data untuk keamanan akun Anda
+                                        </span>
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
