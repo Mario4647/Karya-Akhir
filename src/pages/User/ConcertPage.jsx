@@ -26,15 +26,13 @@ import {
   BiMovie,
   BiMoney,
   BiPackage,
+  // Icon dekoratif yang PASTI TERSEDIA di react-icons/bi
   BiMusic,
   BiMicrophone,
-  BiSpeaker,
-  BiHeadphone,
-  BiRadio,
-  BiVolume,
-  BiDisc,
   BiCamera,
   BiVideo,
+  BiImage,
+  BiImages,
   BiPhotoAlbum,
   BiStar,
   BiHeart,
@@ -50,33 +48,28 @@ import {
   BiBook,
   BiBookOpen,
   BiLibrary,
-  // BiNewspaper tidak ada, ganti dengan BiNews (tapi BiNews juga tidak ada)
-  // BiNews tidak ada, ganti dengan BiBullhorn
-  BiBullhorn,
-  BiMegaphone,
-  // BiBroadcast tidak ada, ganti dengan BiRadio
-  BiCameraMovie,
-  BiSlideshow,
-  BiPlayCircle,
-  BiPauseCircle,
-  BiStopCircle,
-  BiSkipNext,
-  BiSkipPrevious,
+  BiMessage,
+  BiMessageDetail,
+  BiMessageRounded,
+  BiMessageDots,
   BiVolumeFull,
   BiVolumeLow,
-  BiVolumeMute
+  BiVolumeMute,
+  BiPlay,
+  BiPause,
+  BiStop,
+  BiSkipNext,
+  BiSkipPrevious
 } from 'react-icons/bi'
 
-// Array icon untuk background dekoratif (hanya icon yang TERSEDIA di react-icons/bi)
+// Array icon untuk background dekoratif - HANYA icon yang PASTI TERSEDIA
 const decorativeIcons = [
-  BiMusic, BiMicrophone, BiSpeaker, BiHeadphone, BiRadio, BiVolume,
-  BiDisc, BiMusic, BiCamera, BiVideo, BiPhotoAlbum, BiPurchaseTag,
+  BiMusic, BiMicrophone, BiCamera, BiVideo, BiImage, BiImages, BiPhotoAlbum,
   BiStar, BiHeart, BiLike, BiDiamond, BiCrown, BiRocket,
   BiPalette, BiBrush, BiPaint, BiPen, BiPencil, BiBook,
-  BiBookOpen, BiLibrary, BiBullhorn, BiMegaphone,
-  BiCameraMovie, BiSlideshow, BiPlayCircle, BiPauseCircle,
-  BiStopCircle, BiSkipNext, BiSkipPrevious, BiVolumeFull,
-  BiVolumeLow, BiVolumeMute
+  BiBookOpen, BiLibrary, BiMessage, BiMessageDetail, BiMessageRounded, BiMessageDots,
+  BiVolumeFull, BiVolumeLow, BiVolumeMute, BiPlay, BiPause, BiStop,
+  BiSkipNext, BiSkipPrevious
 ]
 
 const ConcertPage = () => {
@@ -102,7 +95,7 @@ const ConcertPage = () => {
   // Generate random positions for decorative icons
   const [iconPositions] = useState(() => {
     const positions = []
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < 40; i++) { // Kurangi jumlah icon jadi 40
       positions.push({
         top: `${Math.random() * 100}%`,
         left: `${Math.random() * 100}%`,
