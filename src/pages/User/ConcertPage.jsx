@@ -33,11 +33,11 @@ import {
   BiRadio,
   BiVolume,
   BiDisc,
-  BiNote,
+  // BiNote tidak ada, ganti dengan BiMusic
   BiCamera,
   BiVideo,
   BiPhotoAlbum,
-  BiTicket,
+  // BiTicket tidak ada, ganti dengan BiPurchaseTag
   BiStar,
   BiHeart,
   BiLike,
@@ -69,10 +69,10 @@ import {
   BiVolumeMute
 } from 'react-icons/bi'
 
-// Array icon untuk background dekoratif
+// Array icon untuk background dekoratif (hanya icon yang tersedia)
 const decorativeIcons = [
   BiMusic, BiMicrophone, BiSpeaker, BiHeadphone, BiRadio, BiVolume,
-  BiDisc, BiNote, BiCamera, BiVideo, BiPhotoAlbum, BiTicket,
+  BiDisc, BiMusic, BiCamera, BiVideo, BiPhotoAlbum, BiPurchaseTag,
   BiStar, BiHeart, BiLike, BiDiamond, BiCrown, BiRocket,
   BiPalette, BiBrush, BiPaint, BiPen, BiPencil, BiBook,
   BiBookOpen, BiLibrary, BiNewspaper, BiNews, BiBullhorn,
