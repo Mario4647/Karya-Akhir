@@ -61,20 +61,17 @@ import {
   BiSkipPrevious,
   BiCart,
   BiWallet,
-  BiTicket,
-  BiBadge,
-  BiAward,
   BiGiftCard
 } from 'react-icons/bi'
 
-// Array icon untuk background dekoratif - opacity dinaikkan
+// Array icon untuk background dekoratif - HANYA icon yang TERSEDIA
 const decorativeIcons = [
   BiMusic, BiMicrophone, BiCamera, BiVideo, BiImage, BiImages, BiPhotoAlbum,
   BiStar, BiHeart, BiLike, BiDiamond, BiCrown, BiRocket,
   BiPalette, BiBrush, BiPaint, BiPen, BiPencil, BiBook,
   BiBookOpen, BiLibrary, BiMessage, BiMessageDetail, BiMessageRounded, BiMessageDots,
   BiVolumeFull, BiVolumeLow, BiVolumeMute, BiPlay, BiPause, BiStop,
-  BiSkipNext, BiSkipPrevious, BiCart, BiWallet, BiTicket, BiBadge, BiAward, BiGiftCard
+  BiSkipNext, BiSkipPrevious, BiCart, BiWallet, BiGiftCard, BiPurchaseTag
 ]
 
 const ConcertPage = () => {
@@ -790,7 +787,7 @@ const ConcertPage = () => {
                               : 'bg-white border-gray-200 hover:border-[#4a90e2] hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]'
                           }`}
                         >
-                          <BiTicket className={`text-2xl ${isSelected ? 'text-[#4a90e2]' : 'text-gray-500'}`} />
+                          <BiPurchaseTag className={`text-2xl ${isSelected ? 'text-[#4a90e2]' : 'text-gray-500'}`} />
                           <div className="flex-1">
                             <div className="flex justify-between items-center">
                               <p className={`font-medium ${isSelected ? 'text-[#4a90e2]' : 'text-gray-800'}`}>
@@ -969,7 +966,7 @@ const ConcertPage = () => {
                   </>
                 ) : !selectedTicketType ? (
                   <>
-                    <BiTicket />
+                    <BiPurchaseTag />
                     <span>Pilih Tipe Tiket</span>
                   </>
                 ) : selectedTicketType.stock === 0 ? (
