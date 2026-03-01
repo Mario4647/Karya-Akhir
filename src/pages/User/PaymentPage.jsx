@@ -45,6 +45,7 @@ const decorativeIcons = [
 
 const PaymentPage = () => {
   const [order, setOrder] = useState(null)
+  const [promoApplied, setPromoApplied] = useState(null)
   const [timeLeft, setTimeLeft] = useState(3600)
   const [loading, setLoading] = useState(true)
   const [processingPayment, setProcessingPayment] = useState(false)
@@ -53,6 +54,7 @@ const PaymentPage = () => {
   const [copied, setCopied] = useState(false)
   const [snapToken, setSnapToken] = useState(null)
   const [apiStatus, setApiStatus] = useState('Memeriksa koneksi...')
+  const [emailSent, setEmailSent] = useState(false)
   const { orderId } = useParams()
   const navigate = useNavigate()
 
@@ -116,6 +118,51 @@ const PaymentPage = () => {
     }
   }, [order])
 
+  // Kirim email notifikasi pembayaran pending
+  const sendPaymentEmail = async (orderData) => {
+    try {
+      // Cek apakah email sudah pernah dikirim
+      if (emailSent) return
+
+      const response = await fetch('/api/send-payment-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: orderData.customer_email,
+          orderNumber: orderData.order_number,
+          customerName: orderData.customer_name,
+          totalAmount: orderData.total_amount,
+          expiryTime: orderData.payment_expiry,
+          productName: orderData.product_name,
+          quantity: orderData.quantity,
+          orderId: orderData.id
+        })
+      })
+
+      const data = await response.json()
+      
+      if (response.ok) {
+        console.log('✅ Payment email sent successfully')
+        setEmailSent(true)
+        
+        // Update status email di database
+        await supabase
+          .from('orders')
+          .update({ 
+            email_notification_sent: true,
+            email_sent_at: new Date().toISOString()
+          })
+          .eq('id', orderData.id)
+      } else {
+        console.error('❌ Failed to send email:', data.error)
+      }
+    } catch (error) {
+      console.error('❌ Error sending email:', error)
+    }
+  }
+
   const checkApiHealth = async () => {
     try {
       setApiStatus('Memeriksa koneksi...')
@@ -168,7 +215,8 @@ const PaymentPage = () => {
         .select(`
           *,
           products:product_id (*),
-          order_buyers (*)
+          order_buyers (*),
+          promo_codes!left(*)
         `)
         .eq('id', orderId)
         .single()
@@ -176,6 +224,16 @@ const PaymentPage = () => {
       if (error) throw error
       console.log('✅ Order fetched:', data)
       setOrder(data)
+      
+      // Set promo applied jika ada
+      if (data.promo_code_id) {
+        setPromoApplied(data.promo_codes)
+      }
+      
+      // Kirim email notifikasi jika belum pernah dikirim
+      if (!data.email_notification_sent) {
+        await sendPaymentEmail(data)
+      }
     } catch (error) {
       console.error('❌ Error fetching order:', error)
       setError('Gagal memuat data pesanan: ' + error.message)
@@ -229,6 +287,7 @@ const PaymentPage = () => {
     try {
       console.log('🔄 Creating transaction for order:', order.order_number)
       
+      // Siapkan data yang akan dikirim - TERMASUK PROMO CODE
       const payload = {
         orderNumber: order.order_number,
         totalAmount: order.total_amount,
@@ -237,7 +296,12 @@ const PaymentPage = () => {
         customerAddress: order.customer_address,
         productName: order.product_name,
         productPrice: order.product_price,
-        quantity: order.quantity
+        quantity: order.quantity,
+        promoCode: order.promo_code_id ? {
+          id: order.promo_code_id,
+          code: order.promo_codes?.code,
+          discount: order.promo_discount
+        } : null
       }
 
       console.log('📦 Payload being sent:', payload)
@@ -284,12 +348,14 @@ const PaymentPage = () => {
     setError('')
 
     try {
+      // Dapatkan token dari backend
       const transaction = await createTransaction()
       
       if (transaction && transaction.token) {
         console.log('🎫 Transaction token received:', transaction.token)
         setSnapToken(transaction.token)
 
+        // Simpan token ke database
         const { error: updateError } = await supabase
           .from('orders')
           .update({ 
@@ -303,6 +369,7 @@ const PaymentPage = () => {
           console.error('❌ Error saving token to database:', updateError)
         }
 
+        // Buka Snap dengan token
         window.snap.pay(transaction.token, {
           onSuccess: function(result) {
             console.log('💰 Payment success:', result)
@@ -576,6 +643,16 @@ const PaymentPage = () => {
           </span>
         </div>
 
+        {/* Email Notification Status */}
+        {emailSent && (
+          <div className="mb-4 p-3 bg-green-50 rounded border-2 border-green-200 shadow-[4px_4px_0px_0px_rgba(34,197,94,0.2)] flex items-center gap-2">
+            <BiCheckCircle className="text-green-500 text-lg" />
+            <p className="text-sm text-green-700 font-medium">
+              Notifikasi pembayaran telah dikirim ke email Anda
+            </p>
+          </div>
+        )}
+
         {/* Timer */}
         <div className="bg-white rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.15)] p-6 mb-6 relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-red-500"></div>
@@ -724,14 +801,6 @@ const PaymentPage = () => {
             </div>
           </div>
         )}
-
-        {/* Email Info */}
-        <div className="mb-6 p-4 bg-blue-50 rounded border-2 border-blue-200 shadow-[4px_4px_0px_0px_rgba(74,144,226,0.2)] flex items-center gap-2">
-          <BiCheckCircle className="text-[#4a90e2] text-lg" />
-          <p className="text-sm text-[#4a90e2] font-medium">
-            Konfirmasi pembayaran akan dikirim ke email: <span className="font-bold">{order.customer_email}</span>
-          </p>
-        </div>
 
         {/* Midtrans Status */}
         {!snapLoaded && (
