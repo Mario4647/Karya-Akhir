@@ -25,7 +25,17 @@ import {
   BiPurchaseTag,
   BiMovie,
   BiMoney,
-  BiPackage
+  BiPackage,
+  BiDollar,
+  BiMusic,
+  BiMicrophone,
+  BiSpeaker,
+  BiHeadphone,
+  BiRadio,
+  BiVolumeFull,
+  BiDisc,
+  BiAlbum,
+  BiPlayCircle
 } from 'react-icons/bi'
 
 const ConcertPage = () => {
@@ -255,7 +265,6 @@ const ConcertPage = () => {
     setError('')
 
     try {
-      // Validasi data
       if (!user) {
         throw new Error('Anda harus login terlebih dahulu')
       }
@@ -268,14 +277,11 @@ const ConcertPage = () => {
         throw new Error('Jumlah tiket melebihi stok yang tersedia')
       }
 
-      // Generate order number
       const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
       
-      // Set expiry time (60 menit)
       const expiryTime = new Date()
       expiryTime.setMinutes(expiryTime.getMinutes() + 60)
 
-      // Siapkan data order - SESUAIKAN DENGAN SCHEMA
       const orderData = {
         order_number: orderNumber,
         user_id: user.id,
@@ -304,7 +310,6 @@ const ConcertPage = () => {
 
       console.log('Order Data:', orderData)
 
-      // Insert order
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert([orderData])
@@ -322,10 +327,8 @@ const ConcertPage = () => {
 
       console.log('Order created:', order)
 
-      // Create tickets for each buyer
       const tickets = []
       
-      // Ticket for main buyer
       tickets.push({
         product_id: selectedProduct.id,
         order_id: order.id,
@@ -338,7 +341,6 @@ const ConcertPage = () => {
         updated_at: new Date().toISOString()
       })
 
-      // Tickets for additional buyers
       buyers.slice(1).forEach((buyer, index) => {
         tickets.push({
           product_id: selectedProduct.id,
@@ -355,19 +357,16 @@ const ConcertPage = () => {
 
       console.log('Tickets to insert:', tickets)
 
-      // Insert tickets
       const { error: ticketsError } = await supabase
         .from('tickets')
         .insert(tickets)
 
       if (ticketsError) {
         console.error('Tickets insert error:', ticketsError)
-        // Jika gagal insert tiket, hapus order yang sudah dibuat
         await supabase.from('orders').delete().eq('id', order.id)
         throw new Error(`Gagal membuat tiket: ${ticketsError.message}`)
       }
 
-      // Update stock
       const updatedTicketTypes = selectedProduct.ticket_types.map(type => {
         if (type.name === selectedTicketType.name) {
           return { ...type, stock: parseInt(type.stock) - quantity }
@@ -386,10 +385,8 @@ const ConcertPage = () => {
 
       if (updateError) {
         console.error('Stock update error:', updateError)
-        // Log error tapi jangan throw karena order sudah berhasil
       }
 
-      // Update promo usage jika ada
       if (promoApplied) {
         await supabase
           .from('promo_codes')
@@ -400,7 +397,6 @@ const ConcertPage = () => {
           .eq('id', promoApplied.id)
       }
 
-      // Redirect ke halaman pembayaran
       navigate(`/payment/${order.id}`)
 
     } catch (error) {
@@ -426,14 +422,44 @@ const ConcertPage = () => {
     }).format(number)
   }
 
+  // Array ikon untuk background
+  const backgroundIcons = [
+    BiMusic, BiMicrophone, BiSpeaker, BiHeadphone, 
+    BiRadio, BiVolumeFull, BiDisc, BiAlbum, BiPlayCircle,
+    BiPurchaseTag, BiMovie, BiCalendar, BiMap, BiGift, BiCreditCard
+  ]
+
   if (isLoadingProducts) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
+      <div className="min-h-screen bg-[#f5f0e8] relative overflow-hidden">
+        {/* Background Icons */}
+        <div className="absolute inset-0 opacity-10 pointer-events-none">
+          {[...Array(30)].map((_, i) => {
+            const Icon = backgroundIcons[i % backgroundIcons.length]
+            const size = Math.floor(Math.random() * 100) + 50
+            const top = Math.random() * 100
+            const left = Math.random() * 100
+            const rotate = Math.random() * 360
+            return (
+              <Icon 
+                key={i}
+                size={size}
+                className="absolute text-black"
+                style={{
+                  top: `${top}%`,
+                  left: `${left}%`,
+                  transform: `rotate(${rotate}deg)`,
+                  opacity: 0.1
+                }}
+              />
+            )
+          })}
+        </div>
         <NavbarEvent />
-        <div className="flex items-center justify-center h-[80vh]">
+        <div className="relative z-10 flex items-center justify-center h-[80vh]">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
-            <p className="text-gray-600">Memuat event...</p>
+            <div className="animate-spin rounded-full h-16 w-16 border-4 border-black border-t-yellow-400 mx-auto mb-4"></div>
+            <p className="text-black font-bold text-xl uppercase tracking-widest">Loading...</p>
           </div>
         </div>
       </div>
@@ -442,18 +468,41 @@ const ConcertPage = () => {
 
   if (fetchError) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
+      <div className="min-h-screen bg-[#f5f0e8] relative overflow-hidden">
+        {/* Background Icons */}
+        <div className="absolute inset-0 opacity-10 pointer-events-none">
+          {[...Array(30)].map((_, i) => {
+            const Icon = backgroundIcons[i % backgroundIcons.length]
+            const size = Math.floor(Math.random() * 100) + 50
+            const top = Math.random() * 100
+            const left = Math.random() * 100
+            const rotate = Math.random() * 360
+            return (
+              <Icon 
+                key={i}
+                size={size}
+                className="absolute text-black"
+                style={{
+                  top: `${top}%`,
+                  left: `${left}%`,
+                  transform: `rotate(${rotate}deg)`,
+                  opacity: 0.1
+                }}
+              />
+            )
+          })}
+        </div>
         <NavbarEvent />
-        <div className="max-w-7xl mx-auto px-4 py-12">
-          <div className="text-center py-20">
-            <BiError className="text-6xl text-red-400 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-700">Gagal Memuat Data</h2>
-            <p className="text-gray-500 mt-2">{fetchError}</p>
+        <div className="relative z-10 max-w-7xl mx-auto px-4 py-12">
+          <div className="text-center py-20 border-4 border-black bg-white shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-12">
+            <BiError className="text-6xl text-red-600 mx-auto mb-4" />
+            <h2 className="text-4xl font-black text-black uppercase mb-4">Gagal Memuat Data</h2>
+            <p className="text-black text-xl mb-6">{fetchError}</p>
             <button
               onClick={fetchProducts}
-              className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="px-8 py-4 bg-black text-white font-bold text-xl uppercase border-4 border-black hover:bg-yellow-400 hover:text-black transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
             >
-              Coba Lagi
+              COBA LAGI
             </button>
           </div>
         </div>
@@ -463,13 +512,36 @@ const ConcertPage = () => {
 
   if (!selectedProduct || products.length === 0) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
+      <div className="min-h-screen bg-[#f5f0e8] relative overflow-hidden">
+        {/* Background Icons */}
+        <div className="absolute inset-0 opacity-10 pointer-events-none">
+          {[...Array(30)].map((_, i) => {
+            const Icon = backgroundIcons[i % backgroundIcons.length]
+            const size = Math.floor(Math.random() * 100) + 50
+            const top = Math.random() * 100
+            const left = Math.random() * 100
+            const rotate = Math.random() * 360
+            return (
+              <Icon 
+                key={i}
+                size={size}
+                className="absolute text-black"
+                style={{
+                  top: `${top}%`,
+                  left: `${left}%`,
+                  transform: `rotate(${rotate}deg)`,
+                  opacity: 0.1
+                }}
+              />
+            )
+          })}
+        </div>
         <NavbarEvent />
-        <div className="max-w-7xl mx-auto px-4 py-12">
-          <div className="text-center py-20">
-            <BiInfoCircle className="text-6xl text-gray-400 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-700">Belum ada event tersedia</h2>
-            <p className="text-gray-500 mt-2">Silakan cek kembali nanti</p>
+        <div className="relative z-10 max-w-7xl mx-auto px-4 py-12">
+          <div className="text-center py-20 border-4 border-black bg-white shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-12">
+            <BiInfoCircle className="text-6xl text-black mx-auto mb-4" />
+            <h2 className="text-4xl font-black text-black uppercase mb-4">BELUM ADA EVENT</h2>
+            <p className="text-black text-xl">Silakan cek kembali nanti</p>
           </div>
         </div>
       </div>
@@ -477,26 +549,52 @@ const ConcertPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
+    <div className="min-h-screen bg-[#f5f0e8] relative overflow-hidden">
+      {/* Background Icons - Random dan Menarik */}
+      <div className="absolute inset-0 opacity-15 pointer-events-none">
+        {[...Array(40)].map((_, i) => {
+          const Icon = backgroundIcons[i % backgroundIcons.length]
+          const size = Math.floor(Math.random() * 120) + 40
+          const top = Math.random() * 100
+          const left = Math.random() * 100
+          const rotate = Math.random() * 360
+          const color = i % 3 === 0 ? '#000' : (i % 3 === 1 ? '#fbbf24' : '#ef4444')
+          return (
+            <Icon 
+              key={i}
+              size={size}
+              className="absolute"
+              style={{
+                top: `${top}%`,
+                left: `${left}%`,
+                transform: `rotate(${rotate}deg)`,
+                color: color,
+                opacity: 0.15
+              }}
+            />
+          )
+        })}
+      </div>
+
       <NavbarEvent />
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Product Selector */}
+      <div className="relative z-10 max-w-7xl mx-auto px-4 py-8">
+        {/* Product Selector - Neo Brutalizm Style */}
         {products.length > 1 && (
-          <div className="mb-6 overflow-x-auto">
-            <div className="flex space-x-4 pb-2">
+          <div className="mb-8 overflow-x-auto pb-2">
+            <div className="flex space-x-4">
               {products.map((product) => (
                 <button
                   key={product.id}
                   onClick={() => handleProductChange(product)}
-                  className={`flex-shrink-0 px-4 py-2 rounded-lg transition-all ${
+                  className={`flex-shrink-0 px-6 py-3 font-bold text-lg uppercase transition-all ${
                     selectedProduct.id === product.id
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white text-gray-700 hover:bg-gray-100'
+                      ? 'bg-black text-white border-4 border-black shadow-[4px_4px_0px_0px_rgba(251,191,36,1)]'
+                      : 'bg-white text-black border-4 border-black hover:bg-yellow-400 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
                   }`}
                 >
-                  <div className="font-medium">{product.name}</div>
-                  <div className="text-xs opacity-75">
+                  <div>{product.name}</div>
+                  <div className="text-sm opacity-75">
                     {product.event_date ? new Date(product.event_date).toLocaleDateString('id-ID') : 'TBA'}
                   </div>
                 </button>
@@ -507,9 +605,9 @@ const ConcertPage = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column - Event Details */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Poster */}
-            <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
+          <div className="lg:col-span-2 space-y-8">
+            {/* Poster - Neo Brutalizm */}
+            <div className="border-4 border-black bg-white shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
               {selectedProduct.image_data || selectedProduct.poster_url ? (
                 <img 
                   src={selectedProduct.image_data || selectedProduct.poster_url} 
@@ -517,22 +615,26 @@ const ConcertPage = () => {
                   className="w-full h-96 object-cover"
                 />
               ) : (
-                <div className="w-full h-96 bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center">
-                  <BiMovie className="text-8xl text-blue-300" />
+                <div className="w-full h-96 bg-yellow-400 flex items-center justify-center">
+                  <BiMovie className="text-8xl text-black" />
                 </div>
               )}
             </div>
 
-            {/* Event Info */}
-            <div className="bg-white rounded-2xl shadow-xl p-6">
-              <h1 className="text-3xl font-bold text-gray-800 mb-4">{selectedProduct.name}</h1>
+            {/* Event Info - Neo Brutalizm */}
+            <div className="border-4 border-black bg-white shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] p-8">
+              <h1 className="text-5xl font-black text-black uppercase mb-6 border-b-4 border-black pb-4">
+                {selectedProduct.name}
+              </h1>
               
-              <div className="space-y-4">
-                <div className="flex items-start space-x-3">
-                  <BiCalendar className="text-2xl text-blue-500 mt-1" />
+              <div className="space-y-6">
+                <div className="flex items-start space-x-4">
+                  <div className="p-3 bg-yellow-400 border-2 border-black">
+                    <BiCalendar className="text-3xl text-black" />
+                  </div>
                   <div>
-                    <p className="font-semibold text-gray-700">Tanggal & Waktu</p>
-                    <p className="text-gray-600">
+                    <p className="font-black text-black text-xl mb-1 uppercase">Tanggal & Waktu</p>
+                    <p className="text-black text-lg font-bold">
                       {selectedProduct.event_date ? new Date(selectedProduct.event_date).toLocaleDateString('id-ID', {
                         weekday: 'long',
                         year: 'numeric',
@@ -541,7 +643,7 @@ const ConcertPage = () => {
                       }) : 'Belum ditentukan'}
                     </p>
                     {selectedProduct.event_date && (
-                      <p className="text-gray-600">
+                      <p className="text-black text-lg font-bold">
                         {new Date(selectedProduct.event_date).toLocaleTimeString('id-ID', {
                           hour: '2-digit',
                           minute: '2-digit'
@@ -551,34 +653,38 @@ const ConcertPage = () => {
                   </div>
                 </div>
 
-                <div className="flex items-start space-x-3">
-                  <BiMap className="text-2xl text-blue-500 mt-1" />
+                <div className="flex items-start space-x-4">
+                  <div className="p-3 bg-red-400 border-2 border-black">
+                    <BiMap className="text-3xl text-black" />
+                  </div>
                   <div>
-                    <p className="font-semibold text-gray-700">Lokasi</p>
-                    <p className="text-gray-600">{selectedProduct.event_location || 'Belum ditentukan'}</p>
+                    <p className="font-black text-black text-xl mb-1 uppercase">Lokasi</p>
+                    <p className="text-black text-lg font-bold">{selectedProduct.event_location || 'Belum ditentukan'}</p>
                     {selectedProduct.location_description && (
-                      <p className="text-gray-500 text-sm mt-1">{selectedProduct.location_description}</p>
+                      <p className="text-black mt-2 italic">{selectedProduct.location_description}</p>
                     )}
                     {selectedProduct.maps_link && (
                       <a
                         href={selectedProduct.maps_link}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center space-x-1 mt-2 text-blue-600 hover:text-blue-700"
+                        className="inline-flex items-center space-x-2 mt-4 px-6 py-3 bg-black text-white font-bold uppercase border-2 border-black hover:bg-yellow-400 hover:text-black transition-colors"
                       >
-                        <BiMap className="text-lg" />
-                        <span>Lihat Melalui Google Maps</span>
+                        <BiMap className="text-xl" />
+                        <span>LIHAT MAPS</span>
                       </a>
                     )}
                   </div>
                 </div>
 
                 {selectedProduct.description && (
-                  <div className="flex items-start space-x-3">
-                    <BiInfoCircle className="text-2xl text-blue-500 mt-1" />
+                  <div className="flex items-start space-x-4">
+                    <div className="p-3 bg-blue-400 border-2 border-black">
+                      <BiInfoCircle className="text-3xl text-black" />
+                    </div>
                     <div>
-                      <p className="font-semibold text-gray-700">Deskripsi Event</p>
-                      <p className="text-gray-600">{selectedProduct.description}</p>
+                      <p className="font-black text-black text-xl mb-1 uppercase">Deskripsi</p>
+                      <p className="text-black text-lg">{selectedProduct.description}</p>
                     </div>
                   </div>
                 )}
@@ -586,16 +692,18 @@ const ConcertPage = () => {
             </div>
           </div>
 
-          {/* Right Column - Ticket Purchase */}
+          {/* Right Column - Ticket Purchase - Neo Brutalizm */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-2xl shadow-xl p-6 sticky top-24">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">Beli Tiket</h2>
+            <div className="sticky top-24 border-4 border-black bg-yellow-400 shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] p-6">
+              <h2 className="text-3xl font-black text-black uppercase mb-6 border-b-4 border-black pb-2">
+                BELI TIKET
+              </h2>
 
               {/* Ticket Type Selection */}
               {selectedProduct.ticket_types && selectedProduct.ticket_types.length > 0 ? (
-                <div className="mb-6">
-                  <p className="text-sm text-gray-500 mb-2">Pilih Tipe Tiket</p>
-                  <div className="space-y-2">
+                <div className="mb-8">
+                  <p className="font-black text-black text-lg mb-3 uppercase">PILIH TIPE</p>
+                  <div className="space-y-3">
                     {selectedProduct.ticket_types.map((type, index) => {
                       const isSelected = selectedTicketType?.name === type.name
                       const isOutOfStock = type.stock === 0
@@ -604,32 +712,28 @@ const ConcertPage = () => {
                           key={index}
                           onClick={() => !isOutOfStock && handleTicketTypeChange(type)}
                           disabled={isOutOfStock}
-                          className={`w-full p-3 border-2 rounded-lg text-left transition-all ${
+                          className={`w-full p-4 border-4 border-black text-left transition-all ${
                             isSelected
-                              ? 'border-blue-500 bg-blue-50'
+                              ? 'bg-black text-white'
                               : isOutOfStock
-                              ? 'border-gray-200 bg-gray-100 opacity-50 cursor-not-allowed'
-                              : 'border-gray-200 hover:border-blue-300'
+                              ? 'bg-gray-300 text-gray-500 opacity-50 cursor-not-allowed'
+                              : 'bg-white text-black hover:bg-red-400'
                           }`}
                         >
                           <div className="flex justify-between items-center">
                             <div>
-                              <p className="font-medium text-gray-800">{type.name}</p>
+                              <p className="font-black text-lg">{type.name}</p>
                               {type.description && (
-                                <p className="text-xs text-gray-500">{type.description}</p>
+                                <p className="text-sm opacity-75">{type.description}</p>
                               )}
                             </div>
                             <div className="text-right">
-                              <p className="font-bold text-blue-600">
-                                {formatRupiah(type.price)}
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                Stok: {type.stock}
-                              </p>
+                              <p className="font-black text-xl">{formatRupiah(type.price)}</p>
+                              <p className="text-sm">Stok: {type.stock}</p>
                             </div>
                           </div>
                           {isOutOfStock && (
-                            <p className="text-xs text-red-500 mt-1">Tiket telah habis</p>
+                            <p className="text-sm text-red-600 mt-2 font-bold">HABIS</p>
                           )}
                         </button>
                       )
@@ -637,85 +741,82 @@ const ConcertPage = () => {
                   </div>
                 </div>
               ) : (
-                <div className="mb-6 p-4 bg-yellow-50 rounded-lg">
-                  <p className="text-sm text-yellow-700">Belum ada tipe tiket tersedia</p>
+                <div className="mb-8 p-6 border-4 border-black bg-white">
+                  <p className="text-black font-bold text-center">BELUM ADA TIPE TIKET</p>
                 </div>
               )}
 
               {/* Quantity Selector */}
               {selectedTicketType && (
-                <div className="mb-6">
-                  <p className="text-sm text-gray-500 mb-2">Jumlah Tiket</p>
+                <div className="mb-8">
+                  <p className="font-black text-black text-lg mb-3 uppercase">JUMLAH</p>
                   <div className="flex items-center space-x-3">
                     <button
                       onClick={() => handleQuantityChange('minus')}
                       disabled={quantity === 1}
-                      className="w-10 h-10 rounded-lg border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-14 h-14 border-4 border-black bg-white text-black font-black text-2xl hover:bg-red-400 disabled:opacity-50 disabled:hover:bg-white"
                     >
-                      <BiMinus />
+                      <BiMinus className="mx-auto" />
                     </button>
-                    <span className="w-12 text-center font-semibold text-lg">{quantity}</span>
+                    <span className="w-20 text-center font-black text-3xl text-black">{quantity}</span>
                     <button
                       onClick={() => handleQuantityChange('add')}
                       disabled={quantity >= selectedTicketType.stock}
-                      className="w-10 h-10 rounded-lg border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-14 h-14 border-4 border-black bg-white text-black font-black text-2xl hover:bg-green-400 disabled:opacity-50 disabled:hover:bg-white"
                     >
-                      <BiPlus />
+                      <BiPlus className="mx-auto" />
                     </button>
-                    <span className="text-sm text-gray-500 ml-2">
-                      Stok: {selectedTicketType.stock}
-                    </span>
                   </div>
                   {selectedTicketType.stock === 0 && (
-                    <p className="text-red-500 text-sm mt-2">Tiket telah habis</p>
+                    <p className="text-red-600 font-bold text-lg mt-3">TIKET HABIS</p>
                   )}
                 </div>
               )}
 
               {/* Promo Code */}
-              <div className="mb-6">
+              <div className="mb-8">
                 <button
                   onClick={() => setShowPromoInput(!showPromoInput)}
-                  className="text-blue-600 hover:text-blue-700 flex items-center space-x-1 text-sm font-medium"
+                  className="w-full py-4 bg-black text-white font-black text-lg uppercase border-4 border-black hover:bg-yellow-400 hover:text-black transition-colors flex items-center justify-center space-x-2"
                 >
-                  <BiGift className="text-lg" />
-                  <span>Gunakan Kode Promo</span>
+                  <BiGift className="text-2xl" />
+                  <span>PAKAI KODE PROMO</span>
                 </button>
 
                 {showPromoInput && (
-                  <div className="mt-3 space-y-2">
+                  <div className="mt-4 space-y-3">
                     <div className="flex space-x-2">
                       <input
                         type="text"
                         value={promoCode}
                         onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-                        placeholder="Masukkan kode promo"
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="MASUKKAN KODE"
+                        className="flex-1 px-4 py-3 border-4 border-black bg-white font-bold text-black uppercase placeholder:text-gray-400 focus:outline-none focus:ring-0"
                       />
                       <button
                         onClick={validatePromo}
                         disabled={promoLoading}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                        className="px-6 py-3 bg-black text-white font-black uppercase border-4 border-black hover:bg-yellow-400 hover:text-black transition-colors disabled:opacity-50"
                       >
-                        {promoLoading ? '...' : 'Gunakan'}
+                        {promoLoading ? '...' : 'OK'}
                       </button>
                     </div>
                     {promoError && (
-                      <p className="text-red-500 text-sm flex items-center space-x-1">
-                        <BiError />
+                      <p className="text-red-600 font-bold flex items-center space-x-1">
+                        <BiError className="text-xl" />
                         <span>{promoError}</span>
                       </p>
                     )}
                     {promoApplied && (
-                      <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                        <p className="text-green-700 font-medium flex items-center space-x-1">
-                          <BiCheck className="text-lg" />
-                          <span>Promo berhasil diterapkan!</span>
+                      <div className="p-4 border-4 border-black bg-green-400">
+                        <p className="text-black font-black flex items-center space-x-1">
+                          <BiCheck className="text-2xl" />
+                          <span>PROMO BERHASIL!</span>
                         </p>
-                        <p className="text-sm text-green-600 mt-1">
+                        <p className="text-black font-bold mt-1">
                           {promoApplied.discount_type === 'percentage' 
-                            ? `Diskon ${promoApplied.discount_value}%`
-                            : `Diskon ${formatRupiah(promoApplied.discount_value)}`
+                            ? `DISKON ${promoApplied.discount_value}%`
+                            : `DISKON ${formatRupiah(promoApplied.discount_value)}`
                           }
                         </p>
                       </div>
@@ -726,21 +827,21 @@ const ConcertPage = () => {
 
               {/* Total */}
               {selectedTicketType && (
-                <div className="border-t border-gray-200 pt-4 mb-6">
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Subtotal</span>
-                      <span className="text-gray-800">{formatRupiah(subtotal)}</span>
+                <div className="mb-8 border-t-4 border-black pt-6">
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-lg font-bold">
+                      <span className="text-black">SUBTOTAL</span>
+                      <span className="text-black">{formatRupiah(subtotal)}</span>
                     </div>
                     {promoApplied && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Diskon</span>
-                        <span className="text-green-600">- {formatRupiah(discount)}</span>
+                      <div className="flex justify-between text-lg font-bold text-red-600">
+                        <span>DISKON</span>
+                        <span>- {formatRupiah(discount)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between text-lg font-bold pt-2 border-t border-gray-200">
-                      <span>Total</span>
-                      <span className="text-blue-600">{formatRupiah(total)}</span>
+                    <div className="flex justify-between text-2xl font-black pt-3 border-t-2 border-black">
+                      <span className="text-black">TOTAL</span>
+                      <span className="text-black">{formatRupiah(total)}</span>
                     </div>
                   </div>
                 </div>
@@ -750,104 +851,97 @@ const ConcertPage = () => {
               <button
                 onClick={handleBuyNow}
                 disabled={!selectedTicketType || selectedTicketType.stock === 0 || quantity === 0 || !user}
-                className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-5 bg-black text-white font-black text-2xl uppercase border-4 border-black hover:bg-yellow-400 hover:text-black transition-all duration-300 disabled:opacity-50 disabled:hover:bg-black disabled:hover:text-white"
               >
-                {!user ? 'Login untuk Membeli' : 
-                 !selectedTicketType ? 'Pilih Tipe Tiket' :
-                 selectedTicketType.stock === 0 ? 'Tiket Habis' : 'Beli Tiket'}
+                {!user ? 'LOGIN DULU' : 
+                 !selectedTicketType ? 'PILIH TIKET' :
+                 selectedTicketType.stock === 0 ? 'TIKET HABIS' : 'BELI SEKARANG'}
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Buyer Form Modal */}
+      {/* Buyer Form Modal - Neo Brutalizm */}
       {showBuyerForm && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold text-gray-800">Data Pembeli</h2>
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-yellow-400 border-4 border-black shadow-[16px_16px_0px_0px_rgba(0,0,0,1)] max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-8">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-4xl font-black text-black uppercase">DATA PEMBELI</h2>
                 <button
                   onClick={() => setShowBuyerForm(false)}
-                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+                  className="w-14 h-14 border-4 border-black bg-white hover:bg-red-400 transition-colors flex items-center justify-center"
                 >
-                  <BiX className="text-xl" />
+                  <BiX className="text-4xl font-black" />
                 </button>
               </div>
 
-              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-sm text-blue-700">
-                  <span className="font-medium">Info:</span> Setiap pembeli akan mendapatkan QR code unik untuk tiketnya.
+              <div className="mb-6 p-4 border-4 border-black bg-white">
+                <p className="text-black font-bold">
+                  <span className="font-black">INFO:</span> Setiap pembeli mendapat QR code unik.
                 </p>
               </div>
 
               {buyers.map((buyer, index) => (
-                <div key={index} className="mb-6 p-4 border border-gray-200 rounded-xl">
-                  <div className="flex justify-between items-center mb-3">
-                    <h3 className="font-semibold text-gray-700">Pembeli {index + 1}</h3>
+                <div key={index} className="mb-8 p-6 border-4 border-black bg-white">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-2xl font-black text-black">PEMBELI {index + 1}</h3>
                     {buyers.length > 1 && (
                       <button
                         onClick={() => handleRemoveBuyer(index)}
-                        className="text-red-500 hover:text-red-600 text-sm flex items-center space-x-1"
+                        className="px-4 py-2 bg-red-400 text-black font-black border-2 border-black hover:bg-red-600 transition-colors"
                       >
-                        <BiX />
-                        <span>Hapus</span>
+                        HAPUS
                       </button>
                     )}
                   </div>
 
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">
-                        Nama Lengkap <span className="text-red-500">*</span>
-                      </label>
+                      <label className="block font-black text-black mb-2">NAMA LENGKAP *</label>
                       <div className="relative">
-                        <BiUser className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                        <BiUser className="absolute left-4 top-1/2 transform -translate-y-1/2 text-2xl text-black" />
                         <input
                           type="text"
                           value={buyer.name}
                           onChange={(e) => handleBuyerChange(index, 'name', e.target.value)}
                           placeholder="Masukkan nama lengkap"
-                          className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full pl-12 pr-4 py-4 border-4 border-black bg-white font-bold text-black placeholder:text-gray-400 focus:outline-none focus:ring-0"
                           required
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">
-                        NIK <span className="text-red-500">*</span> (16 digit)
-                      </label>
+                      <label className="block font-black text-black mb-2">NIK (16 DIGIT) *</label>
                       <div className="relative">
-                        <BiIdCard className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                        <BiIdCard className="absolute left-4 top-1/2 transform -translate-y-1/2 text-2xl text-black" />
                         <input
                           type="text"
                           value={buyer.nik}
                           onChange={(e) => handleBuyerChange(index, 'nik', e.target.value.replace(/\D/g, '').slice(0, 16))}
                           placeholder="16 digit NIK"
                           maxLength="16"
-                          className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full pl-12 pr-4 py-4 border-4 border-black bg-white font-bold text-black placeholder:text-gray-400 focus:outline-none focus:ring-0"
                           required
                         />
                       </div>
                       {buyer.nik && buyer.nik.length < 16 && (
-                        <p className="text-xs text-red-500 mt-1">NIK harus 16 digit</p>
+                        <p className="text-red-600 font-bold mt-2">NIK HARUS 16 DIGIT</p>
                       )}
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">
-                        Alamat <span className="text-red-500">*</span>
-                      </label>
+                      <label className="block font-black text-black mb-2">ALAMAT *</label>
                       <div className="relative">
-                        <BiHome className="absolute left-3 top-3 text-gray-400" />
+                        <BiHome className="absolute left-4 top-4 text-2xl text-black" />
                         <textarea
                           value={buyer.address}
                           onChange={(e) => handleBuyerChange(index, 'address', e.target.value)}
                           placeholder="Masukkan alamat lengkap"
-                          rows="2"
-                          className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          rows="3"
+                          className="w-full pl-12 pr-4 py-4 border-4 border-black bg-white font-bold text-black placeholder:text-gray-400 focus:outline-none focus:ring-0"
                           required
                         />
                       </div>
@@ -859,43 +953,43 @@ const ConcertPage = () => {
               {selectedTicketType && quantity > 1 && buyers.length < quantity && (
                 <button
                   onClick={handleAddBuyer}
-                  className="w-full mb-4 py-2 border-2 border-dashed border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+                  className="w-full mb-6 py-4 border-4 border-black bg-white text-black font-black text-lg hover:bg-green-400 transition-colors"
                 >
-                  + Tambah Pembeli
+                  + TAMBAH PEMBELI
                 </button>
               )}
 
               {error && (
-                <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="mb-6 p-4 border-4 border-black bg-red-400">
                   <div className="flex items-start gap-3">
-                    <BiError className="text-red-500 text-xl mt-0.5" />
+                    <BiError className="text-3xl text-black" />
                     <div>
-                      <p className="font-medium text-red-800">Gagal membuat pesanan</p>
-                      <p className="text-sm text-red-600 mt-1">{error}</p>
+                      <p className="font-black text-black">GAGAL!</p>
+                      <p className="text-black font-bold">{error}</p>
                     </div>
                   </div>
                 </div>
               )}
 
-              <div className="flex space-x-3">
+              <div className="flex space-x-4">
                 <button
                   onClick={() => setShowBuyerForm(false)}
-                  className="flex-1 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="flex-1 py-4 border-4 border-black bg-white text-black font-black text-lg hover:bg-red-400 transition-colors"
                 >
-                  Batal
+                  BATAL
                 </button>
                 <button
                   onClick={createOrder}
                   disabled={loading}
-                  className="flex-1 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
+                  className="flex-1 py-4 border-4 border-black bg-black text-white font-black text-lg hover:bg-yellow-400 hover:text-black transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
                 >
                   {loading ? (
                     <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                      <span>Memproses...</span>
+                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                      <span>PROSES...</span>
                     </>
                   ) : (
-                    <span>Simpan & Lanjut</span>
+                    <span>SIMPAN & LANJUT</span>
                   )}
                 </button>
               </div>
