@@ -161,44 +161,7 @@ const ConcertPage = ({ user }) => {
     }
   }
 
-  const fetchProducts = async () => {
-    setIsLoadingProducts(true)
-    setFetchError('')
-    
-    try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-      
-      if (error) throw error
-      
-      const processedData = data.map(product => ({
-        ...product,
-        ticket_types: typeof product.ticket_types === 'string' 
-          ? JSON.parse(product.ticket_types) 
-          : product.ticket_types || [],
-        image_url: product.image_data || product.poster_url
-      }))
-      
-      console.log('Fetched products:', processedData)
-      setProducts(processedData || [])
-      
-      if (processedData && processedData.length > 0) {
-        setSelectedProduct(processedData[0])
-        if (processedData[0].ticket_types && processedData[0].ticket_types.length > 0) {
-          setSelectedTicketType(processedData[0].ticket_types[0])
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching products:', error)
-      setFetchError('Gagal memuat data event: ' + error.message)
-    } finally {
-      setIsLoadingProducts(false)
-    }
-  }
-
+  
   const handleProductChange = (product) => {
     setSelectedProduct(product)
     if (product.ticket_types && product.ticket_types.length > 0) {
@@ -378,6 +341,81 @@ const ConcertPage = ({ user }) => {
 
   // Bagian createOrder, perbaiki fungsi yang memanggil RPC
 
+
+      // Perbaiki fungsi fetchProducts untuk memastikan ticket_types adalah array
+
+const fetchProducts = async () => {
+  setIsLoadingProducts(true)
+  setFetchError('')
+  
+  try {
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+    
+    if (error) throw error
+    
+    const processedData = data.map(product => {
+      let ticket_types = product.ticket_types;
+      
+      // Parse jika string
+      if (typeof ticket_types === 'string') {
+        try {
+          ticket_types = JSON.parse(ticket_types);
+        } catch (e) {
+          console.error('Error parsing ticket_types for product', product.id, e);
+          ticket_types = [];
+        }
+      }
+      
+      // Pastikan array
+      if (!Array.isArray(ticket_types)) {
+        console.warn('ticket_types is not an array for product', product.id, ticket_types);
+        // Buat array default dari data produk
+        ticket_types = [{
+          name: 'Reguler',
+          price: product.price || 0,
+          stock: product.stock || 0,
+          description: ''
+        }];
+      }
+      
+      // Pastikan setiap item memiliki properti yang diperlukan
+      ticket_types = ticket_types.map(type => ({
+        name: type.name || 'Reguler',
+        price: parseFloat(type.price || product.price || 0),
+        stock: parseInt(type.stock || product.stock || 0),
+        description: type.description || ''
+      }));
+      
+      return {
+        ...product,
+        ticket_types: ticket_types,
+        image_url: product.image_data || product.poster_url
+      };
+    })
+    
+    console.log('Processed products:', processedData)
+    setProducts(processedData || [])
+    
+    if (processedData && processedData.length > 0) {
+      setSelectedProduct(processedData[0])
+      if (processedData[0].ticket_types && processedData[0].ticket_types.length > 0) {
+        setSelectedTicketType(processedData[0].ticket_types[0])
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching products:', error)
+    setFetchError('Gagal memuat data event: ' + error.message)
+  } finally {
+    setIsLoadingProducts(false)
+  }
+}
+
+// Perbaiki fungsi createOrder dengan validasi tambahan
+
 const createOrder = async () => {
   if (!validateBuyers()) return
 
@@ -392,6 +430,11 @@ const createOrder = async () => {
   setError('')
 
   try {
+    // Validasi tambahan
+    if (!selectedProduct || !selectedTicketType) {
+      throw new Error('Pilih produk dan tipe tiket terlebih dahulu');
+    }
+
     console.log('Checking stock for:', {
       product_id: selectedProduct.id,
       ticket_type: selectedTicketType.name,
@@ -413,8 +456,12 @@ const createOrder = async () => {
       throw new Error('Gagal memeriksa stok: ' + stockError.message);
     }
 
-    if (!stockCheck || !stockCheck.success) {
-      throw new Error(stockCheck?.message || 'Gagal memeriksa stok');
+    if (!stockCheck) {
+      throw new Error('Tidak ada respon dari server');
+    }
+
+    if (!stockCheck.success) {
+      throw new Error(stockCheck.message || 'Gagal memeriksa stok');
     }
 
     if (!stockCheck.available) {
