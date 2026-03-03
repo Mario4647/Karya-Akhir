@@ -1,100 +1,92 @@
-import { useEffect, useState } from "react";
-import { supabase } from "./supabaseClient";
-import { useNavigate } from "react-router-dom";
+// ============================================
+// MIDDLEWARE UNTUK PROTEKSI ROUTE
+// ============================================
 
-export const useAuth = () => {
-    const [user, setUser] = useState(null);
-    const [loading, setLoading] = useState(true);
+import React, { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
+import { globalRateLimiter } from '../utils/security';
+
+export const withAuth = (WrappedComponent, allowedRoles = ['user', 'admin', 'admin-event']) => {
+  return (props) => {
+    const { user, profile, loading } = useAuth();
     const navigate = useNavigate();
-    const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes in milliseconds
-
+    
     useEffect(() => {
-        let inactivityTimer;
-
-        // Function to reset the inactivity timer
-        const resetInactivityTimer = () => {
-            clearTimeout(inactivityTimer);
-            if (user) { // Only set timer if user is logged in
-                inactivityTimer = setTimeout(async () => {
-                    await supabase.auth.signOut();
-                    setUser(null);
-                    navigate("/auth");
-                }, INACTIVITY_TIMEOUT);
-            }
-        };
-
-        // Check initial authentication state
-        const checkAuth = async () => {
-            try {
-                const { data: { user }, error } = await supabase.auth.getUser();
-                if (error || !user) {
-                    setUser(null);
-                    navigate("/auth");
-                } else {
-                    setUser(user);
-                    resetInactivityTimer(); // Start timer after successful auth
-                }
-            } catch (err) {
-                console.error("Auth check error:", err);
-                setUser(null);
-                navigate("/auth");
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        checkAuth();
-
-        // Listen for auth state changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-            if (event === "SIGNED_IN") {
-                setUser(session?.user || null);
-                resetInactivityTimer(); // Start timer on sign-in
-            } else if (event === "SIGNED_OUT") {
-                setUser(null);
-                navigate("/auth");
-                clearTimeout(inactivityTimer); // Clear timer on sign-out
-            }
-        });
-
-        // Event listeners for user activity
-        const activityEvents = ["mousemove", "mousedown", "keypress", "scroll", "touchstart"];
-        activityEvents.forEach((event) => {
-            window.addEventListener(event, resetInactivityTimer);
-        });
-
-        // Cleanup
-        return () => {
-            clearTimeout(inactivityTimer);
-            activityEvents.forEach((event) => {
-                window.removeEventListener(event, resetInactivityTimer);
-            });
-            subscription.unsubscribe();
-        };
-    }, [navigate, user]);
-
-    return { user, loading };
+      if (!loading && !user) {
+        navigate('/auth');
+      }
+      
+      if (!loading && user && !allowedRoles.includes(profile?.roles)) {
+        navigate('/');
+      }
+    }, [loading, user, profile, navigate]);
+    
+    if (loading) {
+      return (
+        <div className="min-h-screen bg-[#faf7f2] flex items-center justify-center">
+          <div className="text-center bg-white p-8 rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.1)]">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#4a90e2] border-t-transparent mx-auto mb-4"></div>
+            <p className="text-gray-700">Memeriksa autentikasi...</p>
+          </div>
+        </div>
+      );
+    }
+    
+    if (!user || !allowedRoles.includes(profile?.roles)) {
+      return null;
+    }
+    
+    return <WrappedComponent {...props} user={user} profile={profile} />;
+  };
 };
 
-export const withAuth = (Component) => {
-    return (props) => {
-        const { user, loading } = useAuth();
+// HOC untuk public routes (seperti login)
+export const withoutAuth = (WrappedComponent) => {
+  return (props) => {
+    const { user, loading } = useAuth();
+    const navigate = useNavigate();
+    
+    useEffect(() => {
+      if (!loading && user) {
+        navigate('/');
+      }
+    }, [loading, user, navigate]);
+    
+    if (loading) {
+      return (
+        <div className="min-h-screen bg-[#faf7f2] flex items-center justify-center">
+          <div className="text-center bg-white p-8 rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.1)]">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#4a90e2] border-t-transparent mx-auto mb-4"></div>
+            <p className="text-gray-700">Memuat...</p>
+          </div>
+        </div>
+      );
+    }
+    
+    return <WrappedComponent {...props} />;
+  };
+};
 
-        if (loading) {
-            return (
-                <div className="min-h-screen flex items-center justify-center bg-white">
-                    <div className="flex flex-col items-center gap-2">
-                        <div className="w-12 h-12 bg-gray-200 rounded-lg animate-pulse"></div>
-                        <span className="text-gray-700">Memuat...</span>
-                    </div>
-                </div>
-            );
-        }
-
-        if (!user) {
-            return null;
-        }
-
-        return <Component {...props} user={user} />;
-    };
+// Rate limiting middleware untuk API calls
+export const withRateLimit = (handler, options = {}) => {
+  const {
+    maxRequests = 30,
+    windowMs = 60000,
+    keyGenerator = (req) => req.headers['x-forwarded-for'] || req.socket.remoteAddress
+  } = options;
+  
+  return async (req, res) => {
+    const key = keyGenerator(req);
+    const rateCheck = globalRateLimiter.check(key);
+    
+    if (!rateCheck.allowed) {
+      return res.status(429).json({
+        error: rateCheck.reason,
+        retryAfter: rateCheck.retryAfter
+      });
+    }
+    
+    return handler(req, res);
+  };
 };
