@@ -414,8 +414,7 @@ const fetchProducts = async () => {
   }
 }
 
-// Perbaiki fungsi createOrder dengan validasi tambahan
-
+// Bagian createOrder - Hapus ticket_type dari orderData
 const createOrder = async () => {
   if (!validateBuyers()) return
 
@@ -441,11 +440,10 @@ const createOrder = async () => {
       quantity: quantity
     });
 
-    // Validasi stok dengan SELECT FOR UPDATE (mencegah race condition)
+    // Validasi stok (gunakan function sederhana)
     const { data: stockCheck, error: stockError } = await supabase
-      .rpc('check_and_lock_stock', {
+      .rpc('check_stock_simple', {
         p_product_id: selectedProduct.id,
-        p_ticket_type: selectedTicketType.name,
         p_quantity: quantity
       })
 
@@ -456,16 +454,8 @@ const createOrder = async () => {
       throw new Error('Gagal memeriksa stok: ' + stockError.message);
     }
 
-    if (!stockCheck) {
-      throw new Error('Tidak ada respon dari server');
-    }
-
-    if (!stockCheck.success) {
-      throw new Error(stockCheck.message || 'Gagal memeriksa stok');
-    }
-
-    if (!stockCheck.available) {
-      throw new Error(stockCheck.message || 'Stok tidak mencukupi');
+    if (!stockCheck || !stockCheck.available) {
+      throw new Error(stockCheck?.message || 'Stok tidak mencukupi');
     }
 
     // Generate order number
@@ -478,14 +468,14 @@ const createOrder = async () => {
     // Format nomor HP untuk Midtrans
     const formattedPhone = formatPhoneForMidtrans(buyers[0].phone)
 
-    // Siapkan data order
+    // Siapkan data order - TANPA ticket_type
     const orderData = {
       order_number: orderNumber,
       user_id: user.id,
       product_id: selectedProduct.id,
       product_name: `${selectedProduct.name} - ${selectedTicketType.name}`,
       product_price: selectedTicketType.price,
-      ticket_type: selectedTicketType.name,
+      // Hapus ticket_type dari sini
       quantity: quantity,
       subtotal: subtotal,
       promo_code_id: promoApplied?.id || null,
@@ -560,7 +550,7 @@ const createOrder = async () => {
       .insert({
         order_id: order.id,
         status: 'pending',
-        notes: `Pesanan dibuat - Stok di-reserve untuk ${quantity} tiket`,
+        notes: `Pesanan dibuat - ${quantity} tiket ${selectedTicketType.name}`,
         created_at: new Date().toISOString()
       })
 
