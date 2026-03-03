@@ -4,7 +4,7 @@ import { supabase } from '../../supabaseClient'
 import NavbarEvent from '../../components/NavbarEvent'
 import { withAuth } from '../../authMiddleware'
 import { sendEmail, formatEmailData } from '../../utils/emailService'
-import { globalRateLimiter, sanitizeInput, debounce } from '../../utils/security'
+import { globalRateLimiter, debounce } from '../../utils/security'
 import {
   BiCreditCard,
   BiTimer,
@@ -65,6 +65,7 @@ const PaymentPage = ({ user }) => {
   const [emailSent, setEmailSent] = useState(false)
   const [emailLoading, setEmailLoading] = useState(false)
   const [emailError, setEmailError] = useState('')
+  const [orderHistory, setOrderHistory] = useState([])
   const { orderId } = useParams()
   const navigate = useNavigate()
 
@@ -128,16 +129,34 @@ const PaymentPage = ({ user }) => {
     }
   }, [order])
 
-  // Handle expired order
+  // Handle expired order - stok TIDAK akan berkurang karena belum dipotong
   const handleExpireOrder = async () => {
     if (order && order.status === 'pending') {
-      await supabase
-        .from('orders')
-        .update({ 
-          status: 'expired',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', order.id)
+      try {
+        await supabase
+          .from('orders')
+          .update({ 
+            status: 'expired',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', order.id)
+          .eq('user_id', user.id)
+        
+        // Catat ke order history
+        await supabase
+          .from('order_history')
+          .insert({
+            order_id: order.id,
+            status: 'expired',
+            notes: 'Pesanan kadaluarsa - stok tidak terpengaruh',
+            created_at: new Date().toISOString()
+          })
+        
+        // Update state
+        setOrder({ ...order, status: 'expired' })
+      } catch (error) {
+        console.error('Error expiring order:', error)
+      }
     }
   }
 
@@ -149,11 +168,19 @@ const PaymentPage = ({ user }) => {
       setEmailLoading(true);
       setEmailError('');
 
+      // Validasi email
+      if (!orderData.customer_email || orderData.customer_email.trim() === '') {
+        throw new Error('Email penerima tidak valid');
+      }
+
       const emailData = formatEmailData(orderData, productsData, ticketsData);
+      
+      console.log('📧 Sending email to:', emailData.email);
       
       const result = await sendEmail('paymentPending', emailData);
       
       if (result.success) {
+        console.log('✅ Email sent successfully');
         setEmailSent(true);
         
         await supabase
@@ -164,9 +191,11 @@ const PaymentPage = ({ user }) => {
           })
           .eq('id', orderData.id);
       } else {
+        console.error('❌ Failed to send email:', result.error);
         setEmailError(result.error);
       }
     } catch (error) {
+      console.error('❌ Error in sendPaymentEmail:', error);
       setEmailError(error.message);
     } finally {
       setEmailLoading(false);
@@ -244,13 +273,22 @@ const PaymentPage = ({ user }) => {
       
       setTickets(ticketsData || [])
       
+      // Fetch order history
+      const { data: historyData } = await supabase
+        .from('order_history')
+        .select('*')
+        .eq('order_id', data.id)
+        .order('created_at', { ascending: false })
+      
+      setOrderHistory(historyData || [])
+      
       // Set promo applied jika ada
       if (data.promo_code_id) {
         setPromoApplied(data.promo_codes)
       }
       
-      // Kirim email jika belum
-      if (!data.email_notification_sent) {
+      // Kirim email jika belum dan status masih pending
+      if (!data.email_notification_sent && data.status === 'pending') {
         await sendPaymentEmail(data, data.products, ticketsData)
       }
     } catch (error) {
@@ -272,13 +310,15 @@ const PaymentPage = ({ user }) => {
   }
 
   const handleCancelOrder = async () => {
+    // Rate limiting
     if (!globalRateLimiter.check(user.id, 'cancel').allowed) {
       setError('Terlalu banyak percobaan. Silakan tunggu.')
       return;
     }
 
-    if (window.confirm('Yakin ingin membatalkan pesanan?')) {
+    if (window.confirm('Yakin ingin membatalkan pesanan? Stok tiket tidak akan dikembalikan karena belum dipotong.')) {
       try {
+        // Update status order menjadi cancelled
         await supabase
           .from('orders')
           .update({ 
@@ -288,8 +328,25 @@ const PaymentPage = ({ user }) => {
           .eq('id', order.id)
           .eq('user_id', user.id) // IDOR Protection
         
-        navigate('/concerts')
+        // Catat ke order history
+        await supabase
+          .from('order_history')
+          .insert({
+            order_id: order.id,
+            status: 'cancelled',
+            notes: 'Pesanan dibatalkan oleh user - stok tidak terpengaruh',
+            created_at: new Date().toISOString()
+          })
+        
+        // Update state
+        setOrder({ ...order, status: 'cancelled' })
+        
+        // Redirect setelah 2 detik
+        setTimeout(() => {
+          navigate('/concerts')
+        }, 2000)
       } catch (error) {
+        console.error('Error cancelling order:', error)
         alert('Gagal membatalkan pesanan')
       }
     }
@@ -410,6 +467,7 @@ const PaymentPage = ({ user }) => {
 
   const handlePaymentSuccess = async (result) => {
     try {
+      // Update order status menjadi paid
       await supabase
         .from('orders')
         .update({
@@ -423,6 +481,16 @@ const PaymentPage = ({ user }) => {
         })
         .eq('id', order.id)
         .eq('user_id', user.id)
+
+      // Catat ke order history
+      await supabase
+        .from('order_history')
+        .insert({
+          order_id: order.id,
+          status: 'paid',
+          notes: 'Pembayaran berhasil - stok telah dikurangi',
+          created_at: new Date().toISOString()
+        })
 
       // Kirim email sukses
       const emailData = formatEmailData(order, products, tickets);
@@ -565,7 +633,7 @@ const PaymentPage = ({ user }) => {
               <>
                 <BiCheckCircle className="text-6xl text-green-500 mx-auto mb-4" />
                 <h2 className="text-2xl font-bold text-gray-800 mb-2">Pesanan Sudah Dibayar</h2>
-                <p className="text-gray-600 mb-6">Pesanan Anda sudah dalam status LUNAS</p>
+                <p className="text-gray-600 mb-6">Pesanan Anda sudah dalam status LUNAS. Stok telah dikurangi.</p>
                 <button
                   onClick={() => navigate(`/payment-success/${order.id}`)}
                   className="px-6 py-3 bg-green-600 text-white rounded border-2 border-green-700 hover:bg-green-700 transition-colors font-medium shadow-[6px_6px_0px_0px_rgba(0,0,0,0.25)]"
@@ -577,13 +645,13 @@ const PaymentPage = ({ user }) => {
               <>
                 <BiXCircle className="text-6xl text-red-500 mx-auto mb-4" />
                 <h2 className="text-2xl font-bold text-gray-800 mb-2">Pesanan Dibatalkan</h2>
-                <p className="text-gray-600 mb-6">Pesanan Anda telah dibatalkan</p>
+                <p className="text-gray-600 mb-6">Pesanan Anda telah dibatalkan. Stok tidak terpengaruh.</p>
               </>
             ) : (
               <>
                 <BiTimer className="text-6xl text-orange-500 mx-auto mb-4" />
                 <h2 className="text-2xl font-bold text-gray-800 mb-2">Pesanan Kadaluarsa</h2>
-                <p className="text-gray-600 mb-6">Waktu pembayaran telah habis</p>
+                <p className="text-gray-600 mb-6">Waktu pembayaran telah habis. Stok tidak terpengaruh.</p>
               </>
             )}
             <button
@@ -699,6 +767,14 @@ const PaymentPage = ({ user }) => {
               </button>
             </div>
           </div>
+        </div>
+
+        {/* Info Stok */}
+        <div className="mb-4 p-3 bg-blue-50 border-2 border-blue-200 shadow-[4px_4px_0px_0px_rgba(74,144,226,0.2)] flex items-center gap-2">
+          <BiInfoCircle className="text-[#4a90e2] text-lg" />
+          <p className="text-sm text-[#4a90e2] font-medium">
+            <strong>Info Stok:</strong> Stok hanya akan berkurang SETELAH pembayaran berhasil.
+          </p>
         </div>
 
         {/* Order Summary */}
@@ -818,6 +894,40 @@ const PaymentPage = ({ user }) => {
           </div>
         )}
 
+        {/* Order History */}
+        {orderHistory.length > 0 && (
+          <div className="bg-white rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.15)] p-6 mb-6">
+            <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+              <span className="w-1 h-6 bg-[#4a90e2] rounded-full"></span>
+              Riwayat Pesanan
+            </h2>
+            
+            <div className="space-y-2">
+              {orderHistory.map((history, index) => (
+                <div key={index} className="text-sm p-2 bg-gray-50 rounded border border-gray-200">
+                  <span className="font-medium">
+                    {new Date(history.created_at).toLocaleString('id-ID')}
+                  </span>
+                  <span className="mx-2">-</span>
+                  <span className={
+                    history.status === 'paid' ? 'text-green-600' :
+                    history.status === 'cancelled' ? 'text-red-600' :
+                    history.status === 'expired' ? 'text-orange-600' :
+                    'text-gray-600'
+                  }>
+                    {history.status === 'paid' ? 'Pembayaran sukses' :
+                     history.status === 'cancelled' ? 'Dibatalkan' :
+                     history.status === 'expired' ? 'Kadaluarsa' : history.status}
+                  </span>
+                  {history.notes && (
+                    <p className="text-xs text-gray-500 mt-1">{history.notes}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Midtrans Status */}
         {!snapLoaded && (
           <div className="mb-6 p-4 bg-yellow-50 rounded border-2 border-yellow-200 shadow-[4px_4px_0px_0px_rgba(234,179,8,0.2)] flex items-center gap-2">
@@ -911,6 +1021,7 @@ const PaymentPage = ({ user }) => {
         {/* Info */}
         <div className="mt-4 text-center text-sm text-gray-500">
           <p>Anda akan diarahkan ke halaman pembayaran Midtrans</p>
+          <p className="text-xs mt-1">Stok hanya akan berkurang setelah pembayaran berhasil.</p>
         </div>
 
         {/* Email Info */}
