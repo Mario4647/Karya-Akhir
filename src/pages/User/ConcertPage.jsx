@@ -9,10 +9,9 @@ import {
   validatePhone, 
   formatPhoneForMidtrans,
   isSuspiciousInput,
-  globalRateLimiter,
-  useRateLimit 
+  globalRateLimiter
 } from '../../utils/security';
-import { validateBuyerData, prepareDataForAPI } from '../../utils/validation';
+import { validateBuyerData } from '../../utils/validation';
 import {
   BiCalendar,
   BiMap,
@@ -108,10 +107,8 @@ const ConcertPage = ({ user }) => {
   const [error, setError] = useState('')
   const [fetchError, setFetchError] = useState('')
   const [isLoadingProducts, setIsLoadingProducts] = useState(true)
+  const [stockCheckResult, setStockCheckResult] = useState(null)
   const navigate = useNavigate()
-
-  // Rate limiter untuk mencegah spam
-  const rateLimit = useRateLimit ? useRateLimit({ maxRequests: 5, windowMs: 60000 }) : { checkLimit: () => ({ allowed: true }), recordSuccess: () => {} };
 
   // Generate random positions for decorative icons
   const [iconPositions] = useState(() => {
@@ -123,6 +120,22 @@ const ConcertPage = ({ user }) => {
         rotate: `${Math.random() * 360}deg`,
         scale: 0.7 + Math.random() * 0.8,
         opacity: 0.1 + Math.random() * 0.1,
+        icon: decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
+      })
+    }
+    return positions
+  })
+
+  // Generate icon untuk tombol
+  const [buttonIconPositions] = useState(() => {
+    const positions = []
+    for (let i = 0; i < 20; i++) {
+      positions.push({
+        top: `${Math.random() * 100}%`,
+        left: `${Math.random() * 100}%`,
+        rotate: `${Math.random() * 360}deg`,
+        scale: 0.4 + Math.random() * 0.6,
+        opacity: 0.25 + Math.random() * 0.25,
         icon: decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
       })
     }
@@ -169,6 +182,7 @@ const ConcertPage = ({ user }) => {
         image_url: product.image_data || product.poster_url
       }))
       
+      console.log('Fetched products:', processedData)
       setProducts(processedData || [])
       
       if (processedData && processedData.length > 0) {
@@ -328,19 +342,60 @@ const ConcertPage = ({ user }) => {
     return true
   }
 
+  const checkStock = async () => {
+    try {
+      console.log('Checking stock for:', {
+        product_id: selectedProduct.id,
+        ticket_type: selectedTicketType.name,
+        quantity: quantity
+      });
+
+      const { data, error } = await supabase
+        .rpc('check_and_lock_stock', {
+          p_product_id: selectedProduct.id,
+          p_ticket_type: selectedTicketType.name,
+          p_quantity: quantity
+        })
+
+      console.log('Stock check result:', data);
+
+      if (error) {
+        console.error('Stock check error:', error);
+        return { success: false, message: 'Gagal memeriksa stok' };
+      }
+
+      if (!data || !data.success) {
+        return { success: false, message: data?.message || 'Gagal memeriksa stok' };
+      }
+
+      setStockCheckResult(data);
+      return data;
+    } catch (error) {
+      console.error('Error in checkStock:', error);
+      return { success: false, message: error.message };
+    }
+  };
+
   const createOrder = async () => {
     if (!validateBuyers()) return
 
-    // Cek rate limiting
-    if (!rateLimit.checkLimit().allowed) {
-      setError('Terlalu banyak percobaan. Silakan tunggu beberapa saat.')
-      return
+    // Rate limiting
+    const rateCheck = globalRateLimiter.check(user.id, 'create-order');
+    if (!rateCheck.allowed) {
+      setError(rateCheck.reason);
+      return;
     }
 
     setLoading(true)
     setError('')
 
     try {
+      console.log('Checking stock for:', {
+        product_id: selectedProduct.id,
+        ticket_type: selectedTicketType.name,
+        quantity: quantity
+      });
+
       // Validasi stok dengan SELECT FOR UPDATE (mencegah race condition)
       const { data: stockCheck, error: stockError } = await supabase
         .rpc('check_and_lock_stock', {
@@ -349,8 +404,19 @@ const ConcertPage = ({ user }) => {
           p_quantity: quantity
         })
 
-      if (stockError || !stockCheck?.available) {
-        throw new Error(stockCheck?.message || 'Stok tidak mencukupi')
+      console.log('Stock check result:', stockCheck);
+
+      if (stockError) {
+        console.error('Stock check error:', stockError);
+        throw new Error('Gagal memeriksa stok: ' + stockError.message);
+      }
+
+      if (!stockCheck || !stockCheck.success) {
+        throw new Error(stockCheck?.message || 'Gagal memeriksa stok');
+      }
+
+      if (!stockCheck.available) {
+        throw new Error(stockCheck.message || 'Stok tidak mencukupi');
       }
 
       // Generate order number
@@ -393,6 +459,8 @@ const ConcertPage = ({ user }) => {
         updated_at: new Date().toISOString()
       }
 
+      console.log('Order Data:', orderData)
+
       // Insert order
       const { data: order, error: orderError } = await supabase
         .from('orders')
@@ -400,7 +468,16 @@ const ConcertPage = ({ user }) => {
         .select()
         .single()
 
-      if (orderError) throw orderError
+      if (orderError) {
+        console.error('Order insert error details:', orderError)
+        throw new Error(orderError.message || 'Gagal menyimpan order')
+      }
+
+      if (!order) {
+        throw new Error('Gagal membuat order: Data tidak ditemukan setelah insert')
+      }
+
+      console.log('Order created:', order)
 
       // Create tickets for each buyer
       const tickets = buyers.map((buyer, index) => ({
@@ -415,17 +492,30 @@ const ConcertPage = ({ user }) => {
         updated_at: new Date().toISOString()
       }))
 
+      console.log('Tickets to insert:', tickets)
+
       const { error: ticketsError } = await supabase
         .from('tickets')
         .insert(tickets)
 
       if (ticketsError) {
+        console.error('Tickets insert error:', ticketsError)
         // Rollback order jika gagal insert tiket
         await supabase.from('orders').delete().eq('id', order.id)
-        throw new Error('Gagal membuat tiket')
+        throw new Error('Gagal membuat tiket: ' + ticketsError.message)
       }
 
-      rateLimit.recordSuccess();
+      // Catat ke order history
+      await supabase
+        .from('order_history')
+        .insert({
+          order_id: order.id,
+          status: 'pending',
+          notes: `Pesanan dibuat - Stok di-reserve untuk ${quantity} tiket`,
+          created_at: new Date().toISOString()
+        })
+
+      // Redirect ke halaman pembayaran
       navigate(`/payment/${order.id}`)
 
     } catch (error) {
@@ -621,7 +711,7 @@ const ConcertPage = ({ user }) => {
                 <img 
                   src={selectedProduct.image_data || selectedProduct.poster_url} 
                   alt={selectedProduct.name}
-                  className="w-full h-auto max-h-96 object-contain bg-gray-50" // object-contain agar tidak terpotong
+                  className="w-full h-auto max-h-96 object-contain bg-gray-50"
                 />
               ) : (
                 <div className="w-full h-96 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
