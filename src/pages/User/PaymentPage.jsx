@@ -66,6 +66,7 @@ const PaymentPage = ({ user }) => {
   const [emailLoading, setEmailLoading] = useState(false)
   const [emailError, setEmailError] = useState('')
   const [orderHistory, setOrderHistory] = useState([])
+  const [stockCheck, setStockCheck] = useState(null)
   const { orderId } = useParams()
   const navigate = useNavigate()
 
@@ -128,6 +129,29 @@ const PaymentPage = ({ user }) => {
       return () => clearInterval(timer)
     }
   }, [order])
+
+  // Fungsi untuk mengurangi stok saat payment sukses
+  const decreaseStockOnPayment = async (productId, ticketType, quantity) => {
+    try {
+      const { data, error } = await supabase
+        .rpc('decrease_stock', {
+          p_product_id: productId,
+          p_ticket_type: ticketType,
+          p_quantity: quantity
+        });
+      
+      if (error) {
+        console.error('Error decreasing stock:', error);
+        return false;
+      }
+      
+      console.log('Stock decreased:', data);
+      return true;
+    } catch (error) {
+      console.error('Error in decreaseStockOnPayment:', error);
+      return false;
+    }
+  };
 
   // Handle expired order - stok TIDAK akan berkurang karena belum dipotong
   const handleExpireOrder = async () => {
@@ -286,6 +310,16 @@ const PaymentPage = ({ user }) => {
       if (data.promo_code_id) {
         setPromoApplied(data.promo_codes)
       }
+      
+      // Cek status stok
+      const { data: stockData } = await supabase
+        .rpc('check_and_lock_stock', {
+          p_product_id: data.product_id,
+          p_ticket_type: data.ticket_type,
+          p_quantity: data.quantity
+        })
+      
+      setStockCheck(stockData)
       
       // Kirim email jika belum dan status masih pending
       if (!data.email_notification_sent && data.status === 'pending') {
@@ -467,6 +501,17 @@ const PaymentPage = ({ user }) => {
 
   const handlePaymentSuccess = async (result) => {
     try {
+      // Kurangi stok terlebih dahulu
+      const stockDecreased = await decreaseStockOnPayment(
+        order.product_id,
+        order.ticket_type,
+        order.quantity
+      );
+      
+      if (!stockDecreased) {
+        console.warn('Failed to decrease stock, but payment succeeded');
+      }
+      
       // Update order status menjadi paid
       await supabase
         .from('orders')
@@ -488,7 +533,7 @@ const PaymentPage = ({ user }) => {
         .insert({
           order_id: order.id,
           status: 'paid',
-          notes: 'Pembayaran berhasil - stok telah dikurangi',
+          notes: stockDecreased ? 'Pembayaran berhasil - stok telah dikurangi' : 'Pembayaran berhasil - stok mungkin belum terupdate',
           created_at: new Date().toISOString()
         })
 
@@ -498,6 +543,7 @@ const PaymentPage = ({ user }) => {
 
       navigate(`/payment-success/${order.id}`)
     } catch (error) {
+      console.error('Error in payment success:', error)
       alert('Pembayaran berhasil tetapi gagal memperbarui status. Hubungi admin.')
     }
   }
@@ -774,6 +820,11 @@ const PaymentPage = ({ user }) => {
           <BiInfoCircle className="text-[#4a90e2] text-lg" />
           <p className="text-sm text-[#4a90e2] font-medium">
             <strong>Info Stok:</strong> Stok hanya akan berkurang SETELAH pembayaran berhasil.
+            {stockCheck && !stockCheck.available && (
+              <span className="block text-yellow-600 mt-1">
+                ⚠️ Peringatan: {stockCheck.message}
+              </span>
+            )}
           </p>
         </div>
 
