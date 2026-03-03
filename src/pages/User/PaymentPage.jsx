@@ -184,6 +184,41 @@ const PaymentPage = ({ user }) => {
     }
   }
 
+// Di PaymentPage.jsx, tambahkan fungsi untuk cek stok dengan error handling yang lebih baik
+
+const checkStockStatus = async () => {
+  if (!order) return;
+  
+  try {
+    const { data, error } = await supabase
+      .rpc('check_and_lock_stock', {
+        p_product_id: order.product_id,
+        p_ticket_type: order.ticket_type,
+        p_quantity: order.quantity
+      });
+    
+    if (error) {
+      console.error('Error checking stock:', error);
+      return;
+    }
+    
+    setStockCheck(data);
+    
+    if (data && !data.available) {
+      console.warn('Stock warning:', data.message);
+    }
+  } catch (error) {
+    console.error('Error in checkStockStatus:', error);
+  }
+};
+
+// Panggil di useEffect
+useEffect(() => {
+  if (order) {
+    checkStockStatus();
+  }
+}, [order]);
+  
   // Kirim email notifikasi
   const sendPaymentEmail = async (orderData, productsData, ticketsData) => {
     try {
