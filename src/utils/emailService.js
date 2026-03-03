@@ -6,7 +6,7 @@
 // Konfigurasi EmailJS dengan credentials Anda
 const EMAILJS_CONFIG = {
   serviceId: 'service_2x3byo7', // Service ID Gmail Anda
-  templateId: 'template_payment_confirmation', // Buat template ini di dashboard EmailJS
+  templateId: 'template_nd1w82s', // Buat template ini di dashboard EmailJS
   userId: 'JNo-bH0_yGFORzjSu', // Public Key Anda
   accessToken: 'NNNVKNALkpATC5Y3Kfxlc' // Private Key Anda
 };
