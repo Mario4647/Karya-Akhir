@@ -30,7 +30,9 @@ import {
   BiPaint,
   BiBook,
   BiMessage,
-  BiVolumeFull
+  BiVolumeFull,
+  BiEnvelope,
+  BiMailSend
 } from 'react-icons/bi'
 
 // Konfigurasi Midtrans
@@ -40,7 +42,8 @@ const MIDTRANS_CLIENT_KEY = 'Mid-client-PKxh7PoyLs2QwsBh'
 const decorativeIcons = [
   BiMusic, BiMicrophone, BiCamera, BiVideo, BiStar, BiHeart,
   BiDiamond, BiCrown, BiRocket, BiPalette, BiBrush, BiPaint,
-  BiBook, BiMessage, BiVolumeFull, BiCreditCard, BiWallet, BiCode
+  BiBook, BiMessage, BiVolumeFull, BiCreditCard, BiWallet, BiCode,
+  BiEnvelope, BiMailSend
 ]
 
 const PaymentPage = () => {
@@ -55,6 +58,8 @@ const PaymentPage = () => {
   const [snapToken, setSnapToken] = useState(null)
   const [apiStatus, setApiStatus] = useState('Memeriksa koneksi...')
   const [emailSent, setEmailSent] = useState(false)
+  const [emailLoading, setEmailLoading] = useState(false)
+  const [emailError, setEmailError] = useState('')
   const { orderId } = useParams()
   const navigate = useNavigate()
 
@@ -118,11 +123,16 @@ const PaymentPage = () => {
     }
   }, [order])
 
-  // Kirim email notifikasi pembayaran pending
+  // Fungsi untuk mengirim email notifikasi pembayaran
   const sendPaymentEmail = async (orderData) => {
     try {
       // Cek apakah email sudah pernah dikirim
-      if (emailSent) return
+      if (emailSent) return;
+
+      setEmailLoading(true);
+      setEmailError('');
+
+      console.log('📧 Sending payment email to:', orderData.customer_email);
 
       const response = await fetch('/api/send-payment-email', {
         method: 'POST',
@@ -139,13 +149,13 @@ const PaymentPage = () => {
           quantity: orderData.quantity,
           orderId: orderData.id
         })
-      })
+      });
 
-      const data = await response.json()
+      const data = await response.json();
       
-      if (response.ok) {
-        console.log('✅ Payment email sent successfully')
-        setEmailSent(true)
+      if (response.ok && data.success) {
+        console.log('✅ Payment email sent successfully');
+        setEmailSent(true);
         
         // Update status email di database
         await supabase
@@ -154,14 +164,18 @@ const PaymentPage = () => {
             email_notification_sent: true,
             email_sent_at: new Date().toISOString()
           })
-          .eq('id', orderData.id)
+          .eq('id', orderData.id);
       } else {
-        console.error('❌ Failed to send email:', data.error)
+        console.error('❌ Failed to send email:', data.error);
+        setEmailError(data.error || 'Gagal mengirim email');
       }
     } catch (error) {
-      console.error('❌ Error sending email:', error)
+      console.error('❌ Error sending email:', error);
+      setEmailError(error.message || 'Gagal mengirim email');
+    } finally {
+      setEmailLoading(false);
     }
-  }
+  };
 
   const checkApiHealth = async () => {
     try {
@@ -644,11 +658,29 @@ const PaymentPage = () => {
         </div>
 
         {/* Email Notification Status */}
-        {emailSent && (
-          <div className="mb-4 p-3 bg-green-50 rounded border-2 border-green-200 shadow-[4px_4px_0px_0px_rgba(34,197,94,0.2)] flex items-center gap-2">
+        {emailLoading && (
+          <div className="mb-4 p-3 bg-blue-50 border-2 border-blue-200 shadow-[4px_4px_0px_0px_rgba(74,144,226,0.2)] flex items-center gap-2">
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-[#4a90e2] border-t-transparent"></div>
+            <p className="text-sm text-blue-700 font-medium">
+              Mengirim notifikasi ke email Anda...
+            </p>
+          </div>
+        )}
+
+        {emailSent && !emailLoading && (
+          <div className="mb-4 p-3 bg-green-50 border-2 border-green-200 shadow-[4px_4px_0px_0px_rgba(34,197,94,0.2)] flex items-center gap-2">
             <BiCheckCircle className="text-green-500 text-lg" />
             <p className="text-sm text-green-700 font-medium">
-              Notifikasi pembayaran telah dikirim ke email Anda
+              Notifikasi pembayaran telah dikirim ke {order.customer_email}
+            </p>
+          </div>
+        )}
+
+        {emailError && !emailLoading && (
+          <div className="mb-4 p-3 bg-yellow-50 border-2 border-yellow-200 shadow-[4px_4px_0px_0px_rgba(234,179,8,0.2)] flex items-center gap-2">
+            <BiError className="text-yellow-500 text-lg" />
+            <p className="text-sm text-yellow-700 font-medium">
+              Gagal mengirim email: {emailError}
             </p>
           </div>
         )}
@@ -895,6 +927,23 @@ const PaymentPage = () => {
         {/* Info tambahan */}
         <div className="mt-4 text-center text-sm text-gray-500">
           <p>Anda akan diarahkan ke halaman pembayaran Midtrans</p>
+        </div>
+
+        {/* Email Info */}
+        <div className="mt-6 p-4 bg-blue-50 rounded border-2 border-blue-200 shadow-[4px_4px_0px_0px_rgba(74,144,226,0.2)] flex items-center gap-2">
+          <BiEnvelope className="text-[#4a90e2] text-lg" />
+          <p className="text-sm text-[#4a90e2] font-medium">
+            Notifikasi telah dikirim ke: <span className="font-bold">{order.customer_email}</span>
+          </p>
+          {!emailSent && !emailLoading && (
+            <button
+              onClick={() => sendPaymentEmail(order)}
+              className="ml-auto text-xs bg-white px-3 py-1 rounded border border-[#4a90e2] text-[#4a90e2] hover:bg-blue-50 transition-colors flex items-center gap-1 font-medium"
+            >
+              <BiMailSend />
+              <span>Kirim Ulang</span>
+            </button>
+          )}
         </div>
       </div>
 
