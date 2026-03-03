@@ -1,7 +1,18 @@
-import React, { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../supabaseClient'
-import NavbarEvent from '../../components/NavbarEvent'
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '../../supabaseClient';
+import NavbarEvent from '../../components/NavbarEvent';
+import { withAuth } from '../../authMiddleware';
+import { 
+  sanitizeInput, 
+  validateNIK, 
+  validatePhone, 
+  formatPhoneForMidtrans,
+  isSuspiciousInput,
+  globalRateLimiter,
+  useRateLimit 
+} from '../../utils/security';
+import { validateBuyerData, prepareDataForAPI } from '../../utils/validation';
 import {
   BiCalendar,
   BiMap,
@@ -61,10 +72,11 @@ import {
   BiSkipPrevious,
   BiCart,
   BiWallet,
-  BiShoppingBag
-} from 'react-icons/bi'
+  BiShoppingBag,
+  BiPhone
+} from 'react-icons/bi';
 
-// Array icon untuk background dekoratif - HANYA icon yang TERBUKTI TERSEDIA
+// Array icon untuk background dekoratif
 const decorativeIcons = [
   BiMusic, BiMicrophone, BiCamera, BiVideo, BiImage, BiImages, BiPhotoAlbum,
   BiStar, BiHeart, BiLike, BiDiamond, BiCrown, BiRocket,
@@ -72,9 +84,9 @@ const decorativeIcons = [
   BiBookOpen, BiLibrary, BiMessage, BiMessageDetail, BiMessageRounded, BiMessageDots,
   BiVolumeFull, BiVolumeLow, BiVolumeMute, BiPlay, BiPause, BiStop,
   BiSkipNext, BiSkipPrevious, BiCart, BiWallet, BiShoppingBag, BiPurchaseTag
-]
+];
 
-const ConcertPage = () => {
+const ConcertPage = ({ user }) => {
   const [products, setProducts] = useState([])
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [selectedTicketType, setSelectedTicketType] = useState(null)
@@ -85,16 +97,23 @@ const ConcertPage = () => {
   const [promoError, setPromoError] = useState('')
   const [promoLoading, setPromoLoading] = useState(false)
   const [showBuyerForm, setShowBuyerForm] = useState(false)
-  const [buyers, setBuyers] = useState([{ name: '', nik: '', address: '' }])
+  const [buyers, setBuyers] = useState([{ 
+    name: '', 
+    nik: '', 
+    address: '',
+    phone: '' 
+  }])
   const [loading, setLoading] = useState(false)
-  const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [error, setError] = useState('')
   const [fetchError, setFetchError] = useState('')
   const [isLoadingProducts, setIsLoadingProducts] = useState(true)
   const navigate = useNavigate()
 
-  // Generate random positions for decorative icons di background utama
+  // Rate limiter untuk mencegah spam
+  const rateLimit = useRateLimit ? useRateLimit({ maxRequests: 5, windowMs: 60000 }) : { checkLimit: () => ({ allowed: true }), recordSuccess: () => {} };
+
+  // Generate random positions for decorative icons
   const [iconPositions] = useState(() => {
     const positions = []
     for (let i = 0; i < 40; i++) {
@@ -110,66 +129,12 @@ const ConcertPage = () => {
     return positions
   })
 
-  // Generate icon untuk tombol Beli Tiket - DIPERBANYAK dan DIPERJELAS
-  const [buttonIconPositions] = useState(() => {
-    const positions = []
-    for (let i = 0; i < 30; i++) { // Ditambah dari 20 jadi 30 icon
-      positions.push({
-        top: `${Math.random() * 100}%`,
-        left: `${Math.random() * 100}%`,
-        rotate: `${Math.random() * 360}deg`,
-        scale: 0.5 + Math.random() * 0.8, // Scale diperbesar
-        opacity: 0.25 + Math.random() * 0.25, // Opacity dinaikkan (0.25-0.5)
-        icon: decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
-      })
-    }
-    return positions
-  })
-
-  // Generate icon untuk popup data pembeli
-  const [popupIconPositions] = useState(() => {
-    const positions = []
-    for (let i = 0; i < 25; i++) {
-      positions.push({
-        top: `${Math.random() * 100}%`,
-        left: `${Math.random() * 100}%`,
-        rotate: `${Math.random() * 360}deg`,
-        scale: 0.5 + Math.random() * 0.7,
-        opacity: 0.15 + Math.random() * 0.15,
-        icon: decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
-      })
-    }
-    return positions
-  })
-
-  // Generate icon untuk tombol Simpan dan Batal di popup
-  const [actionButtonIconPositions] = useState(() => {
-    const positions = []
-    for (let i = 0; i < 20; i++) { // Ditambah dari 12 jadi 20 icon
-      positions.push({
-        top: `${Math.random() * 100}%`,
-        left: `${Math.random() * 100}%`,
-        rotate: `${Math.random() * 360}deg`,
-        scale: 0.4 + Math.random() * 0.6,
-        opacity: 0.25 + Math.random() * 0.25, // Opacity dinaikkan
-        icon: decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
-      })
-    }
-    return positions
-  })
-
   useEffect(() => {
     fetchProducts()
-    getUser()
-  }, [])
-
-  const getUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    setUser(user)
     if (user) {
       fetchProfile(user.id)
     }
-  }
+  }, [user])
 
   const fetchProfile = async (userId) => {
     const { data, error } = await supabase
@@ -204,7 +169,6 @@ const ConcertPage = () => {
         image_url: product.image_data || product.poster_url
       }))
       
-      console.log('Fetched products:', processedData)
       setProducts(processedData || [])
       
       if (processedData && processedData.length > 0) {
@@ -316,7 +280,7 @@ const ConcertPage = () => {
   }
 
   const handleAddBuyer = () => {
-    setBuyers([...buyers, { name: '', nik: '', address: '' }])
+    setBuyers([...buyers, { name: '', nik: '', address: '', phone: '' }])
   }
 
   const handleRemoveBuyer = (index) => {
@@ -326,8 +290,10 @@ const ConcertPage = () => {
   }
 
   const handleBuyerChange = (index, field, value) => {
+    // Sanitasi input untuk mencegah XSS
+    const sanitizedValue = field === 'name' || field === 'address' ? sanitizeInput(value) : value
     const updatedBuyers = [...buyers]
-    updatedBuyers[index][field] = value
+    updatedBuyers[index][field] = sanitizedValue
     setBuyers(updatedBuyers)
   }
 
@@ -342,12 +308,16 @@ const ConcertPage = () => {
         setError(`NIK Pembeli ${i + 1} harus diisi`)
         return false
       }
-      if (buyer.nik.length < 16) {
-        setError(`NIK Pembeli ${i + 1} harus 16 digit`)
+      if (!validateNIK(buyer.nik)) {
+        setError(`NIK Pembeli ${i + 1} harus 16 digit angka`)
         return false
       }
-      if (buyer.nik.length > 16) {
-        setError(`NIK Pembeli ${i + 1} maksimal 16 digit`)
+      if (!buyer.phone.trim()) {
+        setError(`Nomor HP Pembeli ${i + 1} harus diisi`)
+        return false
+      }
+      if (!validatePhone(buyer.phone)) {
+        setError(`Nomor HP Pembeli ${i + 1} tidak valid (08xx atau 62xx)`)
         return false
       }
       if (!buyer.address.trim()) {
@@ -361,21 +331,26 @@ const ConcertPage = () => {
   const createOrder = async () => {
     if (!validateBuyers()) return
 
+    // Cek rate limiting
+    if (!rateLimit.checkLimit().allowed) {
+      setError('Terlalu banyak percobaan. Silakan tunggu beberapa saat.')
+      return
+    }
+
     setLoading(true)
     setError('')
 
     try {
-      // Validasi data
-      if (!user) {
-        throw new Error('Anda harus login terlebih dahulu')
-      }
+      // Validasi stok dengan SELECT FOR UPDATE (mencegah race condition)
+      const { data: stockCheck, error: stockError } = await supabase
+        .rpc('check_and_lock_stock', {
+          p_product_id: selectedProduct.id,
+          p_ticket_type: selectedTicketType.name,
+          p_quantity: quantity
+        })
 
-      if (!selectedProduct || !selectedTicketType) {
-        throw new Error('Pilih produk dan tipe tiket terlebih dahulu')
-      }
-
-      if (quantity > selectedTicketType.stock) {
-        throw new Error('Jumlah tiket melebihi stok yang tersedia')
+      if (stockError || !stockCheck?.available) {
+        throw new Error(stockCheck?.message || 'Stok tidak mencukupi')
       }
 
       // Generate order number
@@ -385,6 +360,9 @@ const ConcertPage = () => {
       const expiryTime = new Date()
       expiryTime.setMinutes(expiryTime.getMinutes() + 60)
 
+      // Format nomor HP untuk Midtrans
+      const formattedPhone = formatPhoneForMidtrans(buyers[0].phone)
+
       // Siapkan data order
       const orderData = {
         order_number: orderNumber,
@@ -392,6 +370,7 @@ const ConcertPage = () => {
         product_id: selectedProduct.id,
         product_name: `${selectedProduct.name} - ${selectedTicketType.name}`,
         product_price: selectedTicketType.price,
+        ticket_type: selectedTicketType.name,
         quantity: quantity,
         subtotal: subtotal,
         promo_code_id: promoApplied?.id || null,
@@ -400,10 +379,12 @@ const ConcertPage = () => {
         customer_name: buyers[0].name,
         customer_nik: buyers[0].nik,
         customer_email: user.email,
+        customer_phone: formattedPhone,
         customer_address: buyers[0].address,
         additional_buyers: buyers.slice(1).map(b => ({
           name: b.name,
           nik: b.nik,
+          phone: formatPhoneForMidtrans(b.phone),
           address: b.address
         })),
         status: 'pending',
@@ -412,8 +393,6 @@ const ConcertPage = () => {
         updated_at: new Date().toISOString()
       }
 
-      console.log('Order Data:', orderData)
-
       // Insert order
       const { data: order, error: orderError } = await supabase
         .from('orders')
@@ -421,95 +400,32 @@ const ConcertPage = () => {
         .select()
         .single()
 
-      if (orderError) {
-        console.error('Order insert error details:', orderError)
-        throw new Error(orderError.message || 'Gagal menyimpan order')
-      }
-
-      if (!order) {
-        throw new Error('Gagal membuat order: Data tidak ditemukan setelah insert')
-      }
-
-      console.log('Order created:', order)
+      if (orderError) throw orderError
 
       // Create tickets for each buyer
-      const tickets = []
-      
-      // Ticket for main buyer
-      tickets.push({
+      const tickets = buyers.map((buyer, index) => ({
         product_id: selectedProduct.id,
         order_id: order.id,
-        buyer_index: 0,
+        buyer_index: index,
         ticket_type: selectedTicketType.name,
         price: selectedTicketType.price,
         is_available: true,
-        ticket_code: `TCK-${Date.now()}-0-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+        ticket_code: `TCK-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
-      })
+      }))
 
-      // Tickets for additional buyers
-      buyers.slice(1).forEach((buyer, index) => {
-        tickets.push({
-          product_id: selectedProduct.id,
-          order_id: order.id,
-          buyer_index: index + 1,
-          ticket_type: selectedTicketType.name,
-          price: selectedTicketType.price,
-          is_available: true,
-          ticket_code: `TCK-${Date.now()}-${index + 1}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-      })
-
-      console.log('Tickets to insert:', tickets)
-
-      // Insert tickets
       const { error: ticketsError } = await supabase
         .from('tickets')
         .insert(tickets)
 
       if (ticketsError) {
-        console.error('Tickets insert error:', ticketsError)
-        // Jika gagal insert tiket, hapus order yang sudah dibuat
+        // Rollback order jika gagal insert tiket
         await supabase.from('orders').delete().eq('id', order.id)
-        throw new Error(`Gagal membuat tiket: ${ticketsError.message}`)
+        throw new Error('Gagal membuat tiket')
       }
 
-      // Update stock
-      const updatedTicketTypes = selectedProduct.ticket_types.map(type => {
-        if (type.name === selectedTicketType.name) {
-          return { ...type, stock: parseInt(type.stock) - quantity }
-        }
-        return type
-      })
-
-      const { error: updateError } = await supabase
-        .from('products')
-        .update({ 
-          ticket_types: JSON.stringify(updatedTicketTypes),
-          stock: parseInt(selectedProduct.stock) - quantity,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', selectedProduct.id)
-
-      if (updateError) {
-        console.error('Stock update error:', updateError)
-      }
-
-      // Update promo usage jika ada
-      if (promoApplied) {
-        await supabase
-          .from('promo_codes')
-          .update({ 
-            used_count: promoApplied.used_count + 1,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', promoApplied.id)
-      }
-
-      // Redirect ke halaman pembayaran
+      rateLimit.recordSuccess();
       navigate(`/payment/${order.id}`)
 
     } catch (error) {
@@ -538,7 +454,6 @@ const ConcertPage = () => {
   if (isLoadingProducts) {
     return (
       <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
-        {/* Decorative Icons */}
         <div className="absolute inset-0 pointer-events-none">
           {iconPositions.map((pos, i) => {
             const IconComponent = pos.icon
@@ -573,7 +488,6 @@ const ConcertPage = () => {
   if (fetchError) {
     return (
       <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
-        {/* Decorative Icons */}
         <div className="absolute inset-0 pointer-events-none">
           {iconPositions.map((pos, i) => {
             const IconComponent = pos.icon
@@ -616,7 +530,6 @@ const ConcertPage = () => {
   if (!selectedProduct || products.length === 0) {
     return (
       <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
-        {/* Decorative Icons */}
         <div className="absolute inset-0 pointer-events-none">
           {iconPositions.map((pos, i) => {
             const IconComponent = pos.icon
@@ -651,32 +564,28 @@ const ConcertPage = () => {
 
   return (
     <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
-      {/* Decorative Icons Background Utama */}
+      {/* Decorative Icons Background */}
       <div className="absolute inset-0 pointer-events-none">
-        {iconPositions.map((pos, i) => {
-          const IconComponent = pos.icon
-          return (
-            <div
-              key={i}
-              className="absolute text-gray-700"
-              style={{
-                top: pos.top,
-                left: pos.left,
-                transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                opacity: pos.opacity,
-                zIndex: 0
-              }}
-            >
-              <IconComponent size={28} />
-            </div>
-          )
-        })}
+        {iconPositions.map((pos, i) => (
+          <div
+            key={i}
+            className="absolute text-gray-700"
+            style={{
+              top: pos.top,
+              left: pos.left,
+              transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
+              opacity: pos.opacity,
+              zIndex: 0
+            }}
+          >
+            {React.createElement(pos.icon, { size: 28 })}
+          </div>
+        ))}
       </div>
 
       <NavbarEvent />
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 py-8">
-        {/* Product Selector dengan Icon */}
         {products.length > 1 && (
           <div className="mb-6 overflow-x-auto">
             <div className="flex space-x-4 pb-2">
@@ -706,13 +615,13 @@ const ConcertPage = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column - Event Details */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Poster dengan Icon */}
+            {/* Poster - FIX: Ukuran original dengan object-contain */}
             <div className="bg-white rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.15)] overflow-hidden relative">
               {selectedProduct.image_data || selectedProduct.poster_url ? (
                 <img 
                   src={selectedProduct.image_data || selectedProduct.poster_url} 
                   alt={selectedProduct.name}
-                  className="w-full h-96 object-cover"
+                  className="w-full h-auto max-h-96 object-contain bg-gray-50" // object-contain agar tidak terpotong
                 />
               ) : (
                 <div className="w-full h-96 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
@@ -725,7 +634,7 @@ const ConcertPage = () => {
               </div>
             </div>
 
-            {/* Event Info dengan Icon */}
+            {/* Event Info */}
             <div className="bg-white rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.15)] p-6">
               <div className="flex items-center gap-3 mb-4">
                 <BiInfoCircle className="text-3xl text-[#4a90e2]" />
@@ -803,7 +712,7 @@ const ConcertPage = () => {
             </div>
           </div>
 
-          {/* Right Column - Ticket Purchase dengan Icon */}
+          {/* Right Column - Ticket Purchase */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.15)] p-6 sticky top-24">
               <div className="flex items-center gap-2 mb-4">
@@ -811,7 +720,6 @@ const ConcertPage = () => {
                 <h2 className="text-xl font-bold text-gray-800">Beli Tiket</h2>
               </div>
 
-              {/* Ticket Type Selection dengan Icon */}
               {selectedProduct.ticket_types && selectedProduct.ticket_types.length > 0 ? (
                 <div className="mb-6">
                   <p className="text-sm font-medium text-gray-600 mb-2 flex items-center gap-1">
@@ -871,7 +779,6 @@ const ConcertPage = () => {
                 </div>
               )}
 
-              {/* Quantity Selector dengan Icon */}
               {selectedTicketType && (
                 <div className="mb-6">
                   <p className="text-sm font-medium text-gray-600 mb-2 flex items-center gap-1">
@@ -908,7 +815,6 @@ const ConcertPage = () => {
                 </div>
               )}
 
-              {/* Promo Code dengan Icon */}
               <div className="mb-6">
                 <button
                   onClick={() => setShowPromoInput(!showPromoInput)}
@@ -924,7 +830,7 @@ const ConcertPage = () => {
                       <input
                         type="text"
                         value={promoCode}
-                        onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                        onChange={(e) => setPromoCode(sanitizeInput(e.target.value.toUpperCase()))}
                         placeholder="Masukkan kode promo"
                         className="flex-1 px-3 py-2 border-2 border-gray-200 rounded focus:outline-none focus:border-[#4a90e2] bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]"
                       />
@@ -970,7 +876,6 @@ const ConcertPage = () => {
                 )}
               </div>
 
-              {/* Total dengan Icon */}
               {selectedTicketType && (
                 <div className="border-t-2 border-gray-200 pt-4 mb-6">
                   <div className="space-y-2">
@@ -1001,91 +906,59 @@ const ConcertPage = () => {
                 </div>
               )}
 
-              {/* BUY BUTTON - DENGAN ICON RAMAI DAN SHADOW TEBAL */}
-              <div className="relative overflow-hidden rounded border-2 border-[#357abd] shadow-[10px_10px_0px_0px_rgba(0,0,0,0.35)]">
-                {/* Decorative Icons di dalam tombol - DIPERBANYAK DAN DIPERJELAS */}
-                <div className="absolute inset-0 pointer-events-none">
-                  {buttonIconPositions.map((pos, i) => {
-                    const IconComponent = pos.icon
-                    return (
-                      <div
-                        key={i}
-                        className="absolute text-white/50" // Warna putih dengan opacity lebih tinggi
-                        style={{
-                          top: pos.top,
-                          left: pos.left,
-                          transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                          opacity: pos.opacity,
-                          zIndex: 1
-                        }}
-                      >
-                        <IconComponent size={24} />
-                      </div>
-                    )
-                  })}
-                </div>
-                
-                <button
-                  onClick={handleBuyNow}
-                  disabled={!selectedTicketType || selectedTicketType.stock === 0 || quantity === 0 || !user}
-                  className={`relative z-10 w-full py-5 font-bold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 overflow-hidden
-                    ${!user || !selectedTicketType || selectedTicketType.stock === 0 
-                      ? 'bg-gray-400 text-white' 
-                      : 'bg-[#4a90e2] text-white hover:bg-[#357abd]'}`}
-                >
-                  {!user ? (
-                    <>
-                      <BiUser className="relative z-20 text-xl" />
-                      <span className="relative z-20 text-lg">Login untuk Membeli</span>
-                    </>
-                  ) : !selectedTicketType ? (
-                    <>
-                      <BiPurchaseTag className="relative z-20 text-xl" />
-                      <span className="relative z-20 text-lg">Pilih Tipe Tiket</span>
-                    </>
-                  ) : selectedTicketType.stock === 0 ? (
-                    <>
-                      <BiError className="relative z-20 text-xl" />
-                      <span className="relative z-20 text-lg">Tiket Habis</span>
-                    </>
-                  ) : (
-                    <>
-                      <BiCreditCard className="relative z-20 text-xl" />
-                      <span className="relative z-20 text-lg">Beli Tiket</span>
-                    </>
-                  )}
-                </button>
-              </div>
+              <button
+                onClick={handleBuyNow}
+                disabled={!selectedTicketType || selectedTicketType.stock === 0 || quantity === 0 || !user}
+                className="w-full py-4 bg-[#4a90e2] text-white rounded font-bold hover:bg-[#357abd] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed border-2 border-[#357abd] shadow-[6px_6px_0px_0px_rgba(0,0,0,0.2)] flex items-center justify-center gap-2"
+              >
+                {!user ? (
+                  <>
+                    <BiUser />
+                    <span>Login untuk Membeli</span>
+                  </>
+                ) : !selectedTicketType ? (
+                  <>
+                    <BiPurchaseTag />
+                    <span>Pilih Tipe Tiket</span>
+                  </>
+                ) : selectedTicketType.stock === 0 ? (
+                  <>
+                    <BiError />
+                    <span>Tiket Habis</span>
+                  </>
+                ) : (
+                  <>
+                    <BiCreditCard />
+                    <span>Beli Tiket</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Buyer Form Modal dengan Icon Transparan */}
+      {/* Buyer Form Modal dengan Nomor HP */}
       {showBuyerForm && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded shadow-[12px_12px_0px_0px_rgba(0,0,0,0.25)] max-w-2xl w-full max-h-[90vh] overflow-y-auto border-2 border-gray-200 relative">
+          <div className="bg-white rounded shadow-[12px_12px_0px_0px_rgba(0,0,0,0.2)] max-w-2xl w-full max-h-[90vh] overflow-y-auto border-2 border-gray-200 relative">
             
-            {/* Decorative Icons di dalam popup */}
             <div className="absolute inset-0 pointer-events-none overflow-hidden">
-              {popupIconPositions.map((pos, i) => {
-                const IconComponent = pos.icon
-                return (
-                  <div
-                    key={i}
-                    className="absolute text-gray-400"
-                    style={{
-                      top: pos.top,
-                      left: pos.left,
-                      transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                      opacity: pos.opacity,
-                      zIndex: 0
-                    }}
-                  >
-                    <IconComponent size={24} />
-                  </div>
-                )
-              })}
+              {iconPositions.slice(0, 15).map((pos, i) => (
+                <div
+                  key={i}
+                  className="absolute text-gray-400"
+                  style={{
+                    top: pos.top,
+                    left: pos.left,
+                    transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
+                    opacity: pos.opacity * 0.5,
+                    zIndex: 0
+                  }}
+                >
+                  {React.createElement(pos.icon, { size: 24 })}
+                </div>
+              ))}
             </div>
             
             <div className="relative z-10 p-6">
@@ -1096,7 +969,7 @@ const ConcertPage = () => {
                 </div>
                 <button
                   onClick={() => setShowBuyerForm(false)}
-                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded border-2 border-gray-200 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] transition-colors"
                 >
                   <BiX className="text-xl" />
                 </button>
@@ -1105,36 +978,14 @@ const ConcertPage = () => {
               <div className="mb-4 p-3 bg-[#e6f0ff] border-2 border-[#4a90e2] rounded flex items-center gap-3 shadow-[4px_4px_0px_0px_rgba(74,144,226,0.3)]">
                 <BiInfoCircle className="text-[#4a90e2] text-xl flex-shrink-0" />
                 <p className="text-sm text-[#4a90e2] font-medium">
-                  Setiap pembeli akan mendapatkan QR code unik untuk tiketnya.
+                  Setiap pembeli akan mendapatkan QR code unik untuk tiketnya. Nomor HP diperlukan untuk konfirmasi pembayaran.
                 </p>
               </div>
 
               {buyers.map((buyer, index) => (
                 <div key={index} className="mb-6 p-4 border-2 border-gray-200 rounded bg-gray-50 relative shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
-                  {/* Decorative icons kecil di setiap section pembeli */}
-                  <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                    {[...Array(5)].map((_, j) => {
-                      const randomIcon = decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
-                      const IconComponent = randomIcon
-                      return (
-                        <div
-                          key={j}
-                          className="absolute text-gray-300"
-                          style={{
-                            top: `${Math.random() * 100}%`,
-                            left: `${Math.random() * 100}%`,
-                            transform: `rotate(${Math.random() * 360}deg) scale(${0.4 + Math.random() * 0.5})`,
-                            opacity: 0.15,
-                            zIndex: 0
-                          }}
-                        >
-                          <IconComponent size={18} />
-                        </div>
-                      )
-                    })}
-                  </div>
                   
-                  <div className="flex justify-between items-center mb-3 relative z-10">
+                  <div className="flex justify-between items-center mb-3">
                     <h3 className="font-bold text-gray-700 flex items-center gap-2">
                       <BiUser className="text-[#4a90e2]" />
                       Pembeli {index + 1}
@@ -1150,7 +1001,7 @@ const ConcertPage = () => {
                     )}
                   </div>
 
-                  <div className="space-y-3 relative z-10">
+                  <div className="space-y-3">
                     <div>
                       <label className="block text-sm font-medium text-gray-600 mb-1 flex items-center gap-1">
                         <BiUser className="text-gray-500" />
@@ -1196,6 +1047,30 @@ const ConcertPage = () => {
 
                     <div>
                       <label className="block text-sm font-medium text-gray-600 mb-1 flex items-center gap-1">
+                        <BiPhone className="text-gray-500" />
+                        Nomor HP <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <BiPhone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="tel"
+                          value={buyer.phone}
+                          onChange={(e) => handleBuyerChange(index, 'phone', e.target.value)}
+                          placeholder="Contoh: 081234567890"
+                          className="w-full pl-10 pr-3 py-2 border-2 border-gray-200 rounded focus:outline-none focus:border-[#4a90e2] bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]"
+                          required
+                        />
+                      </div>
+                      {buyer.phone && !validatePhone(buyer.phone) && (
+                        <p className="text-xs text-red-500 mt-1 font-medium flex items-center gap-1">
+                          <BiError />
+                          Nomor HP tidak valid (gunakan 08xx atau 62xx)
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 mb-1 flex items-center gap-1">
                         <BiHome className="text-gray-500" />
                         Alamat <span className="text-red-500">*</span>
                       </label>
@@ -1218,7 +1093,7 @@ const ConcertPage = () => {
               {selectedTicketType && quantity > 1 && buyers.length < quantity && (
                 <button
                   onClick={handleAddBuyer}
-                  className="w-full mb-4 py-3 border-2 border-dashed border-[#4a90e2] text-[#4a90e2] rounded hover:bg-[#e6f0ff] transition-colors font-medium flex items-center justify-center gap-2 shadow-[4px_4px_0px_0px_rgba(74,144,226,0.2)]"
+                  className="w-full mb-4 py-3 border-2 border-dashed border-[#4a90e2] text-[#4a90e2] rounded hover:bg-[#e6f0ff] transition-colors font-medium flex items-center justify-center gap-2"
                 >
                   <BiPlus />
                   <span>Tambah Pembeli</span>
@@ -1235,79 +1110,31 @@ const ConcertPage = () => {
                 </div>
               )}
 
-              {/* Action Buttons dengan Icon Transparan */}
               <div className="flex space-x-3">
-                {/* Tombol Batal dengan Icon Transparan */}
-                <div className="flex-1 relative overflow-hidden rounded border-2 border-gray-200 shadow-[6px_6px_0px_0px_rgba(0,0,0,0.2)]">
-                  <div className="absolute inset-0 pointer-events-none">
-                    {actionButtonIconPositions.slice(0, 10).map((pos, i) => {
-                      const IconComponent = pos.icon
-                      return (
-                        <div
-                          key={i}
-                          className="absolute text-gray-500/40"
-                          style={{
-                            top: pos.top,
-                            left: pos.left,
-                            transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                            opacity: pos.opacity,
-                            zIndex: 1
-                          }}
-                        >
-                          <IconComponent size={18} />
-                        </div>
-                      )
-                    })}
-                  </div>
-                  <button
-                    onClick={() => setShowBuyerForm(false)}
-                    className="relative z-10 w-full py-3 bg-white text-gray-700 rounded font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
-                  >
-                    <BiX className="relative z-20 text-xl" />
-                    <span className="relative z-20">Batal</span>
-                  </button>
-                </div>
-
-                {/* Tombol Simpan dengan Icon Transparan */}
-                <div className="flex-1 relative overflow-hidden rounded border-2 border-[#357abd] shadow-[8px_8px_0px_0px_rgba(0,0,0,0.3)]">
-                  <div className="absolute inset-0 pointer-events-none">
-                    {actionButtonIconPositions.slice(10, 20).map((pos, i) => {
-                      const IconComponent = pos.icon
-                      return (
-                        <div
-                          key={i}
-                          className="absolute text-white/50"
-                          style={{
-                            top: pos.top,
-                            left: pos.left,
-                            transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                            opacity: pos.opacity,
-                            zIndex: 1
-                          }}
-                        >
-                          <IconComponent size={18} />
-                        </div>
-                      )
-                    })}
-                  </div>
-                  <button
-                    onClick={createOrder}
-                    disabled={loading}
-                    className="relative z-10 w-full py-3 bg-[#4a90e2] text-white rounded font-bold hover:bg-[#357abd] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {loading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                        <span>Memproses...</span>
-                      </>
-                    ) : (
-                      <>
-                        <BiCheck className="relative z-20 text-xl" />
-                        <span className="relative z-20">Simpan</span>
-                      </>
-                    )}
-                  </button>
-                </div>
+                <button
+                  onClick={() => setShowBuyerForm(false)}
+                  className="flex-1 py-3 border-2 border-gray-200 text-gray-700 rounded hover:bg-gray-50 transition-colors font-medium shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] flex items-center justify-center gap-2"
+                >
+                  <BiX />
+                  <span>Batal</span>
+                </button>
+                <button
+                  onClick={createOrder}
+                  disabled={loading}
+                  className="flex-1 py-3 bg-[#4a90e2] text-white rounded font-bold hover:bg-[#357abd] transition-colors disabled:opacity-50 border-2 border-[#357abd] shadow-[4px_4px_0px_0px_rgba(0,0,0,0.15)] flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                      <span>Memproses...</span>
+                    </>
+                  ) : (
+                    <>
+                      <BiCheck />
+                      <span>Simpan & Lanjut</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>
@@ -1317,4 +1144,4 @@ const ConcertPage = () => {
   )
 }
 
-export default ConcertPage
+export default withAuth(ConcertPage)
