@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabaseClient'
 import NavbarEvent from '../../components/NavbarEvent'
-import { withAuth } from '../../middleware/authMiddleware'
+import { withAuth } from '../../authMiddleware'
 import { sendEmail, formatEmailData } from '../../utils/emailService'
 import { globalRateLimiter, sanitizeInput, debounce } from '../../utils/security'
 import {
