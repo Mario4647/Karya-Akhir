@@ -66,7 +66,7 @@ const PaymentPage = ({ user }) => {
   const [emailLoading, setEmailLoading] = useState(false)
   const [emailError, setEmailError] = useState('')
   const [orderHistory, setOrderHistory] = useState([])
-  const [stockCheck, setStockCheck] = useState(null)
+  const [updating, setUpdating] = useState(false)
   const { orderId } = useParams()
   const navigate = useNavigate()
 
@@ -130,34 +130,14 @@ const PaymentPage = ({ user }) => {
     }
   }, [order])
 
-  // Fungsi untuk mengurangi stok saat payment sukses
-  const decreaseStockOnPayment = async (productId, ticketType, quantity) => {
-    try {
-      const { data, error } = await supabase
-        .rpc('decrease_stock', {
-          p_product_id: productId,
-          p_ticket_type: ticketType,
-          p_quantity: quantity
-        });
-      
-      if (error) {
-        console.error('Error decreasing stock:', error);
-        return false;
-      }
-      
-      console.log('Stock decreased:', data);
-      return true;
-    } catch (error) {
-      console.error('Error in decreaseStockOnPayment:', error);
-      return false;
-    }
-  };
-
-  // Handle expired order - stok TIDAK akan berkurang karena belum dipotong
+  // Handle expired order
   const handleExpireOrder = async () => {
-    if (order && order.status === 'pending') {
+    if (order && order.status === 'pending' && !updating) {
+      setUpdating(true)
       try {
-        await supabase
+        console.log('⏰ Order expired, updating status...')
+        
+        const { error } = await supabase
           .from('orders')
           .update({ 
             status: 'expired',
@@ -166,81 +146,40 @@ const PaymentPage = ({ user }) => {
           .eq('id', order.id)
           .eq('user_id', user.id)
         
-        // Catat ke order history
-        await supabase
-          .from('order_history')
-          .insert({
-            order_id: order.id,
-            status: 'expired',
-            notes: 'Pesanan kadaluarsa - stok tidak terpengaruh',
-            created_at: new Date().toISOString()
-          })
+        if (error) throw error
         
-        // Update state
-        setOrder({ ...order, status: 'expired' })
+        // Refresh order data
+        await fetchOrder()
+        
       } catch (error) {
         console.error('Error expiring order:', error)
+      } finally {
+        setUpdating(false)
       }
     }
   }
 
-// Di PaymentPage.jsx, tambahkan fungsi untuk cek stok dengan error handling yang lebih baik
-
-const checkStockStatus = async () => {
-  if (!order) return;
-  
-  try {
-    const { data, error } = await supabase
-      .rpc('check_and_lock_stock', {
-        p_product_id: order.product_id,
-        p_ticket_type: order.ticket_type,
-        p_quantity: order.quantity
-      });
-    
-    if (error) {
-      console.error('Error checking stock:', error);
-      return;
-    }
-    
-    setStockCheck(data);
-    
-    if (data && !data.available) {
-      console.warn('Stock warning:', data.message);
-    }
-  } catch (error) {
-    console.error('Error in checkStockStatus:', error);
-  }
-};
-
-// Panggil di useEffect
-useEffect(() => {
-  if (order) {
-    checkStockStatus();
-  }
-}, [order]);
-  
   // Kirim email notifikasi
   const sendPaymentEmail = async (orderData, productsData, ticketsData) => {
     try {
-      if (emailSent) return;
+      if (emailSent) return
 
-      setEmailLoading(true);
-      setEmailError('');
+      setEmailLoading(true)
+      setEmailError('')
 
-      // Validasi email
-      if (!orderData.customer_email || orderData.customer_email.trim() === '') {
-        throw new Error('Email penerima tidak valid');
+      if (!orderData?.customer_email) {
+        throw new Error('Email penerima tidak valid')
       }
 
-      const emailData = formatEmailData(orderData, productsData, ticketsData);
+      const emailData = formatEmailData(orderData, productsData, ticketsData)
       
-      console.log('📧 Sending email to:', emailData.email);
+      console.log('📧 Sending email to:', emailData.email)
       
-      const result = await sendEmail('paymentPending', emailData);
+      const result = await sendEmail('paymentPending', emailData)
       
       if (result.success) {
-        console.log('✅ Email sent successfully');
-        setEmailSent(true);
+        console.log('✅ Email sent successfully')
+        setEmailSent(true)
         
         await supabase
           .from('orders')
@@ -248,18 +187,18 @@ useEffect(() => {
             email_notification_sent: true,
             email_sent_at: new Date().toISOString()
           })
-          .eq('id', orderData.id);
+          .eq('id', orderData.id)
       } else {
-        console.error('❌ Failed to send email:', result.error);
-        setEmailError(result.error);
+        console.error('❌ Failed to send email:', result.error)
+        setEmailError(result.error)
       }
     } catch (error) {
-      console.error('❌ Error in sendPaymentEmail:', error);
-      setEmailError(error.message);
+      console.error('❌ Error in sendPaymentEmail:', error)
+      setEmailError(error.message)
     } finally {
-      setEmailLoading(false);
+      setEmailLoading(false)
     }
-  };
+  }
 
   const checkApiHealth = async () => {
     try {
@@ -298,124 +237,69 @@ useEffect(() => {
     document.body.appendChild(script)
   }
 
-  // Di PaymentPage.jsx, hapus semua referensi ke ticket_type atau sesuaikan
-
-// Di bagian fetchOrder, pastikan select statement benar
-const fetchOrder = async () => {
-  setLoading(true)
-  try {
-    const { data, error } = await supabase
-      .from('orders')
-      .select(`
-        *,
-        products:product_id (*),
-        order_buyers (*),
-        promo_codes!left(*)
-      `)
-      .eq('id', orderId)
-      .eq('user_id', user.id)
-      .single()
-
-    if (error) throw error
-    
-    if (!data) {
-      navigate('/concerts')
-      return
-    }
-    
-    setOrder(data)
-    setProducts(data.products)
-    
-    // Fetch tickets
-    const { data: ticketsData } = await supabase
-      .from('tickets')
-      .select('*')
-      .eq('order_id', data.id)
-    
-    setTickets(ticketsData || [])
-    
-    // Fetch order history
-    const { data: historyData } = await supabase
-      .from('order_history')
-      .select('*')
-      .eq('order_id', data.id)
-      .order('created_at', { ascending: false })
-    
-    setOrderHistory(historyData || [])
-    
-    // Set promo applied jika ada
-    if (data.promo_code_id) {
-      setPromoApplied(data.promo_codes)
-    }
-    
-    // Cek status stok (gunakan produk ID dan quantity dari tickets jika perlu)
-    if (ticketsData && ticketsData.length > 0) {
-      const { data: stockData } = await supabase
-        .rpc('check_stock_simple', {
-          p_product_id: data.product_id,
-          p_quantity: data.quantity
-        })
+  const fetchOrder = async () => {
+    setLoading(true)
+    try {
+      console.log('📦 Fetching order:', orderId)
       
-      setStockCheck(stockData)
+      const { data, error } = await supabase
+        .from('orders')
+        .select(`
+          *,
+          products:product_id (*),
+          order_buyers (*),
+          promo_codes!left(*)
+        `)
+        .eq('id', orderId)
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (error) throw error
+      
+      if (!data) {
+        console.log('Order not found, redirecting...')
+        navigate('/concerts')
+        return
+      }
+      
+      console.log('✅ Order fetched:', data)
+      setOrder(data)
+      setProducts(data.products)
+      
+      // Fetch tickets
+      const { data: ticketsData } = await supabase
+        .from('tickets')
+        .select('*')
+        .eq('order_id', data.id)
+      
+      setTickets(ticketsData || [])
+      
+      // Fetch order history
+      const { data: historyData } = await supabase
+        .from('order_history')
+        .select('*')
+        .eq('order_id', data.id)
+        .order('created_at', { ascending: false })
+      
+      setOrderHistory(historyData || [])
+      
+      // Set promo applied jika ada
+      if (data.promo_code_id) {
+        setPromoApplied(data.promo_codes)
+      }
+      
+      // Kirim email jika belum dan status masih pending
+      if (!data.email_notification_sent && data.status === 'pending') {
+        await sendPaymentEmail(data, data.products, ticketsData)
+      }
+    } catch (error) {
+      console.error('❌ Error fetching order:', error)
+      setError('Gagal memuat data pesanan: ' + error.message)
+    } finally {
+      setLoading(false)
     }
-    
-    // Kirim email jika belum dan status masih pending
-    if (!data.email_notification_sent && data.status === 'pending') {
-      await sendPaymentEmail(data, data.products, ticketsData)
-    }
-  } catch (error) {
-    setError('Gagal memuat data pesanan: ' + error.message)
-  } finally {
-    setLoading(false)
   }
-}
 
-// Di bagian handlePaymentSuccess, hapus ticket_type
-const handlePaymentSuccess = async (result) => {
-  try {
-    // Kurangi stok
-    const stockDecreased = await supabase
-      .rpc('decrease_stock_simple', {
-        p_product_id: order.product_id,
-        p_quantity: order.quantity
-      });
-    
-    // Update order status menjadi paid
-    await supabase
-      .from('orders')
-      .update({
-        status: 'paid',
-        payment_method: result.payment_type,
-        payment_details: result,
-        midtrans_transaction_id: result.transaction_id,
-        midtrans_transaction_status: result.transaction_status,
-        midtrans_payment_type: result.payment_type,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', order.id)
-      .eq('user_id', user.id)
-
-    // Catat ke order history
-    await supabase
-      .from('order_history')
-      .insert({
-        order_id: order.id,
-        status: 'paid',
-        notes: 'Pembayaran berhasil',
-        created_at: new Date().toISOString()
-      })
-
-    // Kirim email sukses
-    const emailData = formatEmailData(order, products, tickets);
-    await sendEmail('paymentSuccess', emailData);
-
-    navigate(`/payment-success/${order.id}`)
-  } catch (error) {
-    console.error('Error in payment success:', error)
-    alert('Pembayaran berhasil tetapi gagal memperbarui status. Hubungi admin.')
-  }
-}
-  
   const formatTime = (seconds) => {
     const hours = Math.floor(seconds / 3600)
     const mins = Math.floor((seconds % 3600) / 60)
@@ -431,42 +315,46 @@ const handlePaymentSuccess = async (result) => {
     // Rate limiting
     if (!globalRateLimiter.check(user.id, 'cancel').allowed) {
       setError('Terlalu banyak percobaan. Silakan tunggu.')
-      return;
+      return
     }
 
-    if (window.confirm('Yakin ingin membatalkan pesanan? Stok tiket tidak akan dikembalikan karena belum dipotong.')) {
-      try {
-        // Update status order menjadi cancelled
-        await supabase
-          .from('orders')
-          .update({ 
-            status: 'cancelled',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', order.id)
-          .eq('user_id', user.id) // IDOR Protection
-        
-        // Catat ke order history
-        await supabase
-          .from('order_history')
-          .insert({
-            order_id: order.id,
-            status: 'cancelled',
-            notes: 'Pesanan dibatalkan oleh user - stok tidak terpengaruh',
-            created_at: new Date().toISOString()
-          })
-        
-        // Update state
-        setOrder({ ...order, status: 'cancelled' })
-        
-        // Redirect setelah 2 detik
-        setTimeout(() => {
-          navigate('/concerts')
-        }, 2000)
-      } catch (error) {
-        console.error('Error cancelling order:', error)
-        alert('Gagal membatalkan pesanan')
-      }
+    if (!window.confirm('Yakin ingin membatalkan pesanan?')) {
+      return
+    }
+
+    setUpdating(true)
+    setError('')
+
+    try {
+      console.log('🔄 Cancelling order:', order.id)
+      
+      const { error } = await supabase
+        .from('orders')
+        .update({ 
+          status: 'cancelled',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', order.id)
+        .eq('user_id', user.id)
+        .eq('status', 'pending') // Hanya bisa cancel jika masih pending
+
+      if (error) throw error
+      
+      console.log('✅ Order cancelled successfully')
+      
+      // Refresh order data
+      await fetchOrder()
+      
+      // Redirect setelah 2 detik
+      setTimeout(() => {
+        navigate('/concerts')
+      }, 2000)
+      
+    } catch (error) {
+      console.error('❌ Error cancelling order:', error)
+      setError('Gagal membatalkan pesanan: ' + error.message)
+    } finally {
+      setUpdating(false)
     }
   }
 
@@ -477,7 +365,6 @@ const handlePaymentSuccess = async (result) => {
   }
 
   const createTransaction = async () => {
-    // Rate limiting
     if (!globalRateLimiter.check(user.id, 'payment').allowed) {
       throw new Error('Terlalu banyak percobaan. Silakan tunggu.')
     }
@@ -547,30 +434,24 @@ const handlePaymentSuccess = async (result) => {
             updated_at: new Date().toISOString()
           })
           .eq('id', order.id)
-          .eq('user_id', user.id) // IDOR Protection
+          .eq('user_id', user.id)
 
         window.snap.pay(transaction.token, {
           onSuccess: async (result) => {
+            console.log('💰 Payment success callback received')
             await handlePaymentSuccess(result)
           },
           onPending: (result) => {
-            supabase
-              .from('orders')
-              .update({ 
-                midtrans_transaction_status: 'pending',
-                payment_details: result,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', order.id)
-            
-            alert('Pembayaran sedang diproses.')
+            console.log('⏳ Payment pending:', result)
             setProcessingPayment(false)
           },
           onError: (result) => {
+            console.error('❌ Payment error:', result)
             setError('Pembayaran gagal: ' + (result.status_message || 'Silakan coba lagi'))
             setProcessingPayment(false)
           },
           onClose: () => {
+            console.log('🔒 Payment popup closed')
             setProcessingPayment(false)
           }
         })
@@ -578,6 +459,7 @@ const handlePaymentSuccess = async (result) => {
         throw new Error('Gagal mendapatkan token pembayaran')
       }
     } catch (error) {
+      console.error('❌ Error in payment process:', error)
       setError('Gagal memproses pembayaran: ' + error.message)
       setProcessingPayment(false)
     }
@@ -585,19 +467,13 @@ const handlePaymentSuccess = async (result) => {
 
   const handlePaymentSuccess = async (result) => {
     try {
-      // Kurangi stok terlebih dahulu
-      const stockDecreased = await decreaseStockOnPayment(
-        order.product_id,
-        order.ticket_type,
-        order.quantity
-      );
+      console.log('💰 Processing payment success for order:', order.id)
+      console.log('💰 Payment result:', result)
       
-      if (!stockDecreased) {
-        console.warn('Failed to decrease stock, but payment succeeded');
-      }
+      setUpdating(true)
       
-      // Update order status menjadi paid
-      await supabase
+      // Update order status
+      const { error: updateError } = await supabase
         .from('orders')
         .update({
           status: 'paid',
@@ -611,24 +487,31 @@ const handlePaymentSuccess = async (result) => {
         .eq('id', order.id)
         .eq('user_id', user.id)
 
-      // Catat ke order history
-      await supabase
-        .from('order_history')
-        .insert({
-          order_id: order.id,
-          status: 'paid',
-          notes: stockDecreased ? 'Pembayaran berhasil - stok telah dikurangi' : 'Pembayaran berhasil - stok mungkin belum terupdate',
-          created_at: new Date().toISOString()
-        })
+      if (updateError) {
+        console.error('❌ Error updating order status:', updateError)
+        throw updateError
+      }
+
+      console.log('✅ Order status updated to paid')
 
       // Kirim email sukses
-      const emailData = formatEmailData(order, products, tickets);
-      await sendEmail('paymentSuccess', emailData);
+      try {
+        const emailData = formatEmailData(order, products, tickets)
+        await sendEmail('paymentSuccess', emailData)
+      } catch (emailError) {
+        console.error('❌ Error sending success email:', emailError)
+        // Don't throw, continue with redirect
+      }
 
+      // Redirect ke halaman sukses
       navigate(`/payment-success/${order.id}`)
+
     } catch (error) {
-      console.error('Error in payment success:', error)
-      alert('Pembayaran berhasil tetapi gagal memperbarui status. Hubungi admin.')
+      console.error('❌ Error in payment success handler:', error)
+      alert('Pembayaran berhasil tetapi gagal memperbarui status. Silakan hubungi admin.')
+    } finally {
+      setUpdating(false)
+      setProcessingPayment(false)
     }
   }
 
@@ -659,24 +542,21 @@ const handlePaymentSuccess = async (result) => {
     return (
       <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
-          {iconPositions.map((pos, i) => {
-            const IconComponent = pos.icon
-            return (
-              <div
-                key={i}
-                className="absolute text-gray-600"
-                style={{
-                  top: pos.top,
-                  left: pos.left,
-                  transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                  opacity: pos.opacity,
-                  zIndex: 0
-                }}
-              >
-                <IconComponent size={28} />
-              </div>
-            )
-          })}
+          {iconPositions.map((pos, i) => (
+            <div
+              key={i}
+              className="absolute text-gray-600"
+              style={{
+                top: pos.top,
+                left: pos.left,
+                transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
+                opacity: pos.opacity,
+                zIndex: 0
+              }}
+            >
+              {React.createElement(pos.icon, { size: 28 })}
+            </div>
+          ))}
         </div>
         <NavbarEvent />
         <div className="relative z-10 flex items-center justify-center h-[80vh]">
@@ -693,24 +573,21 @@ const handlePaymentSuccess = async (result) => {
     return (
       <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
-          {iconPositions.map((pos, i) => {
-            const IconComponent = pos.icon
-            return (
-              <div
-                key={i}
-                className="absolute text-gray-600"
-                style={{
-                  top: pos.top,
-                  left: pos.left,
-                  transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                  opacity: pos.opacity,
-                  zIndex: 0
-                }}
-              >
-                <IconComponent size={28} />
-              </div>
-            )
-          })}
+          {iconPositions.map((pos, i) => (
+            <div
+              key={i}
+              className="absolute text-gray-600"
+              style={{
+                top: pos.top,
+                left: pos.left,
+                transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
+                opacity: pos.opacity,
+                zIndex: 0
+              }}
+            >
+              {React.createElement(pos.icon, { size: 28 })}
+            </div>
+          ))}
         </div>
         <NavbarEvent />
         <div className="relative z-10 max-w-7xl mx-auto px-4 py-12">
@@ -737,24 +614,21 @@ const handlePaymentSuccess = async (result) => {
     return (
       <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
-          {iconPositions.map((pos, i) => {
-            const IconComponent = pos.icon
-            return (
-              <div
-                key={i}
-                className="absolute text-gray-600"
-                style={{
-                  top: pos.top,
-                  left: pos.left,
-                  transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                  opacity: pos.opacity,
-                  zIndex: 0
-                }}
-              >
-                <IconComponent size={28} />
-              </div>
-            )
-          })}
+          {iconPositions.map((pos, i) => (
+            <div
+              key={i}
+              className="absolute text-gray-600"
+              style={{
+                top: pos.top,
+                left: pos.left,
+                transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
+                opacity: pos.opacity,
+                zIndex: 0
+              }}
+            >
+              {React.createElement(pos.icon, { size: 28 })}
+            </div>
+          ))}
         </div>
         <NavbarEvent />
         <div className="relative z-10 max-w-7xl mx-auto px-4 py-12">
@@ -763,7 +637,7 @@ const handlePaymentSuccess = async (result) => {
               <>
                 <BiCheckCircle className="text-6xl text-green-500 mx-auto mb-4" />
                 <h2 className="text-2xl font-bold text-gray-800 mb-2">Pesanan Sudah Dibayar</h2>
-                <p className="text-gray-600 mb-6">Pesanan Anda sudah dalam status LUNAS. Stok telah dikurangi.</p>
+                <p className="text-gray-600 mb-6">Pesanan Anda sudah dalam status LUNAS.</p>
                 <button
                   onClick={() => navigate(`/payment-success/${order.id}`)}
                   className="px-6 py-3 bg-green-600 text-white rounded border-2 border-green-700 hover:bg-green-700 transition-colors font-medium shadow-[6px_6px_0px_0px_rgba(0,0,0,0.25)]"
@@ -775,13 +649,13 @@ const handlePaymentSuccess = async (result) => {
               <>
                 <BiXCircle className="text-6xl text-red-500 mx-auto mb-4" />
                 <h2 className="text-2xl font-bold text-gray-800 mb-2">Pesanan Dibatalkan</h2>
-                <p className="text-gray-600 mb-6">Pesanan Anda telah dibatalkan. Stok tidak terpengaruh.</p>
+                <p className="text-gray-600 mb-6">Pesanan Anda telah dibatalkan.</p>
               </>
             ) : (
               <>
                 <BiTimer className="text-6xl text-orange-500 mx-auto mb-4" />
                 <h2 className="text-2xl font-bold text-gray-800 mb-2">Pesanan Kadaluarsa</h2>
-                <p className="text-gray-600 mb-6">Waktu pembayaran telah habis. Stok tidak terpengaruh.</p>
+                <p className="text-gray-600 mb-6">Waktu pembayaran telah habis.</p>
               </>
             )}
             <button
@@ -800,24 +674,21 @@ const handlePaymentSuccess = async (result) => {
     <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
       {/* Decorative Icons Background */}
       <div className="absolute inset-0 pointer-events-none">
-        {iconPositions.map((pos, i) => {
-          const IconComponent = pos.icon
-          return (
-            <div
-              key={i}
-              className="absolute text-gray-600"
-              style={{
-                top: pos.top,
-                left: pos.left,
-                transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                opacity: pos.opacity,
-                zIndex: 0
-              }}
-            >
-              <IconComponent size={28} />
-            </div>
-          )
-        })}
+        {iconPositions.map((pos, i) => (
+          <div
+            key={i}
+            className="absolute text-gray-600"
+            style={{
+              top: pos.top,
+              left: pos.left,
+              transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
+              opacity: pos.opacity,
+              zIndex: 0
+            }}
+          >
+            {React.createElement(pos.icon, { size: 28 })}
+          </div>
+        ))}
       </div>
 
       <NavbarEvent />
@@ -844,9 +715,7 @@ const handlePaymentSuccess = async (result) => {
         {emailLoading && (
           <div className="mb-4 p-3 bg-blue-50 border-2 border-blue-200 shadow-[4px_4px_0px_0px_rgba(74,144,226,0.2)] flex items-center gap-2">
             <div className="animate-spin rounded-full h-4 w-4 border-2 border-[#4a90e2] border-t-transparent"></div>
-            <p className="text-sm text-blue-700 font-medium">
-              Mengirim notifikasi ke email Anda...
-            </p>
+            <p className="text-sm text-blue-700 font-medium">Mengirim notifikasi...</p>
           </div>
         )}
 
@@ -854,7 +723,7 @@ const handlePaymentSuccess = async (result) => {
           <div className="mb-4 p-3 bg-green-50 border-2 border-green-200 shadow-[4px_4px_0px_0px_rgba(34,197,94,0.2)] flex items-center gap-2">
             <BiCheckCircle className="text-green-500 text-lg" />
             <p className="text-sm text-green-700 font-medium">
-              Notifikasi pembayaran telah dikirim ke {order.customer_email}
+              Notifikasi telah dikirim ke {order.customer_email}
             </p>
           </div>
         )}
@@ -877,7 +746,7 @@ const handlePaymentSuccess = async (result) => {
                 <BiTimer className={`text-2xl ${timeLeft < 300 ? 'text-red-500' : 'text-blue-500'}`} />
               </div>
               <div>
-                <p className="text-sm text-gray-500">Sisa Waktu Pembayaran</p>
+                <p className="text-sm text-gray-500">Sisa Waktu</p>
                 <p className={`text-3xl font-bold font-mono ${timeLeft < 300 ? 'text-red-500 animate-pulse' : 'text-blue-600'}`}>
                   {formatTime(timeLeft)}
                 </p>
@@ -890,7 +759,8 @@ const handlePaymentSuccess = async (result) => {
               </p>
               <button 
                 onClick={handleRefreshOrder}
-                className="text-[#4a90e2] hover:text-[#357abd] text-sm flex items-center gap-1 mt-1 font-medium"
+                className="text-[#4a90e2] hover:text-[#357abd] text-sm flex items-center gap-1 mt-1"
+                disabled={updating}
               >
                 <BiRefresh className="text-lg" />
                 <span>Refresh</span>
@@ -899,37 +769,20 @@ const handlePaymentSuccess = async (result) => {
           </div>
         </div>
 
-        {/* Info Stok */}
-        <div className="mb-4 p-3 bg-blue-50 border-2 border-blue-200 shadow-[4px_4px_0px_0px_rgba(74,144,226,0.2)] flex items-center gap-2">
-          <BiInfoCircle className="text-[#4a90e2] text-lg" />
-          <p className="text-sm text-[#4a90e2] font-medium">
-            <strong>Info Stok:</strong> Stok hanya akan berkurang SETELAH pembayaran berhasil.
-            {stockCheck && !stockCheck.available && (
-              <span className="block text-yellow-600 mt-1">
-                ⚠️ Peringatan: {stockCheck.message}
-              </span>
-            )}
-          </p>
-        </div>
-
         {/* Order Summary */}
         <div className="bg-white rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.15)] p-6 mb-6">
-          <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <span className="w-1 h-6 bg-[#4a90e2] rounded-full"></span>
-            Ringkasan Pesanan
-          </h2>
+          <h2 className="text-xl font-bold text-gray-800 mb-4">Ringkasan Pesanan</h2>
           
           <div className="space-y-4">
             <div className="flex justify-between items-center pb-3 border-b-2 border-gray-200">
-              <span className="text-gray-600">Nomor Pesanan</span>
+              <span className="text-gray-600">No. Pesanan</span>
               <div className="flex items-center gap-2">
                 <span className="font-mono font-medium text-gray-800 bg-gray-100 px-3 py-1 rounded border border-gray-200 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
                   {order.order_number}
                 </span>
                 <button
                   onClick={() => copyToClipboard(order.order_number)}
-                  className="text-gray-400 hover:text-[#4a90e2] transition-colors"
-                  title="Salin nomor pesanan"
+                  className="text-gray-400 hover:text-[#4a90e2]"
                 >
                   <BiCopy className="text-lg" />
                 </button>
@@ -943,15 +796,15 @@ const handlePaymentSuccess = async (result) => {
               <p className="font-semibold text-gray-700 mb-2">Detail Produk</p>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Produk:</span>
+                  <span className="text-gray-600">Produk</span>
                   <span className="font-medium text-gray-800">{order.product_name}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Harga Satuan:</span>
+                  <span className="text-gray-600">Harga</span>
                   <span className="font-medium text-gray-800">{formatRupiah(order.product_price)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Jumlah:</span>
+                  <span className="text-gray-600">Jumlah</span>
                   <span className="font-medium text-gray-800">{order.quantity} tiket</span>
                 </div>
               </div>
@@ -959,16 +812,13 @@ const handlePaymentSuccess = async (result) => {
 
             {order.promo_discount > 0 && (
               <div className="flex justify-between text-sm text-green-600 bg-green-50 p-3 rounded border-2 border-green-200 shadow-[4px_4px_0px_0px_rgba(34,197,94,0.2)]">
-                <span className="flex items-center gap-1">
-                  <BiCheck className="text-lg" />
-                  Diskon Promo
-                </span>
+                <span>Diskon Promo</span>
                 <span>- {formatRupiah(order.promo_discount)}</span>
               </div>
             )}
 
             <div className="flex justify-between font-bold text-lg pt-3 border-t-2 border-gray-200">
-              <span>Total yang harus dibayar</span>
+              <span>Total</span>
               <span className="text-[#4a90e2] text-2xl">{formatRupiah(order.total_amount)}</span>
             </div>
           </div>
@@ -976,22 +826,19 @@ const handlePaymentSuccess = async (result) => {
 
         {/* Customer Data */}
         <div className="bg-white rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.15)] p-6 mb-6">
-          <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <span className="w-1 h-6 bg-[#4a90e2] rounded-full"></span>
-            Data Pemesan
-          </h2>
+          <h2 className="text-xl font-bold text-gray-800 mb-4">Data Pemesan</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-gray-50 p-3 rounded border-2 border-gray-200 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
-              <p className="text-xs text-gray-500 mb-1">Email</p>
+              <p className="text-xs text-gray-500">Email</p>
               <p className="font-medium text-gray-800">{order.customer_email}</p>
             </div>
             <div className="bg-gray-50 p-3 rounded border-2 border-gray-200 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
-              <p className="text-xs text-gray-500 mb-1">Nama Lengkap</p>
+              <p className="text-xs text-gray-500">Nama</p>
               <p className="font-medium text-gray-800">{order.customer_name}</p>
             </div>
             <div className="bg-gray-50 p-3 rounded border-2 border-gray-200 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] md:col-span-2">
-              <p className="text-xs text-gray-500 mb-1">Alamat</p>
+              <p className="text-xs text-gray-500">Alamat</p>
               <p className="font-medium text-gray-800">{order.customer_address}</p>
             </div>
           </div>
@@ -1000,29 +847,15 @@ const handlePaymentSuccess = async (result) => {
         {/* Additional Buyers */}
         {order.additional_buyers && order.additional_buyers.length > 0 && (
           <div className="bg-white rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.15)] p-6 mb-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <span className="w-1 h-6 bg-[#4a90e2] rounded-full"></span>
-              Pembeli Lainnya
-            </h2>
+            <h2 className="text-xl font-bold text-gray-800 mb-4">Pembeli Lainnya</h2>
             
             <div className="space-y-3">
               {order.additional_buyers.map((buyer, index) => (
                 <div key={index} className="bg-gray-50 p-4 rounded border-2 border-gray-200 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
                   <p className="text-sm font-medium text-gray-700 mb-2">Pembeli {index + 2}</p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div>
-                      <p className="text-xs text-gray-500">Nama</p>
-                      <p className="text-sm text-gray-800">{buyer.name}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">NIK</p>
-                      <p className="text-sm text-gray-800">{buyer.nik}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Alamat</p>
-                      <p className="text-sm text-gray-800">{buyer.address}</p>
-                    </div>
-                  </div>
+                  <p className="text-xs text-gray-600">Nama: {buyer.name}</p>
+                  <p className="text-xs text-gray-600">NIK: {buyer.nik}</p>
+                  <p className="text-xs text-gray-600">Alamat: {buyer.address}</p>
                 </div>
               ))}
             </div>
@@ -1032,10 +865,7 @@ const handlePaymentSuccess = async (result) => {
         {/* Order History */}
         {orderHistory.length > 0 && (
           <div className="bg-white rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.15)] p-6 mb-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <span className="w-1 h-6 bg-[#4a90e2] rounded-full"></span>
-              Riwayat Pesanan
-            </h2>
+            <h2 className="text-xl font-bold text-gray-800 mb-4">Riwayat</h2>
             
             <div className="space-y-2">
               {orderHistory.map((history, index) => (
@@ -1050,13 +880,8 @@ const handlePaymentSuccess = async (result) => {
                     history.status === 'expired' ? 'text-orange-600' :
                     'text-gray-600'
                   }>
-                    {history.status === 'paid' ? 'Pembayaran sukses' :
-                     history.status === 'cancelled' ? 'Dibatalkan' :
-                     history.status === 'expired' ? 'Kadaluarsa' : history.status}
+                    {history.status}
                   </span>
-                  {history.notes && (
-                    <p className="text-xs text-gray-500 mt-1">{history.notes}</p>
-                  )}
                 </div>
               ))}
             </div>
@@ -1065,16 +890,14 @@ const handlePaymentSuccess = async (result) => {
 
         {/* Midtrans Status */}
         {!snapLoaded && (
-          <div className="mb-6 p-4 bg-yellow-50 rounded border-2 border-yellow-200 shadow-[4px_4px_0px_0px_rgba(234,179,8,0.2)] flex items-center gap-2">
-            <BiTimer className="text-yellow-500 text-lg" />
-            <p className="text-sm text-yellow-700 font-medium">Memuat metode pembayaran...</p>
+          <div className="mb-6 p-4 bg-yellow-50 rounded border-2 border-yellow-200 shadow-[4px_4px_0px_0px_rgba(234,179,8,0.2)]">
+            <p className="text-sm text-yellow-700">Memuat metode pembayaran...</p>
           </div>
         )}
 
         {error && (
-          <div className="mb-6 p-4 bg-red-50 rounded border-2 border-red-200 shadow-[4px_4px_0px_0px_rgba(239,68,68,0.2)] flex items-center gap-2">
-            <BiError className="text-red-500 text-lg" />
-            <p className="text-sm text-red-700 font-medium">{error}</p>
+          <div className="mb-6 p-4 bg-red-50 rounded border-2 border-red-200 shadow-[4px_4px_0px_0px_rgba(239,68,68,0.2)]">
+            <p className="text-sm text-red-700">{error}</p>
           </div>
         )}
 
@@ -1082,61 +905,31 @@ const handlePaymentSuccess = async (result) => {
         <div className="flex flex-col sm:flex-row gap-4">
           {/* Cancel Button */}
           <div className="flex-1 relative overflow-hidden rounded border-2 border-red-200 shadow-[6px_6px_0px_0px_rgba(239,68,68,0.25)]">
-            <div className="absolute inset-0 pointer-events-none">
-              {buttonIconPositions.slice(0, 10).map((pos, i) => {
-                const IconComponent = pos.icon
-                return (
-                  <div
-                    key={i}
-                    className="absolute text-red-500/30"
-                    style={{
-                      top: pos.top,
-                      left: pos.left,
-                      transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                      opacity: pos.opacity * 0.8,
-                      zIndex: 1
-                    }}
-                  >
-                    <IconComponent size={20} />
-                  </div>
-                )
-              })}
-            </div>
             <button
               onClick={handleCancelOrder}
-              className="relative z-10 w-full py-4 bg-white text-red-600 rounded font-bold hover:bg-red-50 transition-colors flex items-center justify-center gap-2"
+              disabled={updating || processingPayment}
+              className="w-full py-4 bg-white text-red-600 rounded font-bold hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              <BiX className="text-xl" />
-              <span>Batalkan Pesanan</span>
+              {updating ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-red-600 border-t-transparent"></div>
+                  <span>Memproses...</span>
+                </>
+              ) : (
+                <>
+                  <BiX className="text-xl" />
+                  <span>Batalkan</span>
+                </>
+              )}
             </button>
           </div>
 
           {/* Pay Button */}
           <div className="flex-1 relative overflow-hidden rounded border-2 border-[#357abd] shadow-[8px_8px_0px_0px_rgba(0,0,0,0.3)]">
-            <div className="absolute inset-0 pointer-events-none">
-              {buttonIconPositions.slice(10, 20).map((pos, i) => {
-                const IconComponent = pos.icon
-                return (
-                  <div
-                    key={i}
-                    className="absolute text-white/40"
-                    style={{
-                      top: pos.top,
-                      left: pos.left,
-                      transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                      opacity: pos.opacity,
-                      zIndex: 1
-                    }}
-                  >
-                    <IconComponent size={22} />
-                  </div>
-                )
-              })}
-            </div>
             <button
               onClick={handlePayNow}
-              disabled={!snapLoaded || processingPayment}
-              className="relative z-10 w-full py-4 bg-[#4a90e2] text-white rounded font-bold hover:bg-[#357abd] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              disabled={!snapLoaded || processingPayment || updating}
+              className="w-full py-4 bg-[#4a90e2] text-white rounded font-bold hover:bg-[#357abd] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {processingPayment ? (
                 <>
@@ -1146,47 +939,29 @@ const handlePaymentSuccess = async (result) => {
               ) : (
                 <>
                   <BiCreditCard className="text-xl" />
-                  <span>Bayar Sekarang</span>
+                  <span>Bayar</span>
                 </>
               )}
             </button>
           </div>
         </div>
 
-        {/* Info */}
-        <div className="mt-4 text-center text-sm text-gray-500">
-          <p>Anda akan diarahkan ke halaman pembayaran Midtrans</p>
-          <p className="text-xs mt-1">Stok hanya akan berkurang setelah pembayaran berhasil.</p>
-        </div>
-
         {/* Email Info */}
         <div className="mt-6 p-4 bg-blue-50 rounded border-2 border-blue-200 shadow-[4px_4px_0px_0px_rgba(74,144,226,0.2)] flex items-center gap-2">
           <BiEnvelope className="text-[#4a90e2] text-lg" />
-          <p className="text-sm text-[#4a90e2] font-medium">
+          <p className="text-sm text-[#4a90e2]">
             Notifikasi akan dikirim ke: <span className="font-bold">{order.customer_email}</span>
           </p>
           {!emailSent && !emailLoading && (
             <button
               onClick={() => sendPaymentEmail(order, products, tickets)}
-              className="ml-auto text-xs bg-white px-3 py-1 rounded border border-[#4a90e2] text-[#4a90e2] hover:bg-blue-50 transition-colors flex items-center gap-1 font-medium"
+              className="ml-auto text-xs bg-white px-3 py-1 rounded border border-[#4a90e2] text-[#4a90e2] hover:bg-blue-50"
             >
-              <BiMailSend />
-              <span>Kirim Ulang</span>
+              Kirim Ulang
             </button>
           )}
         </div>
       </div>
-
-      {/* Loading Overlay */}
-      {processingPayment && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[60]">
-          <div className="bg-white rounded border-2 border-gray-200 shadow-[12px_12px_0px_0px_rgba(0,0,0,0.25)] p-8">
-            <div className="animate-spin rounded-full h-16 w-16 border-4 border-[#4a90e2] border-t-transparent mx-auto mb-4"></div>
-            <p className="text-gray-700 font-medium">Mempersiapkan pembayaran...</p>
-            <p className="text-sm text-gray-500 mt-2">Menghubungi server Midtrans</p>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
