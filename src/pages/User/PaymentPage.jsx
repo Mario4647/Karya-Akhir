@@ -298,75 +298,124 @@ useEffect(() => {
     document.body.appendChild(script)
   }
 
-  const fetchOrder = async () => {
-    setLoading(true)
-    try {
-      // Cek kepemilikan order (IDOR Protection)
-      const { data, error } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          products:product_id (*),
-          order_buyers (*),
-          promo_codes!left(*)
-        `)
-        .eq('id', orderId)
-        .eq('user_id', user.id) // WAJIB: cek kepemilikan
-        .single()
+  // Di PaymentPage.jsx, hapus semua referensi ke ticket_type atau sesuaikan
 
-      if (error) throw error
-      
-      if (!data) {
-        navigate('/concerts')
-        return
-      }
-      
-      setOrder(data)
-      setProducts(data.products)
-      
-      // Fetch tickets
-      const { data: ticketsData } = await supabase
-        .from('tickets')
-        .select('*')
-        .eq('order_id', data.id)
-      
-      setTickets(ticketsData || [])
-      
-      // Fetch order history
-      const { data: historyData } = await supabase
-        .from('order_history')
-        .select('*')
-        .eq('order_id', data.id)
-        .order('created_at', { ascending: false })
-      
-      setOrderHistory(historyData || [])
-      
-      // Set promo applied jika ada
-      if (data.promo_code_id) {
-        setPromoApplied(data.promo_codes)
-      }
-      
-      // Cek status stok
+// Di bagian fetchOrder, pastikan select statement benar
+const fetchOrder = async () => {
+  setLoading(true)
+  try {
+    const { data, error } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        products:product_id (*),
+        order_buyers (*),
+        promo_codes!left(*)
+      `)
+      .eq('id', orderId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (error) throw error
+    
+    if (!data) {
+      navigate('/concerts')
+      return
+    }
+    
+    setOrder(data)
+    setProducts(data.products)
+    
+    // Fetch tickets
+    const { data: ticketsData } = await supabase
+      .from('tickets')
+      .select('*')
+      .eq('order_id', data.id)
+    
+    setTickets(ticketsData || [])
+    
+    // Fetch order history
+    const { data: historyData } = await supabase
+      .from('order_history')
+      .select('*')
+      .eq('order_id', data.id)
+      .order('created_at', { ascending: false })
+    
+    setOrderHistory(historyData || [])
+    
+    // Set promo applied jika ada
+    if (data.promo_code_id) {
+      setPromoApplied(data.promo_codes)
+    }
+    
+    // Cek status stok (gunakan produk ID dan quantity dari tickets jika perlu)
+    if (ticketsData && ticketsData.length > 0) {
       const { data: stockData } = await supabase
-        .rpc('check_and_lock_stock', {
+        .rpc('check_stock_simple', {
           p_product_id: data.product_id,
-          p_ticket_type: data.ticket_type,
           p_quantity: data.quantity
         })
       
       setStockCheck(stockData)
-      
-      // Kirim email jika belum dan status masih pending
-      if (!data.email_notification_sent && data.status === 'pending') {
-        await sendPaymentEmail(data, data.products, ticketsData)
-      }
-    } catch (error) {
-      setError('Gagal memuat data pesanan: ' + error.message)
-    } finally {
-      setLoading(false)
     }
+    
+    // Kirim email jika belum dan status masih pending
+    if (!data.email_notification_sent && data.status === 'pending') {
+      await sendPaymentEmail(data, data.products, ticketsData)
+    }
+  } catch (error) {
+    setError('Gagal memuat data pesanan: ' + error.message)
+  } finally {
+    setLoading(false)
   }
+}
 
+// Di bagian handlePaymentSuccess, hapus ticket_type
+const handlePaymentSuccess = async (result) => {
+  try {
+    // Kurangi stok
+    const stockDecreased = await supabase
+      .rpc('decrease_stock_simple', {
+        p_product_id: order.product_id,
+        p_quantity: order.quantity
+      });
+    
+    // Update order status menjadi paid
+    await supabase
+      .from('orders')
+      .update({
+        status: 'paid',
+        payment_method: result.payment_type,
+        payment_details: result,
+        midtrans_transaction_id: result.transaction_id,
+        midtrans_transaction_status: result.transaction_status,
+        midtrans_payment_type: result.payment_type,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', order.id)
+      .eq('user_id', user.id)
+
+    // Catat ke order history
+    await supabase
+      .from('order_history')
+      .insert({
+        order_id: order.id,
+        status: 'paid',
+        notes: 'Pembayaran berhasil',
+        created_at: new Date().toISOString()
+      })
+
+    // Kirim email sukses
+    const emailData = formatEmailData(order, products, tickets);
+    await sendEmail('paymentSuccess', emailData);
+
+    navigate(`/payment-success/${order.id}`)
+  } catch (error) {
+    console.error('Error in payment success:', error)
+    alert('Pembayaran berhasil tetapi gagal memperbarui status. Hubungi admin.')
+  }
+}
+  
   const formatTime = (seconds) => {
     const hours = Math.floor(seconds / 3600)
     const mins = Math.floor((seconds % 3600) / 60)
