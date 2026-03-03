@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabaseClient'
 import NavbarEvent from '../../components/NavbarEvent'
+import { withAuth } from '../../middleware/authMiddleware'
+import { sendEmail, formatEmailData } from '../../utils/emailService'
+import { globalRateLimiter, sanitizeInput, debounce } from '../../utils/security'
 import {
   BiCreditCard,
   BiTimer,
@@ -46,8 +49,10 @@ const decorativeIcons = [
   BiEnvelope, BiMailSend
 ]
 
-const PaymentPage = () => {
+const PaymentPage = ({ user }) => {
   const [order, setOrder] = useState(null)
+  const [products, setProducts] = useState(null)
+  const [tickets, setTickets] = useState([])
   const [promoApplied, setPromoApplied] = useState(null)
   const [timeLeft, setTimeLeft] = useState(3600)
   const [loading, setLoading] = useState(true)
@@ -112,7 +117,7 @@ const PaymentPage = () => {
         setTimeLeft(prev => {
           if (prev <= 1) {
             clearInterval(timer)
-            cancelExpiredOrder()
+            handleExpireOrder()
             return 0
           }
           return prev - 1
@@ -123,41 +128,34 @@ const PaymentPage = () => {
     }
   }, [order])
 
-  // Fungsi untuk mengirim email notifikasi pembayaran
-  const sendPaymentEmail = async (orderData) => {
+  // Handle expired order
+  const handleExpireOrder = async () => {
+    if (order && order.status === 'pending') {
+      await supabase
+        .from('orders')
+        .update({ 
+          status: 'expired',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', order.id)
+    }
+  }
+
+  // Kirim email notifikasi
+  const sendPaymentEmail = async (orderData, productsData, ticketsData) => {
     try {
-      // Cek apakah email sudah pernah dikirim
       if (emailSent) return;
 
       setEmailLoading(true);
       setEmailError('');
 
-      console.log('📧 Sending payment email to:', orderData.customer_email);
-
-      const response = await fetch('/api/send-payment-email', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          to: orderData.customer_email,
-          orderNumber: orderData.order_number,
-          customerName: orderData.customer_name,
-          totalAmount: orderData.total_amount,
-          expiryTime: orderData.payment_expiry,
-          productName: orderData.product_name,
-          quantity: orderData.quantity,
-          orderId: orderData.id
-        })
-      });
-
-      const data = await response.json();
+      const emailData = formatEmailData(orderData, productsData, ticketsData);
       
-      if (response.ok && data.success) {
-        console.log('✅ Payment email sent successfully');
+      const result = await sendEmail('paymentPending', emailData);
+      
+      if (result.success) {
         setEmailSent(true);
         
-        // Update status email di database
         await supabase
           .from('orders')
           .update({ 
@@ -166,12 +164,10 @@ const PaymentPage = () => {
           })
           .eq('id', orderData.id);
       } else {
-        console.error('❌ Failed to send email:', data.error);
-        setEmailError(data.error || 'Gagal mengirim email');
+        setEmailError(result.error);
       }
     } catch (error) {
-      console.error('❌ Error sending email:', error);
-      setEmailError(error.message || 'Gagal mengirim email');
+      setEmailError(error.message);
     } finally {
       setEmailLoading(false);
     }
@@ -185,35 +181,29 @@ const PaymentPage = () => {
       
       if (data.status === 'OK') {
         setApiStatus('Server terhubung ✓')
-        console.log('✅ Health check passed:', data)
       } else {
         setApiStatus('Server error')
       }
     } catch (error) {
-      console.error('❌ Health check failed:', error)
       setApiStatus('Server tidak merespons ✗')
     }
   }
 
   const loadMidtransScript = () => {
     if (document.querySelector('script[src="https://app.sandbox.midtrans.com/snap/snap.js"]')) {
-      console.log('✅ Midtrans script already loaded')
       setSnapLoaded(true)
       return
     }
     
-    console.log('📥 Loading Midtrans script...')
     const script = document.createElement('script')
     script.src = 'https://app.sandbox.midtrans.com/snap/snap.js'
     script.setAttribute('data-client-key', MIDTRANS_CLIENT_KEY)
     
     script.onload = () => {
-      console.log('✅ Midtrans script loaded successfully')
       setSnapLoaded(true)
     }
     
-    script.onerror = (err) => {
-      console.error('❌ Failed to load Midtrans script:', err)
+    script.onerror = () => {
       setError('Gagal memuat metode pembayaran. Silakan refresh halaman.')
     }
     
@@ -223,7 +213,7 @@ const PaymentPage = () => {
   const fetchOrder = async () => {
     setLoading(true)
     try {
-      console.log('📦 Fetching order:', orderId)
+      // Cek kepemilikan order (IDOR Protection)
       const { data, error } = await supabase
         .from('orders')
         .select(`
@@ -233,35 +223,40 @@ const PaymentPage = () => {
           promo_codes!left(*)
         `)
         .eq('id', orderId)
+        .eq('user_id', user.id) // WAJIB: cek kepemilikan
         .single()
 
       if (error) throw error
-      console.log('✅ Order fetched:', data)
+      
+      if (!data) {
+        navigate('/concerts')
+        return
+      }
+      
       setOrder(data)
+      setProducts(data.products)
+      
+      // Fetch tickets
+      const { data: ticketsData } = await supabase
+        .from('tickets')
+        .select('*')
+        .eq('order_id', data.id)
+      
+      setTickets(ticketsData || [])
       
       // Set promo applied jika ada
       if (data.promo_code_id) {
         setPromoApplied(data.promo_codes)
       }
       
-      // Kirim email notifikasi jika belum pernah dikirim
+      // Kirim email jika belum
       if (!data.email_notification_sent) {
-        await sendPaymentEmail(data)
+        await sendPaymentEmail(data, data.products, ticketsData)
       }
     } catch (error) {
-      console.error('❌ Error fetching order:', error)
       setError('Gagal memuat data pesanan: ' + error.message)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const cancelExpiredOrder = async () => {
-    if (order && order.status === 'pending') {
-      await supabase
-        .from('orders')
-        .update({ status: 'expired' })
-        .eq('id', order.id)
     }
   }
 
@@ -277,15 +272,24 @@ const PaymentPage = () => {
   }
 
   const handleCancelOrder = async () => {
+    if (!globalRateLimiter.check(user.id, 'cancel').allowed) {
+      setError('Terlalu banyak percobaan. Silakan tunggu.')
+      return;
+    }
+
     if (window.confirm('Yakin ingin membatalkan pesanan?')) {
       try {
         await supabase
           .from('orders')
-          .update({ status: 'cancelled' })
+          .update({ 
+            status: 'cancelled',
+            updated_at: new Date().toISOString()
+          })
           .eq('id', order.id)
+          .eq('user_id', user.id) // IDOR Protection
+        
         navigate('/concerts')
       } catch (error) {
-        console.error('❌ Error cancelling order:', error)
         alert('Gagal membatalkan pesanan')
       }
     }
@@ -298,10 +302,12 @@ const PaymentPage = () => {
   }
 
   const createTransaction = async () => {
+    // Rate limiting
+    if (!globalRateLimiter.check(user.id, 'payment').allowed) {
+      throw new Error('Terlalu banyak percobaan. Silakan tunggu.')
+    }
+
     try {
-      console.log('🔄 Creating transaction for order:', order.order_number)
-      
-      // Siapkan data yang akan dikirim - TERMASUK PROMO CODE
       const payload = {
         orderNumber: order.order_number,
         totalAmount: order.total_amount,
@@ -318,8 +324,6 @@ const PaymentPage = () => {
         } : null
       }
 
-      console.log('📦 Payload being sent:', payload)
-
       const response = await fetch('/api/midtrans', {
         method: 'POST',
         headers: {
@@ -329,20 +333,13 @@ const PaymentPage = () => {
       })
 
       const data = await response.json()
-      console.log('📥 Response from server:', data)
 
       if (!response.ok) {
-        let errorMessage = data.error || 'Gagal membuat transaksi'
-        if (data.missingFields) {
-          errorMessage += ` (Field yang kurang: ${data.missingFields.join(', ')})`
-        }
-        throw new Error(errorMessage)
+        throw new Error(data.error || 'Gagal membuat transaksi')
       }
 
-      console.log('✅ Transaction response:', data)
       return data
     } catch (error) {
-      console.error('❌ Error creating transaction:', error)
       throw error
     }
   }
@@ -362,15 +359,12 @@ const PaymentPage = () => {
     setError('')
 
     try {
-      // Dapatkan token dari backend
       const transaction = await createTransaction()
       
       if (transaction && transaction.token) {
-        console.log('🎫 Transaction token received:', transaction.token)
         setSnapToken(transaction.token)
 
-        // Simpan token ke database
-        const { error: updateError } = await supabase
+        await supabase
           .from('orders')
           .update({ 
             midtrans_transaction_id: transaction.transaction_id,
@@ -378,19 +372,13 @@ const PaymentPage = () => {
             updated_at: new Date().toISOString()
           })
           .eq('id', order.id)
+          .eq('user_id', user.id) // IDOR Protection
 
-        if (updateError) {
-          console.error('❌ Error saving token to database:', updateError)
-        }
-
-        // Buka Snap dengan token
         window.snap.pay(transaction.token, {
-          onSuccess: function(result) {
-            console.log('💰 Payment success:', result)
-            handlePaymentSuccess(result)
+          onSuccess: async (result) => {
+            await handlePaymentSuccess(result)
           },
-          onPending: function(result) {
-            console.log('⏳ Payment pending:', result)
+          onPending: (result) => {
             supabase
               .from('orders')
               .update({ 
@@ -399,16 +387,15 @@ const PaymentPage = () => {
                 updated_at: new Date().toISOString()
               })
               .eq('id', order.id)
-            alert('Pembayaran sedang diproses. Silakan cek status secara berkala.')
+            
+            alert('Pembayaran sedang diproses.')
             setProcessingPayment(false)
           },
-          onError: function(result) {
-            console.error('❌ Payment error:', result)
+          onError: (result) => {
             setError('Pembayaran gagal: ' + (result.status_message || 'Silakan coba lagi'))
             setProcessingPayment(false)
           },
-          onClose: function() {
-            console.log('🔒 Payment popup closed')
+          onClose: () => {
             setProcessingPayment(false)
           }
         })
@@ -416,7 +403,6 @@ const PaymentPage = () => {
         throw new Error('Gagal mendapatkan token pembayaran')
       }
     } catch (error) {
-      console.error('❌ Error in payment process:', error)
       setError('Gagal memproses pembayaran: ' + error.message)
       setProcessingPayment(false)
     }
@@ -424,9 +410,7 @@ const PaymentPage = () => {
 
   const handlePaymentSuccess = async (result) => {
     try {
-      console.log('💰 Processing payment success:', result)
-      
-      const { error } = await supabase
+      await supabase
         .from('orders')
         .update({
           status: 'paid',
@@ -438,20 +422,21 @@ const PaymentPage = () => {
           updated_at: new Date().toISOString()
         })
         .eq('id', order.id)
+        .eq('user_id', user.id)
 
-      if (error) throw error
+      // Kirim email sukses
+      const emailData = formatEmailData(order, products, tickets);
+      await sendEmail('paymentSuccess', emailData);
 
-      console.log('✅ Order updated successfully, redirecting...')
       navigate(`/payment-success/${order.id}`)
     } catch (error) {
-      console.error('❌ Error updating order:', error)
       alert('Pembayaran berhasil tetapi gagal memperbarui status. Hubungi admin.')
     }
   }
 
-  const handleRefreshOrder = () => {
+  const handleRefreshOrder = debounce(() => {
     fetchOrder()
-  }
+  }, 2000)
 
   const formatRupiah = (number) => {
     return new Intl.NumberFormat('id-ID', {
@@ -657,7 +642,7 @@ const PaymentPage = () => {
           </span>
         </div>
 
-        {/* Email Notification Status */}
+        {/* Email Status */}
         {emailLoading && (
           <div className="mb-4 p-3 bg-blue-50 border-2 border-blue-200 shadow-[4px_4px_0px_0px_rgba(74,144,226,0.2)] flex items-center gap-2">
             <div className="animate-spin rounded-full h-4 w-4 border-2 border-[#4a90e2] border-t-transparent"></div>
@@ -708,7 +693,6 @@ const PaymentPage = () => {
               <button 
                 onClick={handleRefreshOrder}
                 className="text-[#4a90e2] hover:text-[#357abd] text-sm flex items-center gap-1 mt-1 font-medium"
-                title="Refresh status"
               >
                 <BiRefresh className="text-lg" />
                 <span>Refresh</span>
@@ -838,7 +822,7 @@ const PaymentPage = () => {
         {!snapLoaded && (
           <div className="mb-6 p-4 bg-yellow-50 rounded border-2 border-yellow-200 shadow-[4px_4px_0px_0px_rgba(234,179,8,0.2)] flex items-center gap-2">
             <BiTimer className="text-yellow-500 text-lg" />
-            <p className="text-sm text-yellow-700 font-medium">Memuat metode pembayaran... Silakan tunggu.</p>
+            <p className="text-sm text-yellow-700 font-medium">Memuat metode pembayaran...</p>
           </div>
         )}
 
@@ -851,7 +835,7 @@ const PaymentPage = () => {
 
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-4">
-          {/* Tombol Batalkan */}
+          {/* Cancel Button */}
           <div className="flex-1 relative overflow-hidden rounded border-2 border-red-200 shadow-[6px_6px_0px_0px_rgba(239,68,68,0.25)]">
             <div className="absolute inset-0 pointer-events-none">
               {buttonIconPositions.slice(0, 10).map((pos, i) => {
@@ -882,7 +866,7 @@ const PaymentPage = () => {
             </button>
           </div>
 
-          {/* Tombol Bayar Sekarang */}
+          {/* Pay Button */}
           <div className="flex-1 relative overflow-hidden rounded border-2 border-[#357abd] shadow-[8px_8px_0px_0px_rgba(0,0,0,0.3)]">
             <div className="absolute inset-0 pointer-events-none">
               {buttonIconPositions.slice(10, 20).map((pos, i) => {
@@ -924,7 +908,7 @@ const PaymentPage = () => {
           </div>
         </div>
 
-        {/* Info tambahan */}
+        {/* Info */}
         <div className="mt-4 text-center text-sm text-gray-500">
           <p>Anda akan diarahkan ke halaman pembayaran Midtrans</p>
         </div>
@@ -933,11 +917,11 @@ const PaymentPage = () => {
         <div className="mt-6 p-4 bg-blue-50 rounded border-2 border-blue-200 shadow-[4px_4px_0px_0px_rgba(74,144,226,0.2)] flex items-center gap-2">
           <BiEnvelope className="text-[#4a90e2] text-lg" />
           <p className="text-sm text-[#4a90e2] font-medium">
-            Notifikasi telah dikirim ke: <span className="font-bold">{order.customer_email}</span>
+            Notifikasi akan dikirim ke: <span className="font-bold">{order.customer_email}</span>
           </p>
           {!emailSent && !emailLoading && (
             <button
-              onClick={() => sendPaymentEmail(order)}
+              onClick={() => sendPaymentEmail(order, products, tickets)}
               className="ml-auto text-xs bg-white px-3 py-1 rounded border border-[#4a90e2] text-[#4a90e2] hover:bg-blue-50 transition-colors flex items-center gap-1 font-medium"
             >
               <BiMailSend />
@@ -961,4 +945,4 @@ const PaymentPage = () => {
   )
 }
 
-export default PaymentPage
+export default withAuth(PaymentPage)
