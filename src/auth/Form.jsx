@@ -8,7 +8,7 @@ import {
   sanitizeInput,
   debounce
 } from '../utils/security';
-import { withoutAuth } from '../middleware/authMiddleware';
+import { withoutAuth } from '../authMiddleware';
 import {
   BiUser,
   BiEnvelope,
