@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { supabase } from '../../supabaseClient'
-import NavbarEvent from '../../components/NavbarEvent'
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { supabase } from '../../supabaseClient';
+import NavbarEvent from '../../components/NavbarEvent';
+import { withAuth } from '../../authMiddleware';
 import {
   BiCheckCircle,
   BiDownload,
@@ -29,29 +30,31 @@ import {
   BiPaint,
   BiBook,
   BiMessage,
-  BiVolumeFull
-} from 'react-icons/bi'
-import QRCode from 'react-qr-code'
+  BiVolumeFull,
+  BiQr
+} from 'react-icons/bi';
 
 // Array icon untuk background dekoratif
 const decorativeIcons = [
   BiMusic, BiMicrophone, BiCamera, BiVideo, BiStar, BiHeart,
   BiDiamond, BiCrown, BiRocket, BiPalette, BiBrush, BiPaint,
-  BiBook, BiMessage, BiVolumeFull, BiMovie, BiPurchaseTag
-]
+  BiBook, BiMessage, BiVolumeFull, BiMovie, BiPurchaseTag, BiQr
+];
 
-const PaymentSuccessPage = () => {
-  const [order, setOrder] = useState(null)
-  const [tickets, setTickets] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [copied, setCopied] = useState(false)
-  const [qrLoaded, setQrLoaded] = useState(false)
-  const { orderId } = useParams()
-  const navigate = useNavigate()
+const PaymentSuccessPage = ({ user }) => {
+  const [order, setOrder] = useState(null);
+  const [tickets, setTickets] = useState([]);
+  const [products, setProducts] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [showQRModal, setShowQRModal] = useState(false);
+  const { orderId } = useParams();
+  const navigate = useNavigate();
 
   // Generate icon positions untuk background
   const [iconPositions] = useState(() => {
-    const positions = []
+    const positions = [];
     for (let i = 0; i < 30; i++) {
       positions.push({
         top: `${Math.random() * 100}%`,
@@ -60,34 +63,19 @@ const PaymentSuccessPage = () => {
         scale: 0.6 + Math.random() * 0.8,
         opacity: 0.08 + Math.random() * 0.1,
         icon: decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
-      })
+      });
     }
-    return positions
-  })
-
-  // Generate icon untuk tombol
-  const [buttonIconPositions] = useState(() => {
-    const positions = []
-    for (let i = 0; i < 20; i++) {
-      positions.push({
-        top: `${Math.random() * 100}%`,
-        left: `${Math.random() * 100}%`,
-        rotate: `${Math.random() * 360}deg`,
-        scale: 0.4 + Math.random() * 0.6,
-        opacity: 0.25 + Math.random() * 0.25,
-        icon: decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
-      })
-    }
-    return positions
-  })
+    return positions;
+  });
 
   useEffect(() => {
-    fetchOrderAndTickets()
-  }, [orderId])
+    fetchOrderAndTickets();
+  }, [orderId]);
 
   const fetchOrderAndTickets = async () => {
-    setLoading(true)
+    setLoading(true);
     try {
+      // Fetch order dengan cek kepemilikan
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .select(`
@@ -95,72 +83,152 @@ const PaymentSuccessPage = () => {
           products:product_id (*)
         `)
         .eq('id', orderId)
-        .single()
+        .eq('user_id', user.id)
+        .single();
 
-      if (orderError) throw orderError
-      setOrder(orderData)
+      if (orderError) throw orderError;
+      setOrder(orderData);
+      setProducts(orderData.products);
 
+      // Fetch tickets
       const { data: ticketsData, error: ticketsError } = await supabase
         .from('tickets')
         .select('*')
-        .eq('order_id', orderId)
+        .eq('order_id', orderId);
 
-      if (ticketsError) throw ticketsError
-      setTickets(ticketsData || [])
-      setQrLoaded(true)
+      if (ticketsError) throw ticketsError;
+      setTickets(ticketsData || []);
     } catch (error) {
-      console.error('Error fetching data:', error)
+      console.error('Error fetching data:', error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleCopy = (text) => {
-    navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const handlePrint = () => {
-    window.print()
-  }
+    window.print();
+  };
 
-  const handleDownloadQR = (ticketCode) => {
-    const container = document.getElementById(`qr-${ticketCode.replace(/[^a-zA-Z0-9]/g, '')}`)
-    if (container) {
-      const svg = container.querySelector('svg')
-      if (svg) {
-        const canvas = document.createElement('canvas')
-        const ctx = canvas.getContext('2d')
-        const img = new Image()
-        
-        img.onload = () => {
-          canvas.width = img.width
-          canvas.height = img.height
-          ctx.drawImage(img, 0, 0)
-          
-          const link = document.createElement('a')
-          link.download = `ticket-${ticketCode}.png`
-          link.href = canvas.toDataURL('image/png')
-          link.click()
-        }
-        
-        const svgData = new XMLSerializer().serializeToString(svg)
-        img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)))
-      }
+  // QR Code dengan efek garis-garis (bukan kotak biasa)
+  const generateQRWithLines = (ticketCode) => {
+    // Ini adalah QR Code dengan efek garis-garis (pattern)
+    // Bukan QR Code sebenarnya, tapi efek visual yang diinginkan
+    const bars = [];
+    const lines = 12;
+    
+    for (let i = 0; i < lines; i++) {
+      const width = 4 + Math.floor(Math.random() * 8);
+      const left = Math.random() * 80;
+      bars.push(
+        <div 
+          key={i}
+          style={{
+            position: 'absolute',
+            height: '60%',
+            width: `${width}px`,
+            backgroundColor: '#000',
+            left: `${left}%`,
+            top: '20%',
+            opacity: 0.2 + (i * 0.02),
+            transform: `rotate(${Math.random() * 10 - 5}deg)`,
+            borderRadius: '2px'
+          }}
+        />
+      );
     }
-  }
+    
+    return (
+      <div className="relative w-32 h-32 bg-white border-2 border-gray-300 rounded overflow-hidden shadow-lg">
+        {/* Kotak-kotak kecil (grid) */}
+        <div className="grid grid-cols-5 gap-1 p-2 absolute inset-0">
+          {[...Array(25)].map((_, i) => (
+            <div 
+              key={i}
+              className="bg-gray-800"
+              style={{
+                opacity: Math.random() > 0.7 ? 0.8 : 0.2,
+                height: '100%',
+                width: '100%'
+              }}
+            />
+          ))}
+        </div>
+        {/* Garis-garis */}
+        {bars}
+        {/* Kotak besar di tengah */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="w-8 h-8 bg-white border-2 border-gray-800 rotate-45"></div>
+        </div>
+        {/* Label kecil */}
+        <div className="absolute bottom-1 right-1 text-[8px] font-mono bg-white px-1 border border-gray-300">
+          {ticketCode.slice(-4)}
+        </div>
+      </div>
+    );
+  };
 
-  const handleDownloadAllTickets = () => {
-    tickets.forEach((ticket, index) => {
-      setTimeout(() => {
-        handleDownloadQR(ticket.ticket_code)
-      }, index * 500)
-    })
-  }
+  // QR Code dengan style garis-garis (versi 2)
+  const generateStripedQR = (ticketCode) => {
+    return (
+      <div className="relative w-40 h-40 bg-white border-2 border-gray-300 rounded overflow-hidden shadow-lg">
+        {/* Background pattern */}
+        <div className="absolute inset-0" style={{
+          background: `repeating-linear-gradient(
+            45deg,
+            #000,
+            #000 4px,
+            #fff 4px,
+            #fff 8px
+          )`,
+          opacity: 0.3
+        }} />
+        
+        {/* Grid overlay */}
+        <div className="absolute inset-0 grid grid-cols-8 gap-0.5 p-2">
+          {[...Array(64)].map((_, i) => (
+            <div 
+              key={i}
+              className="bg-black"
+              style={{ opacity: Math.random() > 0.6 ? 0.6 : 0.1 }}
+            />
+          ))}
+        </div>
+        
+        {/* Kotak di tengah */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="w-12 h-12 bg-white border-2 border-gray-800 rotate-12 transform">
+            <div className="w-full h-full flex items-center justify-center text-xs font-bold">
+              {ticketCode.slice(0, 2)}
+            </div>
+          </div>
+        </div>
+        
+        {/* Barcode style lines */}
+        <div className="absolute bottom-0 left-0 right-0 h-6 bg-white border-t border-gray-300 flex items-center justify-around px-1">
+          {[...Array(8)].map((_, i) => (
+            <div 
+              key={i}
+              className="bg-black"
+              style={{
+                width: '4px',
+                height: `${4 + (i * 2)}px`,
+                opacity: 0.7
+              }}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   const formatDate = (dateString) => {
-    const date = new Date(dateString)
+    const date = new Date(dateString);
     return date.toLocaleDateString('id-ID', {
       weekday: 'long',
       year: 'numeric',
@@ -168,46 +236,33 @@ const PaymentSuccessPage = () => {
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
-    })
-  }
+    });
+  };
 
   const formatRupiah = (number) => {
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
       currency: 'IDR',
       minimumFractionDigits: 0
-    }).format(number)
-  }
+    }).format(number);
+  };
 
-  const generateQRCode = (text, code) => {
-    const safeId = `qr-${text.replace(/[^a-zA-Z0-9]/g, '')}`
-    
-    return (
-      <div id={safeId} className="flex flex-col items-center">
-        <div className="bg-white p-2 rounded border-2 border-blue-200 shadow-[4px_4px_0px_0px_rgba(74,144,226,0.2)]">
-          <QRCode
-            value={text}
-            size={80}
-            bgColor="#ffffff"
-            fgColor="#000000"
-            level="H"
-          />
-        </div>
-        <div className="mt-2 text-center">
-          <span className="text-xs font-mono font-bold text-[#4a90e2] bg-blue-50 px-2 py-1 rounded border border-blue-200 shadow-[2px_2px_0px_0px_rgba(74,144,226,0.2)]">
-            {code}
-          </span>
-        </div>
-      </div>
-    )
-  }
+  const handleViewQR = (ticket) => {
+    setSelectedTicket(ticket);
+    setShowQRModal(true);
+  };
+
+  const handleDownloadQR = (ticketCode) => {
+    // Untuk download, kita bisa generate canvas dengan pattern yang sama
+    alert('Fitur download QR Code akan segera tersedia');
+  };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
           {iconPositions.map((pos, i) => {
-            const IconComponent = pos.icon
+            const IconComponent = pos.icon;
             return (
               <div
                 key={i}
@@ -222,7 +277,7 @@ const PaymentSuccessPage = () => {
               >
                 <IconComponent size={28} />
               </div>
-            )
+            );
           })}
         </div>
         <NavbarEvent />
@@ -233,7 +288,7 @@ const PaymentSuccessPage = () => {
           </div>
         </div>
       </div>
-    )
+    );
   }
 
   if (!order) {
@@ -241,7 +296,7 @@ const PaymentSuccessPage = () => {
       <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
           {iconPositions.map((pos, i) => {
-            const IconComponent = pos.icon
+            const IconComponent = pos.icon;
             return (
               <div
                 key={i}
@@ -256,7 +311,7 @@ const PaymentSuccessPage = () => {
               >
                 <IconComponent size={28} />
               </div>
-            )
+            );
           })}
         </div>
         <NavbarEvent />
@@ -277,7 +332,7 @@ const PaymentSuccessPage = () => {
           </div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -285,7 +340,7 @@ const PaymentSuccessPage = () => {
       {/* Decorative Icons Background */}
       <div className="absolute inset-0 pointer-events-none">
         {iconPositions.map((pos, i) => {
-          const IconComponent = pos.icon
+          const IconComponent = pos.icon;
           return (
             <div
               key={i}
@@ -300,7 +355,7 @@ const PaymentSuccessPage = () => {
             >
               <IconComponent size={28} />
             </div>
-          )
+          );
         })}
       </div>
 
@@ -414,7 +469,7 @@ const PaymentSuccessPage = () => {
           )}
         </div>
 
-        {/* Multiple Tickets with QR Codes */}
+        {/* Multiple Tickets dengan QR Code Bergaris */}
         <div className="space-y-4 mb-6">
           {tickets.map((ticket, index) => (
             <div key={ticket.id} className="bg-white rounded border-2 border-blue-200 shadow-[8px_8px_0px_0px_rgba(74,144,226,0.2)] overflow-hidden">
@@ -433,17 +488,39 @@ const PaymentSuccessPage = () => {
 
               <div className="p-6">
                 <div className="flex flex-col md:flex-row gap-6">
-                  <div className="flex flex-col items-center md:w-32">
-                    {generateQRCode(ticket.ticket_code, ticket.ticket_code)}
+                  {/* Left side - QR Code dengan efek garis-garis */}
+                  <div className="flex flex-col items-center md:w-48">
                     <button
-                      onClick={() => handleDownloadQR(ticket.ticket_code)}
-                      className="mt-2 text-xs bg-blue-50 text-[#4a90e2] hover:bg-blue-100 px-3 py-1 rounded-full border border-blue-200 shadow-[2px_2px_0px_0px_rgba(74,144,226,0.2)] flex items-center gap-1 font-medium"
+                      onClick={() => handleViewQR(ticket)}
+                      className="hover:scale-105 transition-transform"
                     >
-                      <BiDownload size={14} />
-                      <span>Download QR</span>
+                      {generateStripedQR(ticket.ticket_code)}
                     </button>
+                    <p className="text-xs text-gray-500 mt-2">Klik QR untuk perbesar</p>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        onClick={() => handleViewQR(ticket)}
+                        className="text-xs bg-blue-50 text-[#4a90e2] hover:bg-blue-100 px-3 py-1 rounded-full border border-blue-200 shadow-[2px_2px_0px_0px_rgba(74,144,226,0.2)] flex items-center gap-1 font-medium"
+                      >
+                        <BiQr size={14} />
+                        <span>Lihat QR</span>
+                      </button>
+                      <button
+                        onClick={() => handleDownloadQR(ticket.ticket_code)}
+                        className="text-xs bg-blue-50 text-[#4a90e2] hover:bg-blue-100 px-3 py-1 rounded-full border border-blue-200 shadow-[2px_2px_0px_0px_rgba(74,144,226,0.2)] flex items-center gap-1 font-medium"
+                      >
+                        <BiDownload size={14} />
+                        <span>Download</span>
+                      </button>
+                    </div>
+                    <div className="mt-2 text-center">
+                      <span className="text-xs font-mono font-bold text-[#4a90e2] bg-blue-50 px-2 py-1 rounded border border-blue-200">
+                        {ticket.ticket_code}
+                      </span>
+                    </div>
                   </div>
 
+                  {/* Right side - Ticket Info */}
                   <div className="flex-1 space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                       <div className="bg-gray-50 p-2 rounded border border-gray-200 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
@@ -464,12 +541,12 @@ const PaymentSuccessPage = () => {
                         <div className="flex items-center gap-2 text-sm">
                           <BiCalendar className="text-[#4a90e2]" />
                           <span className="text-gray-700">
-                            {order.products?.event_date ? formatDate(order.products.event_date) : '-'}
+                            {products?.event_date ? formatDate(products.event_date) : '-'}
                           </span>
                         </div>
                         <div className="flex items-center gap-2 text-sm">
                           <BiMap className="text-[#4a90e2]" />
-                          <span className="text-gray-700">{order.products?.event_location || '-'}</span>
+                          <span className="text-gray-700">{products?.event_location || '-'}</span>
                         </div>
                       </div>
                     </div>
@@ -504,26 +581,6 @@ const PaymentSuccessPage = () => {
         {/* Action Buttons */}
         <div className="flex flex-wrap gap-3 justify-center print:hidden">
           <div className="relative overflow-hidden rounded border-2 border-blue-600 shadow-[6px_6px_0px_0px_rgba(74,144,226,0.25)]">
-            <div className="absolute inset-0 pointer-events-none">
-              {buttonIconPositions.slice(0, 7).map((pos, i) => {
-                const IconComponent = pos.icon
-                return (
-                  <div
-                    key={i}
-                    className="absolute text-blue-600/30"
-                    style={{
-                      top: pos.top,
-                      left: pos.left,
-                      transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                      opacity: pos.opacity * 0.8,
-                      zIndex: 1
-                    }}
-                  >
-                    <IconComponent size={16} />
-                  </div>
-                )
-              })}
-            </div>
             <button
               onClick={handlePrint}
               className="relative z-10 px-6 py-3 bg-white text-blue-600 rounded font-bold hover:bg-blue-50 transition-colors flex items-center gap-2"
@@ -534,59 +591,9 @@ const PaymentSuccessPage = () => {
           </div>
 
           <div className="relative overflow-hidden rounded border-2 border-green-600 shadow-[6px_6px_0px_0px_rgba(34,197,94,0.25)]">
-            <div className="absolute inset-0 pointer-events-none">
-              {buttonIconPositions.slice(7, 14).map((pos, i) => {
-                const IconComponent = pos.icon
-                return (
-                  <div
-                    key={i}
-                    className="absolute text-white/40"
-                    style={{
-                      top: pos.top,
-                      left: pos.left,
-                      transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                      opacity: pos.opacity,
-                      zIndex: 1
-                    }}
-                  >
-                    <IconComponent size={18} />
-                  </div>
-                )
-              })}
-            </div>
-            <button
-              onClick={handleDownloadAllTickets}
-              className="relative z-10 px-6 py-3 bg-green-600 text-white rounded font-bold hover:bg-green-700 transition-colors flex items-center gap-2"
-            >
-              <BiDownload className="text-xl" />
-              <span>Download Semua QR</span>
-            </button>
-          </div>
-
-          <div className="relative overflow-hidden rounded border-2 border-[#4a90e2] shadow-[6px_6px_0px_0px_rgba(74,144,226,0.25)]">
-            <div className="absolute inset-0 pointer-events-none">
-              {buttonIconPositions.slice(14, 20).map((pos, i) => {
-                const IconComponent = pos.icon
-                return (
-                  <div
-                    key={i}
-                    className="absolute text-[#4a90e2]/30"
-                    style={{
-                      top: pos.top,
-                      left: pos.left,
-                      transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                      opacity: pos.opacity * 0.8,
-                      zIndex: 1
-                    }}
-                  >
-                    <IconComponent size={16} />
-                  </div>
-                )
-              })}
-            </div>
             <button
               onClick={() => navigate('/my-orders')}
-              className="relative z-10 px-6 py-3 bg-white text-[#4a90e2] rounded font-bold hover:bg-blue-50 transition-colors flex items-center gap-2 border-2 border-[#4a90e2]"
+              className="relative z-10 px-6 py-3 bg-green-600 text-white rounded font-bold hover:bg-green-700 transition-colors flex items-center gap-2"
             >
               <BiPurchaseTag className="text-xl" />
               <span>Lihat Semua Pesanan</span>
@@ -604,12 +611,53 @@ const PaymentSuccessPage = () => {
         </div>
       </div>
 
-      {/* Test QR Code */}
-      <div style={{ display: 'none' }}>
-        <QRCode value="test" size={10} />
-      </div>
+      {/* QR Code Modal */}
+      {showQRModal && selectedTicket && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded border-2 border-gray-200 shadow-[15px_15px_0px_0px_rgba(0,0,0,0.3)] max-w-md w-full relative">
+            <button
+              onClick={() => setShowQRModal(false)}
+              className="absolute top-2 right-2 p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded border border-gray-200"
+            >
+              <BiX className="text-xl" />
+            </button>
+            
+            <div className="p-6 text-center">
+              <h3 className="text-xl font-bold text-gray-800 mb-4">QR Code Tiket</h3>
+              
+              <div className="flex justify-center mb-4">
+                {generateStripedQR(selectedTicket.ticket_code)}
+              </div>
+              
+              <p className="font-mono text-sm font-bold text-[#4a90e2] mb-4">
+                {selectedTicket.ticket_code}
+              </p>
+              
+              <p className="text-sm text-gray-600 mb-4">
+                Tiket #{tickets.findIndex(t => t.id === selectedTicket.id) + 1} - {selectedTicket.ticket_type}
+              </p>
+              
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={() => handleDownloadQR(selectedTicket.ticket_code)}
+                  className="px-4 py-2 bg-[#4a90e2] text-white rounded border-2 border-[#357abd] shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] hover:bg-[#357abd] transition-colors flex items-center gap-2"
+                >
+                  <BiDownload />
+                  Download
+                </button>
+                <button
+                  onClick={() => setShowQRModal(false)}
+                  className="px-4 py-2 border-2 border-gray-200 text-gray-700 rounded shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] hover:bg-gray-50 transition-colors"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-  )
-}
+  );
+};
 
-export default PaymentSuccessPage
+export default withAuth(PaymentSuccessPage);
