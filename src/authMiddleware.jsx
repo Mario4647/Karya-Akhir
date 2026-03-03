@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { globalRateLimiter } from '../utils/security';
 
-export const withAuth = (WrappedComponent, allowedRoles = ['user', 'admin', 'admin-event']) => {
+export const withAuth = (WrappedComponent, allowedRoles = ['user', 'user-raport', 'admin', 'admin-event']) => {
   return (props) => {
     const { user, profile, loading } = useAuth();
     const navigate = useNavigate();
