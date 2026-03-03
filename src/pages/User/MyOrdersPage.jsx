@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../supabaseClient'
-import NavbarEvent from '../../components/NavbarEvent'
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '../../supabaseClient';
+import NavbarEvent from '../../components/NavbarEvent';
+import { withAuth } from '../../authMiddleware';
 import {
   BiTime,
   BiCheckCircle,
@@ -31,31 +32,32 @@ import {
   BiBook,
   BiMessage,
   BiVolumeFull,
-  BiX
-} from 'react-icons/bi'
-import { QRCode } from 'react-qr-code'
+  BiX,
+  BiQr
+} from 'react-icons/bi';
 
 // Array icon untuk background dekoratif
 const decorativeIcons = [
   BiMusic, BiMicrophone, BiCamera, BiVideo, BiStar, BiHeart,
   BiDiamond, BiCrown, BiRocket, BiPalette, BiBrush, BiPaint,
-  BiBook, BiMessage, BiVolumeFull, BiMovie, BiPurchaseTag
-]
+  BiBook, BiMessage, BiVolumeFull, BiMovie, BiPurchaseTag, BiQr
+];
 
-const MyOrdersPage = () => {
-  const [orders, setOrders] = useState([])
-  const [tickets, setTickets] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [user, setUser] = useState(null)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [selectedOrder, setSelectedOrder] = useState(null)
-  const [showDetailModal, setShowDetailModal] = useState(false)
-  const navigate = useNavigate()
+const MyOrdersPage = ({ user }) => {
+  const [orders, setOrders] = useState([]);
+  const [tickets, setTickets] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [showQRModal, setShowQRModal] = useState(false);
+  const navigate = useNavigate();
 
   // Generate icon positions untuk background
   const [iconPositions] = useState(() => {
-    const positions = []
+    const positions = [];
     for (let i = 0; i < 30; i++) {
       positions.push({
         top: `${Math.random() * 100}%`,
@@ -64,42 +66,17 @@ const MyOrdersPage = () => {
         scale: 0.6 + Math.random() * 0.8,
         opacity: 0.08 + Math.random() * 0.1,
         icon: decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
-      })
+      });
     }
-    return positions
-  })
-
-  // Generate icon untuk tombol
-  const [buttonIconPositions] = useState(() => {
-    const positions = []
-    for (let i = 0; i < 20; i++) {
-      positions.push({
-        top: `${Math.random() * 100}%`,
-        left: `${Math.random() * 100}%`,
-        rotate: `${Math.random() * 360}deg`,
-        scale: 0.4 + Math.random() * 0.6,
-        opacity: 0.25 + Math.random() * 0.25,
-        icon: decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
-      })
-    }
-    return positions
-  })
+    return positions;
+  });
 
   useEffect(() => {
-    getUser()
-  }, [])
+    fetchOrders();
+  }, [user]);
 
-  const getUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    setUser(user)
-    if (user) {
-      fetchOrders(user.id)
-      fetchTickets(user.id)
-    }
-  }
-
-  const fetchOrders = async (userId) => {
-    setLoading(true)
+  const fetchOrders = async () => {
+    setLoading(true);
     try {
       const { data, error } = await supabase
         .from('orders')
@@ -107,57 +84,51 @@ const MyOrdersPage = () => {
           *,
           products:product_id (*)
         `)
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
 
-      if (error) throw error
-      setOrders(data || [])
-    } catch (error) {
-      console.error('Error fetching orders:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+      if (error) throw error;
+      setOrders(data || []);
 
-  const fetchTickets = async (userId) => {
-    try {
-      const { data, error } = await supabase
+      // Fetch tickets
+      const { data: ticketsData } = await supabase
         .from('tickets')
         .select(`
           *,
-          orders!inner(user_id, order_number, status)
+          orders!inner(user_id)
         `)
-        .eq('orders.user_id', userId)
+        .eq('orders.user_id', user.id);
 
-      if (error) throw error
-      setTickets(data || [])
+      setTickets(ticketsData || []);
     } catch (error) {
-      console.error('Error fetching tickets:', error)
+      console.error('Error fetching orders:', error);
+    } finally {
+      setLoading(false);
     }
-  }
+  };
 
   const getStatusBadge = (status) => {
     switch(status) {
       case 'paid':
         return <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium flex items-center gap-1 border-2 border-green-200 shadow-[2px_2px_0px_0px_rgba(34,197,94,0.2)]">
           <BiCheckCircle /> Sukses
-        </span>
+        </span>;
       case 'pending':
         return <span className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-medium flex items-center gap-1 border-2 border-yellow-200 shadow-[2px_2px_0px_0px_rgba(234,179,8,0.2)]">
           <BiTime /> Menunggu
-        </span>
+        </span>;
       case 'cancelled':
         return <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium flex items-center gap-1 border-2 border-red-200 shadow-[2px_2px_0px_0px_rgba(239,68,68,0.2)]">
           <BiXCircle /> Batal
-        </span>
+        </span>;
       case 'expired':
         return <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium flex items-center gap-1 border-2 border-gray-200 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
           <BiError /> Kadaluarsa
-        </span>
+        </span>;
       default:
-        return null
+        return null;
     }
-  }
+  };
 
   const formatDate = (date) => {
     return new Date(date).toLocaleDateString('id-ID', {
@@ -166,99 +137,86 @@ const MyOrdersPage = () => {
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
-    })
-  }
+    });
+  };
 
   const formatRupiah = (number) => {
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
       currency: 'IDR',
       minimumFractionDigits: 0
-    }).format(number)
-  }
+    }).format(number);
+  };
 
   const filteredOrders = orders.filter(order => {
     const matchesSearch = 
       order.order_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.product_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.customer_name?.toLowerCase().includes(searchTerm.toLowerCase())
+      order.customer_name?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesStatus = statusFilter === 'all' || order.status === statusFilter
+    const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
     
-    return matchesSearch && matchesStatus
-  })
+    return matchesSearch && matchesStatus;
+  });
 
   const getOrderTickets = (orderId) => {
-    return tickets.filter(ticket => ticket.order_id === orderId)
-  }
+    return tickets.filter(ticket => ticket.order_id === orderId);
+  };
 
   const handleViewDetail = (order) => {
-    setSelectedOrder(order)
-    setShowDetailModal(true)
-  }
+    setSelectedOrder(order);
+    setShowDetailModal(true);
+  };
 
-  const generateQRCode = (text) => {
+  const handleViewQR = (ticket) => {
+    setSelectedTicket(ticket);
+    setShowQRModal(true);
+  };
+
+  // QR Code dengan efek garis-garis
+  const generateStripedQR = (ticketCode, size = 'w-24 h-24') => {
     return (
-      <div className="relative inline-block">
-        <QRCode
-          value={text}
-          size={80}
-          bgColor="#ffffff"
-          fgColor="#000000"
-          level="H"
-        />
-        <div className="absolute inset-0 pointer-events-none opacity-10">
-          <div className="w-full h-full grid grid-cols-8 gap-0.5">
-            {[...Array(64)].map((_, i) => (
-              <div key={i} className="bg-black"></div>
-            ))}
+      <div className={`relative ${size} bg-white border-2 border-gray-300 rounded overflow-hidden shadow-lg cursor-pointer hover:scale-105 transition-transform`}>
+        {/* Background pattern */}
+        <div className="absolute inset-0" style={{
+          background: `repeating-linear-gradient(
+            45deg,
+            #000,
+            #000 3px,
+            #fff 3px,
+            #fff 6px
+          )`,
+          opacity: 0.3
+        }} />
+        
+        {/* Grid overlay */}
+        <div className="absolute inset-0 grid grid-cols-8 gap-0.5 p-1">
+          {[...Array(64)].map((_, i) => (
+            <div 
+              key={i}
+              className="bg-black"
+              style={{ opacity: Math.random() > 0.6 ? 0.5 : 0.1 }}
+            />
+          ))}
+        </div>
+        
+        {/* Kotak di tengah */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="w-8 h-8 bg-white border border-gray-800 rotate-12 transform">
+            <div className="w-full h-full flex items-center justify-center text-[8px] font-bold">
+              {ticketCode.slice(0, 2)}
+            </div>
           </div>
         </div>
       </div>
-    )
-  }
+    );
+  };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
-          {iconPositions.map((pos, i) => {
-            const IconComponent = pos.icon
-            return (
-              <div
-                key={i}
-                className="absolute text-gray-600"
-                style={{
-                  top: pos.top,
-                  left: pos.left,
-                  transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                  opacity: pos.opacity,
-                  zIndex: 0
-                }}
-              >
-                <IconComponent size={28} />
-              </div>
-            )
-          })}
-        </div>
-        <NavbarEvent />
-        <div className="relative z-10 flex items-center justify-center h-[80vh]">
-          <div className="text-center bg-white/80 p-8 rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.1)]">
-            <div className="animate-spin rounded-full h-16 w-16 border-4 border-[#4a90e2] border-t-transparent mx-auto mb-4"></div>
-            <p className="text-gray-700 font-medium">Memuat pesanan Anda...</p>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
-      {/* Decorative Icons Background */}
-      <div className="absolute inset-0 pointer-events-none">
-        {iconPositions.map((pos, i) => {
-          const IconComponent = pos.icon
-          return (
+          {iconPositions.map((pos, i) => (
             <div
               key={i}
               className="absolute text-gray-600"
@@ -270,10 +228,40 @@ const MyOrdersPage = () => {
                 zIndex: 0
               }}
             >
-              <IconComponent size={28} />
+              {React.createElement(pos.icon, { size: 28 })}
             </div>
-          )
-        })}
+          ))}
+        </div>
+        <NavbarEvent />
+        <div className="relative z-10 flex items-center justify-center h-[80vh]">
+          <div className="text-center bg-white/80 p-8 rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.1)]">
+            <div className="animate-spin rounded-full h-16 w-16 border-4 border-[#4a90e2] border-t-transparent mx-auto mb-4"></div>
+            <p className="text-gray-700 font-medium">Memuat pesanan Anda...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
+      {/* Decorative Icons Background */}
+      <div className="absolute inset-0 pointer-events-none">
+        {iconPositions.map((pos, i) => (
+          <div
+            key={i}
+            className="absolute text-gray-600"
+            style={{
+              top: pos.top,
+              left: pos.left,
+              transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
+              opacity: pos.opacity,
+              zIndex: 0
+            }}
+          >
+            {React.createElement(pos.icon, { size: 28 })}
+          </div>
+        ))}
       </div>
 
       <NavbarEvent />
@@ -308,7 +296,7 @@ const MyOrdersPage = () => {
                 <option value="expired">Kadaluarsa</option>
               </select>
               <button
-                onClick={() => user && fetchOrders(user.id)}
+                onClick={fetchOrders}
                 className="p-2 text-[#4a90e2] hover:bg-[#e6f0ff] rounded border-2 border-gray-200 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] transition-colors"
                 title="Refresh"
               >
@@ -333,7 +321,7 @@ const MyOrdersPage = () => {
         ) : (
           <div className="space-y-4">
             {filteredOrders.map((order) => {
-              const orderTickets = getOrderTickets(order.id)
+              const orderTickets = getOrderTickets(order.id);
               return (
                 <div key={order.id} className="bg-white rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.15)] overflow-hidden hover:shadow-[10px_10px_0px_0px_rgba(0,0,0,0.2)] transition-shadow">
                   <div className="p-6">
@@ -371,9 +359,14 @@ const MyOrdersPage = () => {
                         {orderTickets.length > 0 && (
                           <div className="mt-3 flex flex-wrap gap-2">
                             {orderTickets.map((ticket, idx) => (
-                              <div key={idx} className="text-xs bg-gray-100 px-2 py-1 rounded-full border border-gray-200 shadow-[1px_1px_0px_0px_rgba(0,0,0,0.1)]">
+                              <button
+                                key={idx}
+                                onClick={() => handleViewQR(ticket)}
+                                className="text-xs bg-gray-100 px-2 py-1 rounded-full border border-gray-200 shadow-[1px_1px_0px_0px_rgba(0,0,0,0.1)] hover:bg-blue-50 hover:border-blue-300 transition-colors flex items-center gap-1"
+                              >
+                                <BiQr className="text-[#4a90e2]" />
                                 {ticket.ticket_type || 'Reguler'}
-                              </div>
+                              </button>
                             ))}
                           </div>
                         )}
@@ -421,7 +414,7 @@ const MyOrdersPage = () => {
                     </div>
                   </div>
                 </div>
-              )
+              );
             })}
           </div>
         )}
@@ -432,26 +425,22 @@ const MyOrdersPage = () => {
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded border-2 border-gray-200 shadow-[12px_12px_0px_0px_rgba(0,0,0,0.25)] max-w-2xl w-full max-h-[90vh] overflow-y-auto relative">
             
-            {/* Decorative Icons di modal */}
             <div className="absolute inset-0 pointer-events-none overflow-hidden">
-              {iconPositions.slice(0, 15).map((pos, i) => {
-                const IconComponent = pos.icon
-                return (
-                  <div
-                    key={i}
-                    className="absolute text-gray-300"
-                    style={{
-                      top: pos.top,
-                      left: pos.left,
-                      transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                      opacity: pos.opacity * 0.5,
-                      zIndex: 0
-                    }}
-                  >
-                    <IconComponent size={24} />
-                  </div>
-                )
-              })}
+              {iconPositions.slice(0, 15).map((pos, i) => (
+                <div
+                  key={i}
+                  className="absolute text-gray-300"
+                  style={{
+                    top: pos.top,
+                    left: pos.left,
+                    transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
+                    opacity: pos.opacity * 0.5,
+                    zIndex: 0
+                  }}
+                >
+                  {React.createElement(pos.icon, { size: 24 })}
+                </div>
+              ))}
             </div>
             
             <div className="relative z-10 p-6">
@@ -478,10 +467,10 @@ const MyOrdersPage = () => {
                     {selectedOrder.status === 'expired' && <BiError className="text-2xl text-gray-500" />}
                     <div>
                       <p className="font-medium text-gray-800">
-                        {selectedOrder.status === 'paid' ? 'Pembayaran Sukses' :
+                        {selectedOrder.status === 'paid' ? 'Pembayaran Sukses - Stok telah dikurangi' :
                          selectedOrder.status === 'pending' ? 'Menunggu Pembayaran' :
-                         selectedOrder.status === 'cancelled' ? 'Pesanan Dibatalkan' :
-                         'Pesanan Kadaluarsa'}
+                         selectedOrder.status === 'cancelled' ? 'Pesanan Dibatalkan - Stok tidak terpengaruh' :
+                         'Pesanan Kadaluarsa - Stok tidak terpengaruh'}
                       </p>
                       <p className="text-sm text-gray-600">
                         {selectedOrder.status === 'paid' ? 'Tiket Anda sudah aktif dan dapat digunakan' :
@@ -567,9 +556,12 @@ const MyOrdersPage = () => {
                               <p className="text-sm text-gray-600">Kode: {ticket.ticket_code}</p>
                               <p className="text-sm text-gray-600">Tipe: {ticket.ticket_type || 'Reguler'}</p>
                             </div>
-                            <div className="bg-white p-2 rounded border border-gray-200 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
-                              {generateQRCode(ticket.ticket_code)}
-                            </div>
+                            <button
+                              onClick={() => handleViewQR(ticket)}
+                              className="bg-white p-2 rounded border border-gray-200 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] hover:bg-blue-50 transition-colors"
+                            >
+                              <BiQr className="text-2xl text-[#4a90e2]" />
+                            </button>
                           </div>
                         </div>
                       ))}
@@ -582,8 +574,8 @@ const MyOrdersPage = () => {
                     <div className="flex-1 relative overflow-hidden rounded border-2 border-[#357abd] shadow-[6px_6px_0px_0px_rgba(0,0,0,0.25)]">
                       <button
                         onClick={() => {
-                          setShowDetailModal(false)
-                          navigate(`/payment/${selectedOrder.id}`)
+                          setShowDetailModal(false);
+                          navigate(`/payment/${selectedOrder.id}`);
                         }}
                         className="w-full py-3 bg-[#4a90e2] text-white rounded font-bold hover:bg-[#357abd] transition-colors"
                       >
@@ -595,8 +587,8 @@ const MyOrdersPage = () => {
                     <div className="flex-1 relative overflow-hidden rounded border-2 border-green-600 shadow-[6px_6px_0px_0px_rgba(34,197,94,0.25)]">
                       <button
                         onClick={() => {
-                          setShowDetailModal(false)
-                          navigate(`/payment-success/${selectedOrder.id}`)
+                          setShowDetailModal(false);
+                          navigate(`/payment-success/${selectedOrder.id}`);
                         }}
                         className="w-full py-3 bg-green-600 text-white rounded font-bold hover:bg-green-700 transition-colors"
                       >
@@ -618,8 +610,70 @@ const MyOrdersPage = () => {
           </div>
         </div>
       )}
-    </div>
-  )
-}
 
-export default MyOrdersPage
+      {/* QR Code Modal */}
+      {showQRModal && selectedTicket && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded border-2 border-gray-200 shadow-[15px_15px_0px_0px_rgba(0,0,0,0.3)] max-w-md w-full relative">
+            <button
+              onClick={() => setShowQRModal(false)}
+              className="absolute top-2 right-2 p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded border border-gray-200"
+            >
+              <BiX className="text-xl" />
+            </button>
+            
+            <div className="p-6 text-center">
+              <h3 className="text-xl font-bold text-gray-800 mb-4">QR Code Tiket</h3>
+              
+              <div className="flex justify-center mb-4">
+                <div className="relative w-48 h-48 bg-white border-2 border-gray-300 rounded overflow-hidden shadow-lg">
+                  <div className="absolute inset-0" style={{
+                    background: `repeating-linear-gradient(
+                      45deg,
+                      #000,
+                      #000 4px,
+                      #fff 4px,
+                      #fff 8px
+                    )`,
+                    opacity: 0.3
+                  }} />
+                  <div className="absolute inset-0 grid grid-cols-10 gap-0.5 p-2">
+                    {[...Array(100)].map((_, i) => (
+                      <div 
+                        key={i}
+                        className="bg-black"
+                        style={{ opacity: Math.random() > 0.6 ? 0.6 : 0.1 }}
+                      />
+                    ))}
+                  </div>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-16 h-16 bg-white border-2 border-gray-800 rotate-12 transform flex items-center justify-center">
+                      <span className="text-xs font-bold">{selectedTicket.ticket_code.slice(0, 4)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <p className="font-mono text-sm font-bold text-[#4a90e2] mb-2">
+                {selectedTicket.ticket_code}
+              </p>
+              
+              <p className="text-sm text-gray-600 mb-4">
+                {selectedTicket.ticket_type || 'Reguler'}
+              </p>
+              
+              <button
+                onClick={() => setShowQRModal(false)}
+                className="px-6 py-2 bg-[#4a90e2] text-white rounded border-2 border-[#357abd] shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] hover:bg-[#357abd] transition-colors"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default withAuth(MyOrdersPage);
