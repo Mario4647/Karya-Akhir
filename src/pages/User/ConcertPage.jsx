@@ -376,155 +376,157 @@ const ConcertPage = ({ user }) => {
     }
   };
 
-  const createOrder = async () => {
-    if (!validateBuyers()) return
+  // Bagian createOrder, perbaiki fungsi yang memanggil RPC
 
-    // Rate limiting
-    const rateCheck = globalRateLimiter.check(user.id, 'create-order');
-    if (!rateCheck.allowed) {
-      setError(rateCheck.reason);
-      return;
-    }
+const createOrder = async () => {
+  if (!validateBuyers()) return
 
-    setLoading(true)
-    setError('')
-
-    try {
-      console.log('Checking stock for:', {
-        product_id: selectedProduct.id,
-        ticket_type: selectedTicketType.name,
-        quantity: quantity
-      });
-
-      // Validasi stok dengan SELECT FOR UPDATE (mencegah race condition)
-      const { data: stockCheck, error: stockError } = await supabase
-        .rpc('check_and_lock_stock', {
-          p_product_id: selectedProduct.id,
-          p_ticket_type: selectedTicketType.name,
-          p_quantity: quantity
-        })
-
-      console.log('Stock check result:', stockCheck);
-
-      if (stockError) {
-        console.error('Stock check error:', stockError);
-        throw new Error('Gagal memeriksa stok: ' + stockError.message);
-      }
-
-      if (!stockCheck || !stockCheck.success) {
-        throw new Error(stockCheck?.message || 'Gagal memeriksa stok');
-      }
-
-      if (!stockCheck.available) {
-        throw new Error(stockCheck.message || 'Stok tidak mencukupi');
-      }
-
-      // Generate order number
-      const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
-      
-      // Set expiry time (60 menit)
-      const expiryTime = new Date()
-      expiryTime.setMinutes(expiryTime.getMinutes() + 60)
-
-      // Format nomor HP untuk Midtrans
-      const formattedPhone = formatPhoneForMidtrans(buyers[0].phone)
-
-      // Siapkan data order
-      const orderData = {
-        order_number: orderNumber,
-        user_id: user.id,
-        product_id: selectedProduct.id,
-        product_name: `${selectedProduct.name} - ${selectedTicketType.name}`,
-        product_price: selectedTicketType.price,
-        ticket_type: selectedTicketType.name,
-        quantity: quantity,
-        subtotal: subtotal,
-        promo_code_id: promoApplied?.id || null,
-        promo_discount: discount,
-        total_amount: total,
-        customer_name: buyers[0].name,
-        customer_nik: buyers[0].nik,
-        customer_email: user.email,
-        customer_phone: formattedPhone,
-        customer_address: buyers[0].address,
-        additional_buyers: buyers.slice(1).map(b => ({
-          name: b.name,
-          nik: b.nik,
-          phone: formatPhoneForMidtrans(b.phone),
-          address: b.address
-        })),
-        status: 'pending',
-        payment_expiry: expiryTime.toISOString(),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
-
-      console.log('Order Data:', orderData)
-
-      // Insert order
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert([orderData])
-        .select()
-        .single()
-
-      if (orderError) {
-        console.error('Order insert error details:', orderError)
-        throw new Error(orderError.message || 'Gagal menyimpan order')
-      }
-
-      if (!order) {
-        throw new Error('Gagal membuat order: Data tidak ditemukan setelah insert')
-      }
-
-      console.log('Order created:', order)
-
-      // Create tickets for each buyer
-      const tickets = buyers.map((buyer, index) => ({
-        product_id: selectedProduct.id,
-        order_id: order.id,
-        buyer_index: index,
-        ticket_type: selectedTicketType.name,
-        price: selectedTicketType.price,
-        is_available: true,
-        ticket_code: `TCK-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }))
-
-      console.log('Tickets to insert:', tickets)
-
-      const { error: ticketsError } = await supabase
-        .from('tickets')
-        .insert(tickets)
-
-      if (ticketsError) {
-        console.error('Tickets insert error:', ticketsError)
-        // Rollback order jika gagal insert tiket
-        await supabase.from('orders').delete().eq('id', order.id)
-        throw new Error('Gagal membuat tiket: ' + ticketsError.message)
-      }
-
-      // Catat ke order history
-      await supabase
-        .from('order_history')
-        .insert({
-          order_id: order.id,
-          status: 'pending',
-          notes: `Pesanan dibuat - Stok di-reserve untuk ${quantity} tiket`,
-          created_at: new Date().toISOString()
-        })
-
-      // Redirect ke halaman pembayaran
-      navigate(`/payment/${order.id}`)
-
-    } catch (error) {
-      console.error('Error creating order:', error)
-      setError(error.message || 'Gagal membuat pesanan. Silakan coba lagi.')
-    } finally {
-      setLoading(false)
-    }
+  // Rate limiting
+  const rateCheck = globalRateLimiter.check(user.id, 'create-order');
+  if (!rateCheck.allowed) {
+    setError(rateCheck.reason);
+    return;
   }
+
+  setLoading(true)
+  setError('')
+
+  try {
+    console.log('Checking stock for:', {
+      product_id: selectedProduct.id,
+      ticket_type: selectedTicketType.name,
+      quantity: quantity
+    });
+
+    // Validasi stok dengan SELECT FOR UPDATE (mencegah race condition)
+    const { data: stockCheck, error: stockError } = await supabase
+      .rpc('check_and_lock_stock', {
+        p_product_id: selectedProduct.id,
+        p_ticket_type: selectedTicketType.name,
+        p_quantity: quantity
+      })
+
+    console.log('Stock check result:', stockCheck);
+
+    if (stockError) {
+      console.error('Stock check error:', stockError);
+      throw new Error('Gagal memeriksa stok: ' + stockError.message);
+    }
+
+    if (!stockCheck || !stockCheck.success) {
+      throw new Error(stockCheck?.message || 'Gagal memeriksa stok');
+    }
+
+    if (!stockCheck.available) {
+      throw new Error(stockCheck.message || 'Stok tidak mencukupi');
+    }
+
+    // Generate order number
+    const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
+    
+    // Set expiry time (60 menit)
+    const expiryTime = new Date()
+    expiryTime.setMinutes(expiryTime.getMinutes() + 60)
+
+    // Format nomor HP untuk Midtrans
+    const formattedPhone = formatPhoneForMidtrans(buyers[0].phone)
+
+    // Siapkan data order
+    const orderData = {
+      order_number: orderNumber,
+      user_id: user.id,
+      product_id: selectedProduct.id,
+      product_name: `${selectedProduct.name} - ${selectedTicketType.name}`,
+      product_price: selectedTicketType.price,
+      ticket_type: selectedTicketType.name,
+      quantity: quantity,
+      subtotal: subtotal,
+      promo_code_id: promoApplied?.id || null,
+      promo_discount: discount,
+      total_amount: total,
+      customer_name: buyers[0].name,
+      customer_nik: buyers[0].nik,
+      customer_email: user.email,
+      customer_phone: formattedPhone,
+      customer_address: buyers[0].address,
+      additional_buyers: buyers.slice(1).map(b => ({
+        name: b.name,
+        nik: b.nik,
+        phone: formatPhoneForMidtrans(b.phone),
+        address: b.address
+      })),
+      status: 'pending',
+      payment_expiry: expiryTime.toISOString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
+
+    console.log('Order Data:', orderData)
+
+    // Insert order
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .insert([orderData])
+      .select()
+      .single()
+
+    if (orderError) {
+      console.error('Order insert error details:', orderError)
+      throw new Error(orderError.message || 'Gagal menyimpan order')
+    }
+
+    if (!order) {
+      throw new Error('Gagal membuat order: Data tidak ditemukan setelah insert')
+    }
+
+    console.log('Order created:', order)
+
+    // Create tickets for each buyer
+    const tickets = buyers.map((buyer, index) => ({
+      product_id: selectedProduct.id,
+      order_id: order.id,
+      buyer_index: index,
+      ticket_type: selectedTicketType.name,
+      price: selectedTicketType.price,
+      is_available: true,
+      ticket_code: `TCK-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }))
+
+    console.log('Tickets to insert:', tickets)
+
+    const { error: ticketsError } = await supabase
+      .from('tickets')
+      .insert(tickets)
+
+    if (ticketsError) {
+      console.error('Tickets insert error:', ticketsError)
+      // Rollback order jika gagal insert tiket
+      await supabase.from('orders').delete().eq('id', order.id)
+      throw new Error('Gagal membuat tiket: ' + ticketsError.message)
+    }
+
+    // Catat ke order history
+    await supabase
+      .from('order_history')
+      .insert({
+        order_id: order.id,
+        status: 'pending',
+        notes: `Pesanan dibuat - Stok di-reserve untuk ${quantity} tiket`,
+        created_at: new Date().toISOString()
+      })
+
+    // Redirect ke halaman pembayaran
+    navigate(`/payment/${order.id}`)
+
+  } catch (error) {
+    console.error('Error creating order:', error)
+    setError(error.message || 'Gagal membuat pesanan. Silakan coba lagi.')
+  } finally {
+    setLoading(false)
+  }
+}
 
   const totalStock = (product) => {
     if (product.ticket_types && product.ticket_types.length > 0) {
