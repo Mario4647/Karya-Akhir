@@ -1,20 +1,18 @@
 // ============================================
 // SISTEM KEAMANAN KOMPREHENSIF
-// Mencakup: XSS Prevention, SQL Injection Prevention,
-// Rate Limiting, Brute Force Protection, CSRF Protection,
-// Input Validation, Output Encoding, dan banyak lagi
 // ============================================
 
-/**
- * 1. XSS PREVENTION - Sanitasi input untuk mencegah XSS
- */
+import { useState, useCallback, useRef } from 'react';
+
+// ============================================
+// 1. XSS PREVENTION
+// ============================================
 export const sanitizeInput = (input) => {
   if (input === null || input === undefined) return '';
   if (typeof input !== 'string') return String(input);
   
-  // Hapus karakter berbahaya
   return input
-    .replace(/[<>]/g, '') // Hapus < dan >
+    .replace(/[<>]/g, '')
     .replace(/&/g, '&amp;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#x27;')
@@ -25,9 +23,9 @@ export const sanitizeInput = (input) => {
     .trim();
 };
 
-/**
- * 2. DEEP SANITIZATION - Untuk objek dan array
- */
+// ============================================
+// 2. DEEP SANITIZATION
+// ============================================
 export const deepSanitize = (obj) => {
   if (obj === null || obj === undefined) return obj;
   
@@ -50,13 +48,12 @@ export const deepSanitize = (obj) => {
   return obj;
 };
 
-/**
- * 3. SQL INJECTION PREVENTION - Escape string untuk query
- */
+// ============================================
+// 3. SQL INJECTION PREVENTION
+// ============================================
 export const escapeSQL = (input) => {
   if (typeof input !== 'string') return input;
   
-  // Escape karakter berbahaya untuk SQL
   return input
     .replace(/'/g, "''")
     .replace(/--/g, '')
@@ -64,37 +61,32 @@ export const escapeSQL = (input) => {
     .replace(/\b(ALTER|CREATE|DELETE|DROP|EXEC|INSERT|MERGE|SELECT|UPDATE|UNION)\b/gi, '');
 };
 
-/**
- * 4. RATE LIMITING - Mencegah brute force dan DDoS
- */
+// ============================================
+// 4. RATE LIMITING
+// ============================================
 export class RateLimiter {
   constructor(options = {}) {
-    this.windowMs = options.windowMs || 60000; // Default: 1 menit
-    this.maxRequests = options.maxRequests || 30; // Default: 30 request per menit
-    this.maxConsecutiveFails = options.maxConsecutiveFails || 5; // Default: 5 gagal beruntun
+    this.windowMs = options.windowMs || 60000;
+    this.maxRequests = options.maxRequests || 30;
+    this.maxConsecutiveFails = options.maxConsecutiveFails || 5;
     this.requests = new Map();
     this.failures = new Map();
     this.blocked = new Map();
   }
 
-  // Cek apakah request diizinkan
   check(key, endpoint = 'default') {
     const now = Date.now();
     const requestKey = `${key}:${endpoint}`;
     
-    // Cek apakah diblokir permanen
     if (this.isBlocked(key)) {
       return { allowed: false, reason: 'IP diblokir permanen', blockExpiry: this.blocked.get(key) };
     }
     
-    // Bersihkan request lama
     this.cleanOldRequests();
     
-    // Dapatkan data request
     const userRequests = this.requests.get(requestKey) || [];
     const validRequests = userRequests.filter(time => now - time < this.windowMs);
     
-    // Cek apakah melebihi batas
     if (validRequests.length >= this.maxRequests) {
       return { 
         allowed: false, 
@@ -103,41 +95,34 @@ export class RateLimiter {
       };
     }
     
-    // Simpan request baru
     validRequests.push(now);
     this.requests.set(requestKey, validRequests);
     
     return { allowed: true };
   }
 
-  // Catat percobaan gagal (untuk brute force protection)
   recordFailure(key) {
     const now = Date.now();
     const failures = this.failures.get(key) || [];
     
-    // Hapus failure lama (> 15 menit)
     const recentFailures = failures.filter(time => now - time < 15 * 60 * 1000);
     recentFailures.push(now);
     
     this.failures.set(key, recentFailures);
     
-    // Jika terlalu banyak gagal, blokir sementara
     if (recentFailures.length >= this.maxConsecutiveFails) {
-      this.blockTemporarily(key, 30 * 60 * 1000); // Blokir 30 menit
+      this.blockTemporarily(key, 30 * 60 * 1000);
     }
   }
 
-  // Blokir sementara
   blockTemporarily(key, duration) {
     this.blocked.set(key, Date.now() + duration);
     
-    // Hapus setelah durasi
     setTimeout(() => {
       this.blocked.delete(key);
     }, duration);
   }
 
-  // Cek apakah diblokir
   isBlocked(key) {
     const blockExpiry = this.blocked.get(key);
     if (!blockExpiry) return false;
@@ -150,7 +135,6 @@ export class RateLimiter {
     return true;
   }
 
-  // Bersihkan request lama
   cleanOldRequests() {
     const now = Date.now();
     
@@ -164,7 +148,6 @@ export class RateLimiter {
     }
   }
 
-  // Reset untuk testing
   reset() {
     this.requests.clear();
     this.failures.clear();
@@ -172,16 +155,97 @@ export class RateLimiter {
   }
 }
 
-// Singleton instance untuk digunakan di seluruh aplikasi
+// Singleton instance
 export const globalRateLimiter = new RateLimiter({
-  windowMs: 60000, // 1 menit
-  maxRequests: 30, // 30 request per menit
-  maxConsecutiveFails: 5 // 5 gagal beruntun
+  windowMs: 60000,
+  maxRequests: 30,
+  maxConsecutiveFails: 5
 });
 
-/**
- * 5. CSRF PROTECTION - Token generation dan validation
- */
+// React Hook untuk rate limiting
+export const useRateLimit = (options = {}) => {
+  const {
+    maxRequests = 5,
+    windowMs = 60000,
+    cooldownMs = 30000
+  } = options;
+  
+  const [requests, setRequests] = useState([]);
+  const [isLimited, setIsLimited] = useState(false);
+  const [cooldownUntil, setCooldownUntil] = useState(null);
+  const timerRef = useRef(null);
+  
+  const checkLimit = useCallback(() => {
+    const now = Date.now();
+    
+    if (cooldownUntil && now < cooldownUntil) {
+      const waitSeconds = Math.ceil((cooldownUntil - now) / 1000);
+      return {
+        allowed: false,
+        reason: `Terlalu banyak percobaan. Silakan tunggu ${waitSeconds} detik.`,
+        waitSeconds
+      };
+    }
+    
+    const recentRequests = requests.filter(time => now - time < windowMs);
+    
+    if (recentRequests.length >= maxRequests) {
+      setCooldownUntil(now + cooldownMs);
+      setIsLimited(true);
+      
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        setIsLimited(false);
+        setCooldownUntil(null);
+        setRequests([]);
+      }, cooldownMs);
+      
+      const waitSeconds = Math.ceil(cooldownMs / 1000);
+      return {
+        allowed: false,
+        reason: `Terlalu banyak percobaan. Silakan tunggu ${waitSeconds} detik.`,
+        waitSeconds
+      };
+    }
+    
+    recentRequests.push(now);
+    setRequests(recentRequests);
+    
+    return { allowed: true };
+  }, [requests, maxRequests, windowMs, cooldownMs, cooldownUntil]);
+  
+  const recordSuccess = useCallback(() => {
+    setRequests([]);
+    setCooldownUntil(null);
+    setIsLimited(false);
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+  
+  const reset = useCallback(() => {
+    setRequests([]);
+    setCooldownUntil(null);
+    setIsLimited(false);
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+  
+  return {
+    checkLimit,
+    recordSuccess,
+    reset,
+    isLimited,
+    requestCount: requests.length
+  };
+};
+
+// ============================================
+// 5. CSRF PROTECTION
+// ============================================
 export const generateCSRFToken = () => {
   const array = new Uint8Array(32);
   crypto.getRandomValues(array);
@@ -193,9 +257,9 @@ export const validateCSRFToken = (token, storedToken) => {
   return token === storedToken;
 };
 
-/**
- * 6. PASSWORD STRENGTH VALIDATION
- */
+// ============================================
+// 6. PASSWORD STRENGTH VALIDATION
+// ============================================
 export const validatePasswordStrength = (password) => {
   const errors = [];
   
@@ -221,34 +285,33 @@ export const validatePasswordStrength = (password) => {
   };
 };
 
-/**
- * 7. EMAIL VALIDATION
- */
+// ============================================
+// 7. EMAIL VALIDATION
+// ============================================
 export const validateEmail = (email) => {
   const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
   return emailRegex.test(email);
 };
 
-/**
- * 8. NIK VALIDATION (16 digit angka)
- */
+// ============================================
+// 8. NIK VALIDATION
+// ============================================
 export const validateNIK = (nik) => {
   const nikRegex = /^\d{16}$/;
   return nikRegex.test(nik);
 };
 
-/**
- * 9. PHONE NUMBER VALIDATION (Indonesia)
- */
+// ============================================
+// 9. PHONE NUMBER VALIDATION
+// ============================================
 export const validatePhone = (phone) => {
-  // Format: 08xx atau 62xx, 10-13 digit
   const phoneRegex = /^(08|62)\d{8,12}$/;
   return phoneRegex.test(phone.replace(/\s/g, ''));
 };
 
-/**
- * 10. FORMAT PHONE UNTUK MIDTRANS
- */
+// ============================================
+// 10. FORMAT PHONE UNTUK MIDTRANS
+// ============================================
 export const formatPhoneForMidtrans = (phone) => {
   let cleanPhone = phone.replace(/\D/g, '');
   if (cleanPhone.startsWith('0')) {
@@ -257,9 +320,9 @@ export const formatPhoneForMidtrans = (phone) => {
   return cleanPhone;
 };
 
-/**
- * 11. INPUT VALIDATION GENERIC
- */
+// ============================================
+// 11. INPUT VALIDATION
+// ============================================
 export const validateInput = (value, rules) => {
   const errors = [];
   
@@ -285,9 +348,9 @@ export const validateInput = (value, rules) => {
   };
 };
 
-/**
- * 12. DEBOUNCE - Mencegah spam klik
- */
+// ============================================
+// 12. DEBOUNCE
+// ============================================
 export const debounce = (func, wait) => {
   let timeout;
   return function executedFunction(...args) {
@@ -300,9 +363,9 @@ export const debounce = (func, wait) => {
   };
 };
 
-/**
- * 13. THROTTLE - Membatasi frekuensi eksekusi
- */
+// ============================================
+// 13. THROTTLE
+// ============================================
 export const throttle = (func, limit) => {
   let inThrottle;
   return function(...args) {
@@ -314,26 +377,9 @@ export const throttle = (func, limit) => {
   };
 };
 
-/**
- * 14. ENCRYPT/DECRYPT SENSITIVE DATA (Client-side)
- * Catatan: Ini hanya obfuscation, bukan enkripsi sebenarnya
- * Untuk production, gunakan server-side encryption
- */
-export const obfuscate = (text) => {
-  return btoa(encodeURIComponent(text));
-};
-
-export const deobfuscate = (obfuscated) => {
-  try {
-    return decodeURIComponent(atob(obfuscated));
-  } catch {
-    return '';
-  }
-};
-
-/**
- * 15. DETECT SUSPICIOUS INPUT
- */
+// ============================================
+// 14. DETECT SUSPICIOUS INPUT
+// ============================================
 export const isSuspiciousInput = (input) => {
   if (typeof input !== 'string') return false;
   
@@ -359,48 +405,23 @@ export const isSuspiciousInput = (input) => {
   return suspiciousPatterns.some(pattern => pattern.test(input));
 };
 
-/**
- * 16. GENERATE RANDOM TOKEN
- */
+// ============================================
+// 15. GENERATE RANDOM TOKEN
+// ============================================
 export const generateToken = (length = 32) => {
   const array = new Uint8Array(length);
   crypto.getRandomValues(array);
   return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
 };
 
-/**
- * 17. HTTP HEADERS KEAMANAN
- */
-export const securityHeaders = {
-  'X-Content-Type-Options': 'nosniff',
-  'X-Frame-Options': 'DENY',
-  'X-XSS-Protection': '1; mode=block',
-  'Referrer-Policy': 'strict-origin-when-cross-origin',
-  'Permissions-Policy': 'geolocation=(), microphone=(), camera=()'
-};
-
-/**
- * 18. CONTENT SECURITY POLICY
- */
-export const cspHeader = {
-  'Content-Security-Policy': [
-    "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' https://app.sandbox.midtrans.com https://cdn.jsdelivr.net",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com",
-    "img-src 'self' data: https:",
-    "connect-src 'self' https://kpzohovxxudriznyflpu.supabase.co https://api.midtrans.com",
-    "frame-src 'self' https://app.sandbox.midtrans.com"
-  ].join('; ')
-};
-
-// Export semua fungsi
+// Export semua
 export default {
   sanitizeInput,
   deepSanitize,
   escapeSQL,
   RateLimiter,
   globalRateLimiter,
+  useRateLimit,
   generateCSRFToken,
   validateCSRFToken,
   validatePasswordStrength,
@@ -411,10 +432,6 @@ export default {
   validateInput,
   debounce,
   throttle,
-  obfuscate,
-  deobfuscate,
   isSuspiciousInput,
-  generateToken,
-  securityHeaders,
-  cspHeader
+  generateToken
 };
