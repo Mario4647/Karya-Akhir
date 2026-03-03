@@ -1,12 +1,12 @@
 // ============================================
 // EMAIL SERVICE DENGAN EMAILJS
-// Credentials Anda sudah dimasukkan
+// Template ID sudah dimasukkan
 // ============================================
 
 // Konfigurasi EmailJS dengan credentials Anda
 const EMAILJS_CONFIG = {
   serviceId: 'service_2x3byo7', // Service ID Gmail Anda
-  templateId: 'template_nd1w82s', // Buat template ini di dashboard EmailJS
+  templateId: 'template_nd1w82s', // Template ID yang Anda buat
   userId: 'JNo-bH0_yGFORzjSu', // Public Key Anda
   accessToken: 'NNNVKNALkpATC5Y3Kfxlc' // Private Key Anda
 };
@@ -20,7 +20,7 @@ const EMAIL_TEMPLATES = {
     reply_to: 'noreply@smaretaevents.biz.id',
     order_number: data.orderNumber,
     product_name: data.productName,
-    quantity: data.quantity,
+    quantity: data.quantity.toString(),
     total_amount: data.formattedAmount,
     expiry_time: data.formattedExpiry,
     countdown: data.countdown,
@@ -195,7 +195,7 @@ const EMAIL_TEMPLATES = {
     reply_to: 'noreply@smaretaevents.biz.id',
     order_number: data.orderNumber,
     product_name: data.productName,
-    quantity: data.quantity,
+    quantity: data.quantity.toString(),
     total_amount: data.formattedAmount,
     ticket_codes: data.ticketCodes.join(', '),
     event_date: data.eventDate,
@@ -261,6 +261,7 @@ const EMAIL_TEMPLATES = {
             border: 1px dashed #0284c7;
             border-radius: 4px;
             color: #0369a1;
+            margin: 5px 0;
           }
           .footer {
             background: #f1f5f9;
@@ -290,7 +291,7 @@ const EMAIL_TEMPLATES = {
               <p><strong>Kode Tiket:</strong></p>
               ${data.ticketCodes.map(code => 
                 `<div class="ticket-code">${code}</div>`
-              ).join('<br>')}
+              ).join('')}
             </div>
             
             <div class="ticket-card">
@@ -343,13 +344,18 @@ export const sendEmail = async (type, data) => {
     
     const templateData = EMAIL_TEMPLATES[type](data);
     
+    console.log('📧 Sending email with template:', EMAILJS_CONFIG.templateId);
+    console.log('📧 Template data:', templateData);
+    
     // Kirim via EmailJS
     const response = await window.emailjs.send(
       EMAILJS_CONFIG.serviceId,
-      type === 'paymentPending' ? 'template_pending' : 'template_success', // Buat template ini di dashboard
+      EMAILJS_CONFIG.templateId, // Gunakan template ID yang sama untuk kedua jenis email
       templateData,
       EMAILJS_CONFIG.userId
     );
+    
+    console.log('✅ Email sent successfully:', response);
     
     return {
       success: true,
@@ -357,7 +363,7 @@ export const sendEmail = async (type, data) => {
       data: response
     };
   } catch (error) {
-    console.error('EmailJS error:', error);
+    console.error('❌ EmailJS error:', error);
     return {
       success: false,
       error: error.text || error.message || 'Gagal mengirim email'
@@ -402,7 +408,12 @@ export const formatEmailData = (order, products, tickets = []) => {
     countdown: `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`,
     orderId: order.id,
     ticketCodes: tickets.map(t => t.ticket_code),
-    eventDate: products?.event_date ? new Date(products.event_date).toLocaleDateString('id-ID') : '-',
+    eventDate: products?.event_date ? new Date(products.event_date).toLocaleDateString('id-ID', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    }) : '-',
     eventLocation: products?.event_location || '-'
   };
 };
