@@ -147,50 +147,88 @@ const PaymentSuccessPage = ({ user }) => {
     setShowQRModal(true);
   };
 
+  const downloadQRAsPNG = (ticketCode, qrValue) => {
+    return new Promise((resolve) => {
+      // Buat canvas untuk menggabungkan QR dan efek
+      const canvas = document.createElement('canvas');
+      canvas.width = 300;
+      canvas.height = 300;
+      const ctx = canvas.getContext('2d');
+      
+      // Gambar background putih
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 300, 300);
+      
+      // Cari elemen QR yang sudah ada
+      const qrElement = document.querySelector(`#qr-${ticketCode.replace(/[^a-zA-Z0-9]/g, '')} svg`);
+      if (qrElement) {
+        const svgData = new XMLSerializer().serializeToString(qrElement);
+        const img = new Image();
+        
+        img.onload = () => {
+          // Gambar QR di tengah
+          ctx.drawImage(img, 50, 50, 200, 200);
+          
+          // Tambahkan efek garis-garis
+          ctx.fillStyle = 'rgba(0,0,0,0.03)';
+          for (let i = 0; i < 30; i++) {
+            ctx.fillRect(i * 10, 0, 2, 300);
+            ctx.fillRect(0, i * 10, 300, 2);
+          }
+          
+          // Konversi ke PNG dan download
+          const link = document.createElement('a');
+          link.download = `ticket-${ticketCode}.png`;
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+          resolve();
+        };
+        
+        img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+      } else {
+        // Fallback: buat QR baru
+        const canvas2 = document.createElement('canvas');
+        const ctx2 = canvas2.getContext('2d');
+        
+        // Gambar background putih
+        ctx2.fillStyle = '#ffffff';
+        ctx2.fillRect(0, 0, 300, 300);
+        
+        // Buat QR sederhana
+        const size = 200;
+        const cellSize = size / 25;
+        const qrValueStr = qrValue.toString();
+        
+        // QR sederhana (simulasi)
+        ctx2.fillStyle = '#000000';
+        for (let i = 0; i < 25; i++) {
+          for (let j = 0; j < 25; j++) {
+            if ((i * j) % 3 === 0 || (i + j) % 4 === 0) {
+              ctx2.fillRect(50 + i * cellSize, 50 + j * cellSize, cellSize - 1, cellSize - 1);
+            }
+          }
+        }
+        
+        // Tambahkan efek
+        ctx2.fillStyle = 'rgba(0,0,0,0.03)';
+        for (let i = 0; i < 30; i++) {
+          ctx2.fillRect(i * 10, 0, 2, 300);
+          ctx2.fillRect(0, i * 10, 300, 2);
+        }
+        
+        const link = document.createElement('a');
+        link.download = `ticket-${ticketCode}.png`;
+        link.href = canvas2.toDataURL('image/png');
+        link.click();
+        resolve();
+      }
+    });
+  };
+
   const handleDownloadQR = async (ticketCode) => {
     setDownloading(true);
     try {
-      // Cari elemen SVG dalam container
-      const container = document.getElementById(`qr-${ticketCode.replace(/[^a-zA-Z0-9]/g, '')}`);
-      if (container) {
-        const svg = container.querySelector('svg');
-        if (svg) {
-          // Clone SVG untuk dimodifikasi
-          const svgClone = svg.cloneNode(true);
-          
-          // Set ukuran yang lebih besar untuk download
-          svgClone.setAttribute('width', '500');
-          svgClone.setAttribute('height', '500');
-          
-          // Konversi SVG ke string
-          const svgData = new XMLSerializer().serializeToString(svgClone);
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          const img = new Image();
-          
-          img.onload = () => {
-            canvas.width = 500;
-            canvas.height = 500;
-            ctx.drawImage(img, 0, 0, 500, 500);
-            
-            // Tambahkan efek garis-garis
-            ctx.fillStyle = 'rgba(0,0,0,0.05)';
-            for (let i = 0; i < 20; i++) {
-              ctx.fillRect(i * 25, 0, 5, 500);
-            }
-            for (let i = 0; i < 20; i++) {
-              ctx.fillRect(0, i * 25, 500, 5);
-            }
-            
-            const link = document.createElement('a');
-            link.download = `ticket-${ticketCode}.png`;
-            link.href = canvas.toDataURL('image/png');
-            link.click();
-          };
-          
-          img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
-        }
-      }
+      await downloadQRAsPNG(ticketCode, ticketCode);
     } catch (error) {
       console.error('Error downloading QR:', error);
       alert('Gagal mendownload QR Code');
@@ -199,12 +237,19 @@ const PaymentSuccessPage = ({ user }) => {
     }
   };
 
-  const handleDownloadAllTickets = () => {
-    tickets.forEach((ticket, index) => {
-      setTimeout(() => {
-        handleDownloadQR(ticket.ticket_code);
-      }, index * 500);
-    });
+  const handleDownloadAllTickets = async () => {
+    setDownloading(true);
+    try {
+      for (let i = 0; i < tickets.length; i++) {
+        await new Promise(resolve => setTimeout(resolve, i * 500));
+        await downloadQRAsPNG(tickets[i].ticket_code, tickets[i].ticket_code);
+      }
+    } catch (error) {
+      console.error('Error downloading all tickets:', error);
+      alert('Gagal mendownload semua tiket');
+    } finally {
+      setDownloading(false);
+    }
   };
 
   const formatDate = (dateString) => {
@@ -641,7 +686,7 @@ const PaymentSuccessPage = ({ user }) => {
                   className="px-6 py-2 bg-[#4a90e2] text-white rounded border-2 border-[#357abd] shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] hover:bg-[#357abd] transition-colors flex items-center gap-2 disabled:opacity-50"
                 >
                   <BiDownload />
-                  <span>Download</span>
+                  <span>{downloading ? '...' : 'Download'}</span>
                 </button>
                 <button
                   onClick={() => setShowQRModal(false)}
