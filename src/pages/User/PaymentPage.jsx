@@ -70,7 +70,7 @@ const PaymentPage = ({ user }) => {
   const { orderId } = useParams()
   const navigate = useNavigate()
 
-  // Generate icon positions untuk background
+  // Generate icon positions
   const [iconPositions] = useState(() => {
     const positions = []
     for (let i = 0; i < 30; i++) {
@@ -109,7 +109,7 @@ const PaymentPage = ({ user }) => {
   }, [orderId])
 
   useEffect(() => {
-    if (order && order.payment_expiry) {
+    if (order && order.payment_expiry && order.status === 'pending') {
       const expiryTime = new Date(order.payment_expiry).getTime()
       const now = new Date().getTime()
       const initialTimeLeft = Math.max(0, Math.floor((expiryTime - now) / 1000))
@@ -132,30 +132,32 @@ const PaymentPage = ({ user }) => {
 
   // Handle expired order
   const handleExpireOrder = async () => {
-    if (order && order.status === 'pending' && !updating) {
-      setUpdating(true)
-      try {
-        console.log('⏰ Order expired, updating status...')
-        
-        const { error } = await supabase
-          .from('orders')
-          .update({ 
-            status: 'expired',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', order.id)
-          .eq('user_id', user.id)
-        
-        if (error) throw error
-        
-        // Refresh order data
+    if (!order || order.status !== 'pending' || updating) return
+    
+    setUpdating(true)
+    try {
+      console.log('⏰ Order expired, updating status...')
+      
+      const { data, error } = await supabase
+        .rpc('update_order_status', {
+          p_order_id: order.id,
+          p_new_status: 'expired',
+          p_user_id: user.id
+        })
+
+      if (error) throw error
+      
+      if (data?.success) {
+        console.log('✅ Order expired successfully')
         await fetchOrder()
-        
-      } catch (error) {
-        console.error('Error expiring order:', error)
-      } finally {
-        setUpdating(false)
+      } else {
+        throw new Error(data?.message || 'Gagal mengupdate status')
       }
+      
+    } catch (error) {
+      console.error('Error expiring order:', error)
+    } finally {
+      setUpdating(false)
     }
   }
 
@@ -227,6 +229,7 @@ const PaymentPage = ({ user }) => {
     script.setAttribute('data-client-key', MIDTRANS_CLIENT_KEY)
     
     script.onload = () => {
+      console.log('✅ Midtrans script loaded')
       setSnapLoaded(true)
     }
     
@@ -312,6 +315,8 @@ const PaymentPage = ({ user }) => {
   }
 
   const handleCancelOrder = async () => {
+    if (!order || order.status !== 'pending') return
+
     // Rate limiting
     if (!globalRateLimiter.check(user.id, 'cancel').allowed) {
       setError('Terlalu banyak percobaan. Silakan tunggu.')
@@ -328,27 +333,25 @@ const PaymentPage = ({ user }) => {
     try {
       console.log('🔄 Cancelling order:', order.id)
       
-      const { error } = await supabase
-        .from('orders')
-        .update({ 
-          status: 'cancelled',
-          updated_at: new Date().toISOString()
+      const { data, error } = await supabase
+        .rpc('update_order_status', {
+          p_order_id: order.id,
+          p_new_status: 'cancelled',
+          p_user_id: user.id
         })
-        .eq('id', order.id)
-        .eq('user_id', user.id)
-        .eq('status', 'pending') // Hanya bisa cancel jika masih pending
 
       if (error) throw error
       
-      console.log('✅ Order cancelled successfully')
-      
-      // Refresh order data
-      await fetchOrder()
-      
-      // Redirect setelah 2 detik
-      setTimeout(() => {
-        navigate('/concerts')
-      }, 2000)
+      if (data?.success) {
+        console.log('✅ Order cancelled successfully')
+        await fetchOrder()
+        
+        setTimeout(() => {
+          navigate('/concerts')
+        }, 2000)
+      } else {
+        throw new Error(data?.message || 'Gagal membatalkan pesanan')
+      }
       
     } catch (error) {
       console.error('❌ Error cancelling order:', error)
@@ -417,6 +420,11 @@ const PaymentPage = ({ user }) => {
       return
     }
 
+    if (!order || order.status !== 'pending') {
+      setError('Pesanan tidak dapat diproses')
+      return
+    }
+
     setProcessingPayment(true)
     setError('')
 
@@ -472,35 +480,28 @@ const PaymentPage = ({ user }) => {
       
       setUpdating(true)
       
-      // Update order status
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update({
-          status: 'paid',
-          payment_method: result.payment_type,
-          payment_details: result,
-          midtrans_transaction_id: result.transaction_id,
-          midtrans_transaction_status: result.transaction_status,
-          midtrans_payment_type: result.payment_type,
-          updated_at: new Date().toISOString()
+      // Update order status menggunakan RPC
+      const { data, error } = await supabase
+        .rpc('update_order_status', {
+          p_order_id: order.id,
+          p_new_status: 'paid',
+          p_user_id: user.id
         })
-        .eq('id', order.id)
-        .eq('user_id', user.id)
 
-      if (updateError) {
-        console.error('❌ Error updating order status:', updateError)
-        throw updateError
+      if (error) throw error
+      
+      if (!data?.success) {
+        throw new Error(data?.message || 'Gagal mengupdate status')
       }
 
-      console.log('✅ Order status updated to paid')
+      console.log('✅ Order status updated to paid via RPC')
 
-      // Kirim email sukses
+      // Kirim email sukses (jangan blocking)
       try {
         const emailData = formatEmailData(order, products, tickets)
         await sendEmail('paymentSuccess', emailData)
       } catch (emailError) {
         console.error('❌ Error sending success email:', emailError)
-        // Don't throw, continue with redirect
       }
 
       // Redirect ke halaman sukses
@@ -508,7 +509,34 @@ const PaymentPage = ({ user }) => {
 
     } catch (error) {
       console.error('❌ Error in payment success handler:', error)
-      alert('Pembayaran berhasil tetapi gagal memperbarui status. Silakan hubungi admin.')
+      
+      // Fallback: coba update langsung
+      try {
+        console.log('⚠️ Trying direct update as fallback...')
+        
+        const { error: directError } = await supabase
+          .from('orders')
+          .update({
+            status: 'paid',
+            payment_method: result.payment_type,
+            payment_details: result,
+            midtrans_transaction_id: result.transaction_id,
+            midtrans_transaction_status: result.transaction_status,
+            midtrans_payment_type: result.payment_type,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', order.id)
+          .eq('user_id', user.id)
+
+        if (directError) throw directError
+        
+        console.log('✅ Order status updated via direct update')
+        navigate(`/payment-success/${order.id}`)
+        
+      } catch (fallbackError) {
+        console.error('❌ Fallback also failed:', fallbackError)
+        alert('Pembayaran berhasil tetapi gagal memperbarui status. Silakan hubungi admin.\n\nOrder ID: ' + order.id)
+      }
     } finally {
       setUpdating(false)
       setProcessingPayment(false)
@@ -705,7 +733,7 @@ const PaymentPage = ({ user }) => {
           </div>
           <span className={`text-sm font-medium ${
             apiStatus.includes('terhubung') ? 'text-green-600' : 
-            apiStatus.includes('tidak') ? 'text-red-600' : 'text-yellow-600'
+            apiStatus.includes('tidak') ? 'text-red-600' : 'text-yellow-600
           }`}>
             {apiStatus}
           </span>
@@ -724,15 +752,6 @@ const PaymentPage = ({ user }) => {
             <BiCheckCircle className="text-green-500 text-lg" />
             <p className="text-sm text-green-700 font-medium">
               Notifikasi telah dikirim ke {order.customer_email}
-            </p>
-          </div>
-        )}
-
-        {emailError && !emailLoading && (
-          <div className="mb-4 p-3 bg-yellow-50 border-2 border-yellow-200 shadow-[4px_4px_0px_0px_rgba(234,179,8,0.2)] flex items-center gap-2">
-            <BiError className="text-yellow-500 text-lg" />
-            <p className="text-sm text-yellow-700 font-medium">
-              Gagal mengirim email: {emailError}
             </p>
           </div>
         )}
@@ -862,32 +881,6 @@ const PaymentPage = ({ user }) => {
           </div>
         )}
 
-        {/* Order History */}
-        {orderHistory.length > 0 && (
-          <div className="bg-white rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.15)] p-6 mb-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Riwayat</h2>
-            
-            <div className="space-y-2">
-              {orderHistory.map((history, index) => (
-                <div key={index} className="text-sm p-2 bg-gray-50 rounded border border-gray-200">
-                  <span className="font-medium">
-                    {new Date(history.created_at).toLocaleString('id-ID')}
-                  </span>
-                  <span className="mx-2">-</span>
-                  <span className={
-                    history.status === 'paid' ? 'text-green-600' :
-                    history.status === 'cancelled' ? 'text-red-600' :
-                    history.status === 'expired' ? 'text-orange-600' :
-                    'text-gray-600'
-                  }>
-                    {history.status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Midtrans Status */}
         {!snapLoaded && (
           <div className="mb-6 p-4 bg-yellow-50 rounded border-2 border-yellow-200 shadow-[4px_4px_0px_0px_rgba(234,179,8,0.2)]">
@@ -907,7 +900,7 @@ const PaymentPage = ({ user }) => {
           <div className="flex-1 relative overflow-hidden rounded border-2 border-red-200 shadow-[6px_6px_0px_0px_rgba(239,68,68,0.25)]">
             <button
               onClick={handleCancelOrder}
-              disabled={updating || processingPayment}
+              disabled={updating || processingPayment || order.status !== 'pending'}
               className="w-full py-4 bg-white text-red-600 rounded font-bold hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {updating ? (
@@ -928,7 +921,7 @@ const PaymentPage = ({ user }) => {
           <div className="flex-1 relative overflow-hidden rounded border-2 border-[#357abd] shadow-[8px_8px_0px_0px_rgba(0,0,0,0.3)]">
             <button
               onClick={handlePayNow}
-              disabled={!snapLoaded || processingPayment || updating}
+              disabled={!snapLoaded || processingPayment || updating || order.status !== 'pending'}
               className="w-full py-4 bg-[#4a90e2] text-white rounded font-bold hover:bg-[#357abd] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {processingPayment ? (
