@@ -29,6 +29,7 @@ const ProductsPage = () => {
   const [selectedImage, setSelectedImage] = useState(null)
   const [imagePreview, setImagePreview] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [subscription, setSubscription] = useState(null)
   const fileInputRef = useRef(null)
   
   const [formData, setFormData] = useState({
@@ -38,7 +39,7 @@ const ProductsPage = () => {
     location_description: '',
     maps_link: '',
     description: '',
-    ticket_types: [] // Untuk multiple tiket type
+    ticket_types: []
   })
 
   const [ticketTypes, setTicketTypes] = useState([
@@ -47,19 +48,20 @@ const ProductsPage = () => {
 
   const [errors, setErrors] = useState({})
 
-  useEffect(() => {
-    fetchProducts()
-  }, [])
-
+  // Fetch products
   const fetchProducts = async () => {
     setLoading(true)
     try {
+      console.log('📦 Fetching products for admin...')
+      
       const { data, error } = await supabase
         .from('products')
         .select('*')
         .order('created_at', { ascending: false })
 
       if (error) throw error
+      
+      console.log('✅ Products fetched:', data?.length || 0)
       
       // Parse ticket_types jika berupa string JSON
       const processedData = data.map(product => ({
@@ -77,6 +79,61 @@ const ProductsPage = () => {
       setLoading(false)
     }
   }
+
+  // Setup realtime subscription
+  useEffect(() => {
+    fetchProducts()
+    
+    // Subscribe ke perubahan produk
+    const productsSubscription = supabase
+      .channel('products-admin')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'products' }, 
+        (payload) => {
+          console.log('🔄 Admin: Product changed:', payload.eventType, payload.new?.id)
+          
+          if (payload.eventType === 'INSERT') {
+            // Tambah produk baru
+            const newProduct = {
+              ...payload.new,
+              ticket_types: typeof payload.new.ticket_types === 'string' 
+                ? JSON.parse(payload.new.ticket_types) 
+                : payload.new.ticket_types || []
+            }
+            setProducts(prev => [newProduct, ...prev])
+          }
+          
+          if (payload.eventType === 'UPDATE') {
+            // Update produk yang ada
+            setProducts(prev => prev.map(p => 
+              p.id === payload.new.id 
+                ? { 
+                    ...p, 
+                    ...payload.new,
+                    ticket_types: typeof payload.new.ticket_types === 'string' 
+                      ? JSON.parse(payload.new.ticket_types) 
+                      : payload.new.ticket_types || []
+                  }
+                : p
+            ))
+          }
+          
+          if (payload.eventType === 'DELETE') {
+            // Hapus produk
+            setProducts(prev => prev.filter(p => p.id !== payload.old.id))
+          }
+        }
+      )
+      .subscribe()
+    
+    setSubscription(productsSubscription)
+    
+    return () => {
+      if (productsSubscription) {
+        supabase.removeChannel(productsSubscription)
+      }
+    }
+  }, [])
 
   const handleImageChange = (e) => {
     const file = e.target.files[0]
@@ -100,7 +157,6 @@ const ProductsPage = () => {
     return new Promise((resolve) => {
       const reader = new FileReader()
       reader.onloadend = () => {
-        // Simpan sebagai base64 string
         resolve(reader.result)
       }
       reader.readAsDataURL(selectedImage)
@@ -172,22 +228,21 @@ const ProductsPage = () => {
       // Harga default dari tipe pertama
       const defaultPrice = ticketTypes.length > 0 ? parseFloat(ticketTypes[0].price || 0) : 0
 
-      // Di bagian handleSubmit, ubah productData menjadi:
-const productData = {
-  name: formData.name,
-  price: defaultPrice,
-  stock: totalStock,
-  event_date: formData.event_date,
-  event_location: formData.event_location,
-  location_description: formData.location_description || null,
-  maps_link: formData.maps_link || null,
-  description: formData.description || null,
-  ticket_types: JSON.stringify(ticketTypes),
-  image_data: imageData || null,
-  poster_url: imageData || null, // Set poster_url sama dengan image_data
-  is_active: true,
-  updated_at: new Date().toISOString()
-}
+      const productData = {
+        name: formData.name,
+        price: defaultPrice,
+        stock: totalStock,
+        event_date: formData.event_date,
+        event_location: formData.event_location,
+        location_description: formData.location_description || null,
+        maps_link: formData.maps_link || null,
+        description: formData.description || null,
+        ticket_types: JSON.stringify(ticketTypes),
+        image_data: imageData || null,
+        poster_url: imageData || null,
+        is_active: true,
+        updated_at: new Date().toISOString()
+      }
 
       console.log('Saving product data:', productData)
 
@@ -205,7 +260,7 @@ const productData = {
 
       if (result.error) throw result.error
 
-      await fetchProducts()
+      // Tidak perlu fetchProducts manual karena realtime akan update
       closeModal()
       alert(editingProduct ? 'Produk berhasil diperbarui!' : 'Produk berhasil ditambahkan!')
     } catch (error) {
@@ -241,7 +296,7 @@ const productData = {
 
       if (error) throw error
       
-      await fetchProducts()
+      // Tidak perlu fetchProducts manual karena realtime akan update
       alert('Produk berhasil dihapus!')
     } catch (error) {
       console.error('Error deleting product:', error)
