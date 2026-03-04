@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import NavbarEvent from '../../components/NavbarEvent';
@@ -8,8 +8,10 @@ import {
   validateNIK, 
   validatePhone, 
   formatPhoneForMidtrans,
+  isSuspiciousInput,
   globalRateLimiter
 } from '../../utils/security';
+import { validateBuyerData } from '../../utils/validation';
 import {
   BiCalendar,
   BiMap,
@@ -25,9 +27,11 @@ import {
   BiHome,
   BiCreditCard,
   BiArrowBack,
+  BiDuplicate,
   BiCheckCircle,
   BiError,
   BiRefresh,
+  BiSend,
   BiPurchaseTag,
   BiMovie,
   BiMoney,
@@ -71,6 +75,7 @@ import {
   BiPhone
 } from 'react-icons/bi';
 
+// Array icon untuk background dekoratif
 const decorativeIcons = [
   BiMusic, BiMicrophone, BiCamera, BiVideo, BiImage, BiImages, BiPhotoAlbum,
   BiStar, BiHeart, BiLike, BiDiamond, BiCrown, BiRocket,
@@ -98,14 +103,13 @@ const ConcertPage = ({ user }) => {
     phone: '' 
   }])
   const [loading, setLoading] = useState(false)
+  const [profile, setProfile] = useState(null)
   const [error, setError] = useState('')
   const [fetchError, setFetchError] = useState('')
   const [isLoadingProducts, setIsLoadingProducts] = useState(true)
   const navigate = useNavigate()
-  
-  // Gunakan useRef untuk mencegah re-subscribe
-  const subscriptionRef = useRef(null)
 
+  // Generate random positions for decorative icons
   const [iconPositions] = useState(() => {
     const positions = []
     for (let i = 0; i < 40; i++) {
@@ -121,7 +125,42 @@ const ConcertPage = ({ user }) => {
     return positions
   })
 
-  const fetchProducts = useCallback(async () => {
+  // Generate icon untuk tombol
+  const [buttonIconPositions] = useState(() => {
+    const positions = []
+    for (let i = 0; i < 20; i++) {
+      positions.push({
+        top: `${Math.random() * 100}%`,
+        left: `${Math.random() * 100}%`,
+        rotate: `${Math.random() * 360}deg`,
+        scale: 0.4 + Math.random() * 0.6,
+        opacity: 0.25 + Math.random() * 0.25,
+        icon: decorativeIcons[Math.floor(Math.random() * decorativeIcons.length)]
+      })
+    }
+    return positions
+  })
+
+  useEffect(() => {
+    fetchProducts()
+    if (user) {
+      fetchProfile(user.id)
+    }
+  }, [user])
+
+  const fetchProfile = async (userId) => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single()
+    
+    if (!error && data) {
+      setProfile(data)
+    }
+  }
+
+  const fetchProducts = async () => {
     setIsLoadingProducts(true)
     setFetchError('')
     
@@ -134,40 +173,15 @@ const ConcertPage = ({ user }) => {
       
       if (error) throw error
       
-      const processedData = data.map(product => {
-        let ticket_types = product.ticket_types;
-        
-        if (typeof ticket_types === 'string') {
-          try {
-            ticket_types = JSON.parse(ticket_types);
-          } catch (e) {
-            console.error('Error parsing ticket_types for product', product.id, e);
-            ticket_types = [];
-          }
-        }
-        
-        if (!Array.isArray(ticket_types)) {
-          ticket_types = [];
-        }
-        
-        ticket_types = ticket_types.map(type => ({
-          name: type.name || 'Reguler',
-          price: parseFloat(type.price || product.price || 0),
-          stock: parseInt(type.stock || product.stock || 0),
-          description: type.description || ''
-        }));
-        
-        const totalStock = ticket_types.reduce((sum, type) => sum + (type.stock || 0), 0);
-        
-        return {
-          ...product,
-          ticket_types: ticket_types,
-          stock: totalStock,
-          image_url: product.image_data || product.poster_url
-        };
-      })
+      const processedData = data.map(product => ({
+        ...product,
+        ticket_types: typeof product.ticket_types === 'string' 
+          ? JSON.parse(product.ticket_types) 
+          : product.ticket_types || [],
+        image_url: product.image_data || product.poster_url
+      }))
       
-      console.log('✅ Products fetched:', processedData)
+      console.log('Fetched products:', processedData)
       setProducts(processedData || [])
       
       if (processedData && processedData.length > 0) {
@@ -182,53 +196,7 @@ const ConcertPage = ({ user }) => {
     } finally {
       setIsLoadingProducts(false)
     }
-  }, []);
-
-  useEffect(() => {
-    fetchProducts()
-    
-    // Bersihkan subscription sebelumnya jika ada
-    if (subscriptionRef.current) {
-      subscriptionRef.current.unsubscribe()
-    }
-
-    // Buat subscription baru
-    const subscription = supabase
-      .channel('products_changes')
-      .on('postgres_changes', 
-        { event: 'UPDATE', schema: 'public', table: 'products' }, 
-        (payload) => {
-          console.log('🔄 Product updated:', payload.new.id)
-          // Update state tanpa memicu re-render berlebihan
-          setProducts(currentProducts => {
-            // Cek apakah produk ini ada di state kita
-            const exists = currentProducts.some(p => p.id === payload.new.id)
-            if (!exists) return currentProducts
-            
-            return currentProducts.map(p => 
-              p.id === payload.new.id ? { ...p, ...payload.new } : p
-            )
-          })
-          
-          // Update selected product jika perlu
-          setSelectedProduct(current => {
-            if (current?.id === payload.new.id) {
-              return { ...current, ...payload.new }
-            }
-            return current
-          })
-        }
-      )
-      .subscribe()
-    
-    subscriptionRef.current = subscription
-
-    return () => {
-      if (subscriptionRef.current) {
-        subscriptionRef.current.unsubscribe()
-      }
-    }
-  }, [fetchProducts]) // Hanya bergantung pada fetchProducts
+  }
 
   const handleProductChange = (product) => {
     setSelectedProduct(product)
@@ -335,6 +303,7 @@ const ConcertPage = ({ user }) => {
   }
 
   const handleBuyerChange = (index, field, value) => {
+    // Sanitasi input untuk mencegah XSS
     const sanitizedValue = field === 'name' || field === 'address' ? sanitizeInput(value) : value
     const updatedBuyers = [...buyers]
     updatedBuyers[index][field] = sanitizedValue
@@ -372,65 +341,63 @@ const ConcertPage = ({ user }) => {
     return true
   }
 
-  const checkStock = async (productId, ticketType, qty) => {
-    try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('stock, ticket_types')
-        .eq('id', productId)
-        .single()
-      
-      if (error) throw error
-      
-      let availableStock = data.stock
-      if (ticketType && data.ticket_types) {
-        const types = typeof data.ticket_types === 'string' 
-          ? JSON.parse(data.ticket_types) 
-          : data.ticket_types
-        const found = types.find(t => t.name === ticketType)
-        if (found) {
-          availableStock = found.stock
-        }
-      }
-      
-      return {
-        available: availableStock >= qty,
-        stock: availableStock
-      }
-    } catch (error) {
-      console.error('Error checking stock:', error)
-      return { available: false, stock: 0 }
-    }
-  }
-
   const createOrder = async () => {
     if (!validateBuyers()) return
 
-    if (!globalRateLimiter.check(user.id, 'create-order').allowed) {
-      setError('Terlalu banyak percobaan. Silakan tunggu.')
-      return
+    // Rate limiting
+    const rateCheck = globalRateLimiter.check(user.id, 'create-order');
+    if (!rateCheck.allowed) {
+      setError(rateCheck.reason);
+      return;
     }
 
     setLoading(true)
     setError('')
 
     try {
-      const stockCheck = await checkStock(
-        selectedProduct.id, 
-        selectedTicketType.name, 
-        quantity
-      )
-      
-      if (!stockCheck.available) {
-        throw new Error(`Stok tidak mencukupi. Tersedia: ${stockCheck.stock}`)
+      // ============================================================
+      // PERBAIKAN UTAMA: check_and_lock_stock hanya MENGECEK stok,
+      // TIDAK mengurangi stok. Stok hanya berkurang saat payment sukses.
+      // ============================================================
+      console.log('Checking stock availability for:', {
+        product_id: selectedProduct.id,
+        ticket_type: selectedTicketType.name,
+        quantity: quantity
+      });
+
+      const { data: stockCheck, error: stockError } = await supabase
+        .rpc('check_and_lock_stock', {
+          p_product_id: selectedProduct.id,
+          p_ticket_type: selectedTicketType.name,
+          p_quantity: quantity
+        })
+
+      console.log('Stock check result:', stockCheck);
+
+      if (stockError) {
+        console.error('Stock check error:', stockError);
+        throw new Error('Gagal memeriksa stok: ' + stockError.message);
       }
 
+      if (!stockCheck || !stockCheck.success) {
+        throw new Error(stockCheck?.message || 'Gagal memeriksa stok');
+      }
+
+      if (!stockCheck.available) {
+        throw new Error(stockCheck.message || 'Stok tidak mencukupi');
+      }
+
+      // Stok tersedia — lanjut buat order (stok BELUM dikurangi)
       const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
+      
+      // Set expiry time (60 menit)
       const expiryTime = new Date()
       expiryTime.setMinutes(expiryTime.getMinutes() + 60)
 
+      // Format nomor HP untuk Midtrans
       const formattedPhone = formatPhoneForMidtrans(buyers[0].phone)
 
+      // Siapkan data order — status awal 'pending', stok BELUM dikurangi
       const orderData = {
         order_number: orderNumber,
         user_id: user.id,
@@ -454,20 +421,33 @@ const ConcertPage = ({ user }) => {
           phone: formatPhoneForMidtrans(b.phone),
           address: b.address
         })),
-        status: 'pending',
+        status: 'pending', // Stok TIDAK dikurangi saat pending
         payment_expiry: expiryTime.toISOString(),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       }
 
+      console.log('Creating order (stock NOT reduced yet):', orderData)
+
+      // Insert order
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert([orderData])
         .select()
         .single()
 
-      if (orderError) throw orderError
+      if (orderError) {
+        console.error('Order insert error details:', orderError)
+        throw new Error(orderError.message || 'Gagal menyimpan order')
+      }
 
+      if (!order) {
+        throw new Error('Gagal membuat order: Data tidak ditemukan setelah insert')
+      }
+
+      console.log('Order created (stock still intact):', order)
+
+      // Create tickets for each buyer
       const tickets = buyers.map((buyer, index) => ({
         product_id: selectedProduct.id,
         order_id: order.id,
@@ -480,15 +460,30 @@ const ConcertPage = ({ user }) => {
         updated_at: new Date().toISOString()
       }))
 
+      console.log('Tickets to insert:', tickets)
+
       const { error: ticketsError } = await supabase
         .from('tickets')
         .insert(tickets)
 
       if (ticketsError) {
+        console.error('Tickets insert error:', ticketsError)
+        // Rollback order jika gagal insert tiket
         await supabase.from('orders').delete().eq('id', order.id)
-        throw new Error('Gagal membuat tiket')
+        throw new Error('Gagal membuat tiket: ' + ticketsError.message)
       }
 
+      // Catat ke order history
+      await supabase
+        .from('order_history')
+        .insert({
+          order_id: order.id,
+          status: 'pending',
+          notes: `Pesanan dibuat - Menunggu pembayaran. Stok belum dikurangi.`,
+          created_at: new Date().toISOString()
+        })
+
+      // Redirect ke halaman pembayaran
       navigate(`/payment/${order.id}`)
 
     } catch (error) {
@@ -518,21 +513,24 @@ const ConcertPage = ({ user }) => {
     return (
       <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
-          {iconPositions.map((pos, i) => (
-            <div
-              key={i}
-              className="absolute text-gray-700"
-              style={{
-                top: pos.top,
-                left: pos.left,
-                transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                opacity: pos.opacity,
-                zIndex: 0
-              }}
-            >
-              {React.createElement(pos.icon, { size: 28 })}
-            </div>
-          ))}
+          {iconPositions.map((pos, i) => {
+            const IconComponent = pos.icon
+            return (
+              <div
+                key={i}
+                className="absolute text-gray-700"
+                style={{
+                  top: pos.top,
+                  left: pos.left,
+                  transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
+                  opacity: pos.opacity,
+                  zIndex: 0
+                }}
+              >
+                <IconComponent size={28} />
+              </div>
+            )
+          })}
         </div>
         <NavbarEvent />
         <div className="relative z-10 flex items-center justify-center h-[80vh]">
@@ -549,21 +547,24 @@ const ConcertPage = ({ user }) => {
     return (
       <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
-          {iconPositions.map((pos, i) => (
-            <div
-              key={i}
-              className="absolute text-gray-700"
-              style={{
-                top: pos.top,
-                left: pos.left,
-                transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                opacity: pos.opacity,
-                zIndex: 0
-              }}
-            >
-              {React.createElement(pos.icon, { size: 28 })}
-            </div>
-          ))}
+          {iconPositions.map((pos, i) => {
+            const IconComponent = pos.icon
+            return (
+              <div
+                key={i}
+                className="absolute text-gray-700"
+                style={{
+                  top: pos.top,
+                  left: pos.left,
+                  transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
+                  opacity: pos.opacity,
+                  zIndex: 0
+                }}
+              >
+                <IconComponent size={28} />
+              </div>
+            )
+          })}
         </div>
         <NavbarEvent />
         <div className="relative z-10 max-w-7xl mx-auto px-4 py-12">
@@ -588,21 +589,24 @@ const ConcertPage = ({ user }) => {
     return (
       <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
-          {iconPositions.map((pos, i) => (
-            <div
-              key={i}
-              className="absolute text-gray-700"
-              style={{
-                top: pos.top,
-                left: pos.left,
-                transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
-                opacity: pos.opacity,
-                zIndex: 0
-              }}
-            >
-              {React.createElement(pos.icon, { size: 28 })}
-            </div>
-          ))}
+          {iconPositions.map((pos, i) => {
+            const IconComponent = pos.icon
+            return (
+              <div
+                key={i}
+                className="absolute text-gray-700"
+                style={{
+                  top: pos.top,
+                  left: pos.left,
+                  transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
+                  opacity: pos.opacity,
+                  zIndex: 0
+                }}
+              >
+                <IconComponent size={28} />
+              </div>
+            )
+          })}
         </div>
         <NavbarEvent />
         <div className="relative z-10 max-w-7xl mx-auto px-4 py-12">
@@ -618,6 +622,7 @@ const ConcertPage = ({ user }) => {
 
   return (
     <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
+      {/* Decorative Icons Background */}
       <div className="absolute inset-0 pointer-events-none">
         {iconPositions.map((pos, i) => (
           <div
@@ -666,7 +671,9 @@ const ConcertPage = ({ user }) => {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Left Column - Event Details */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Poster */}
             <div className="bg-white rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.15)] overflow-hidden relative">
               {selectedProduct.image_data || selectedProduct.poster_url ? (
                 <img 
@@ -685,6 +692,7 @@ const ConcertPage = ({ user }) => {
               </div>
             </div>
 
+            {/* Event Info */}
             <div className="bg-white rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.15)] p-6">
               <div className="flex items-center gap-3 mb-4">
                 <BiInfoCircle className="text-3xl text-[#4a90e2]" />
@@ -697,7 +705,10 @@ const ConcertPage = ({ user }) => {
                     <BiCalendar className="text-xl text-[#4a90e2]" />
                   </div>
                   <div>
-                    <p className="font-semibold text-gray-700">Tanggal & Waktu</p>
+                    <p className="font-semibold text-gray-700 flex items-center gap-2">
+                      <BiTime className="text-gray-500" />
+                      Tanggal & Waktu
+                    </p>
                     <p className="text-gray-600">
                       {selectedProduct.event_date ? new Date(selectedProduct.event_date).toLocaleDateString('id-ID', {
                         weekday: 'long',
@@ -706,6 +717,14 @@ const ConcertPage = ({ user }) => {
                         day: 'numeric'
                       }) : 'Belum ditentukan'}
                     </p>
+                    {selectedProduct.event_date && (
+                      <p className="text-gray-600 font-medium">
+                        {new Date(selectedProduct.event_date).toLocaleTimeString('id-ID', {
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -716,6 +735,23 @@ const ConcertPage = ({ user }) => {
                   <div className="flex-1">
                     <p className="font-semibold text-gray-700">Lokasi</p>
                     <p className="text-gray-600">{selectedProduct.event_location || 'Belum ditentukan'}</p>
+                    {selectedProduct.location_description && (
+                      <p className="text-gray-500 text-sm mt-1 flex items-center gap-1">
+                        <BiInfoCircle className="text-gray-400" />
+                        {selectedProduct.location_description}
+                      </p>
+                    )}
+                    {selectedProduct.maps_link && (
+                      <a
+                        href={selectedProduct.maps_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 mt-2 px-4 py-2 bg-[#e6f0ff] text-[#4a90e2] rounded border border-[#4a90e2] shadow-[2px_2px_0px_0px_rgba(74,144,226,0.2)] hover:bg-[#d4e4ff] transition-colors font-medium"
+                      >
+                        <BiMap className="text-lg" />
+                        <span>Lihat Melalui Google Maps</span>
+                      </a>
+                    )}
                   </div>
                 </div>
 
@@ -725,7 +761,7 @@ const ConcertPage = ({ user }) => {
                       <BiInfoCircle className="text-xl text-[#4a90e2]" />
                     </div>
                     <div>
-                      <p className="font-semibold text-gray-700">Deskripsi</p>
+                      <p className="font-semibold text-gray-700">Deskripsi Event</p>
                       <p className="text-gray-600">{selectedProduct.description}</p>
                     </div>
                   </div>
@@ -734,6 +770,7 @@ const ConcertPage = ({ user }) => {
             </div>
           </div>
 
+          {/* Right Column - Ticket Purchase */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.15)] p-6 sticky top-24">
               <div className="flex items-center gap-2 mb-4">
@@ -743,7 +780,10 @@ const ConcertPage = ({ user }) => {
 
               {selectedProduct.ticket_types && selectedProduct.ticket_types.length > 0 ? (
                 <div className="mb-6">
-                  <p className="text-sm font-medium text-gray-600 mb-2">Pilih Tipe Tiket</p>
+                  <p className="text-sm font-medium text-gray-600 mb-2 flex items-center gap-1">
+                    <BiPackage className="text-gray-500" />
+                    Pilih Tipe Tiket
+                  </p>
                   <div className="space-y-2">
                     {selectedProduct.ticket_types.map((type, index) => {
                       const isSelected = selectedTicketType?.name === type.name
@@ -771,11 +811,18 @@ const ConcertPage = ({ user }) => {
                                 {formatRupiah(type.price)}
                               </p>
                             </div>
-                            <p className="text-xs text-gray-500 mt-1">
-                              Stok: <span className="font-medium">{type.stock}</span>
+                            {type.description && (
+                              <p className="text-xs text-gray-500 mt-1">{type.description}</p>
+                            )}
+                            <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                              <BiPackage className="text-gray-400" />
+                              Stok: {type.stock}
                             </p>
                             {isOutOfStock && (
-                              <p className="text-xs text-red-500 mt-2 font-medium">Tiket telah habis</p>
+                              <p className="text-xs text-red-500 mt-2 font-medium flex items-center gap-1">
+                                <BiError />
+                                Tiket telah habis
+                              </p>
                             )}
                           </div>
                         </button>
@@ -783,11 +830,19 @@ const ConcertPage = ({ user }) => {
                     })}
                   </div>
                 </div>
-              ) : null}
+              ) : (
+                <div className="mb-6 p-4 bg-yellow-50 rounded border-2 border-yellow-200 flex items-center gap-3">
+                  <BiError className="text-yellow-600 text-xl" />
+                  <p className="text-sm text-yellow-700 font-medium">Belum ada tipe tiket tersedia</p>
+                </div>
+              )}
 
               {selectedTicketType && (
                 <div className="mb-6">
-                  <p className="text-sm font-medium text-gray-600 mb-2">Jumlah Tiket</p>
+                  <p className="text-sm font-medium text-gray-600 mb-2 flex items-center gap-1">
+                    <BiPlus className="text-gray-500" />
+                    Jumlah Tiket
+                  </p>
                   <div className="flex items-center space-x-3">
                     <button
                       onClick={() => handleQuantityChange('minus')}
@@ -804,10 +859,17 @@ const ConcertPage = ({ user }) => {
                     >
                       <BiPlus />
                     </button>
-                    <span className="text-sm font-medium text-gray-600 ml-2">
+                    <span className="text-sm font-medium text-gray-600 ml-2 flex items-center gap-1">
+                      <BiPackage className="text-gray-500" />
                       Stok: {selectedTicketType.stock}
                     </span>
                   </div>
+                  {selectedTicketType.stock === 0 && (
+                    <p className="text-red-500 text-sm mt-2 font-medium flex items-center gap-1">
+                      <BiError />
+                      Tiket telah habis
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -833,9 +895,19 @@ const ConcertPage = ({ user }) => {
                       <button
                         onClick={validatePromo}
                         disabled={promoLoading}
-                        className="px-4 py-2 bg-[#4a90e2] text-white rounded hover:bg-[#357abd] transition-colors disabled:opacity-50 font-medium border-2 border-[#357abd] shadow-[2px_2px_0px_0px_rgba(0,0,0,0.15)]"
+                        className="px-4 py-2 bg-[#4a90e2] text-white rounded hover:bg-[#357abd] transition-colors disabled:opacity-50 font-medium border-2 border-[#357abd] shadow-[2px_2px_0px_0px_rgba(0,0,0,0.15)] flex items-center gap-1"
                       >
-                        {promoLoading ? '...' : 'Gunakan'}
+                        {promoLoading ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                            <span>...</span>
+                          </>
+                        ) : (
+                          <>
+                            <BiCheck />
+                            <span>Gunakan</span>
+                          </>
+                        )}
                       </button>
                     </div>
                     {promoError && (
@@ -845,13 +917,17 @@ const ConcertPage = ({ user }) => {
                       </p>
                     )}
                     {promoApplied && (
-                      <div className="p-3 bg-green-50 border-2 border-green-200 rounded">
-                        <p className="text-green-700 font-medium">Promo berhasil diterapkan!</p>
-                        <p className="text-sm text-green-600 mt-1">
-                          {promoApplied.discount_type === 'percentage' 
-                            ? `Diskon ${promoApplied.discount_value}%`
-                            : `Diskon ${formatRupiah(promoApplied.discount_value)}`}
-                        </p>
+                      <div className="p-3 bg-green-50 border-2 border-green-200 rounded flex items-start gap-3">
+                        <BiCheckCircle className="text-green-600 text-xl flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-green-700 font-medium">Promo berhasil diterapkan!</p>
+                          <p className="text-sm text-green-600 mt-1 font-medium">
+                            {promoApplied.discount_type === 'percentage' 
+                              ? `Diskon ${promoApplied.discount_value}%`
+                              : `Diskon ${formatRupiah(promoApplied.discount_value)}`
+                            }
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -862,17 +938,26 @@ const ConcertPage = ({ user }) => {
                 <div className="border-t-2 border-gray-200 pt-4 mb-6">
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Subtotal</span>
+                      <span className="text-gray-600 flex items-center gap-1">
+                        <BiMoney className="text-gray-500" />
+                        Subtotal
+                      </span>
                       <span className="text-gray-800 font-medium">{formatRupiah(subtotal)}</span>
                     </div>
                     {promoApplied && (
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Diskon</span>
+                        <span className="text-gray-600 flex items-center gap-1">
+                          <BiGift className="text-green-500" />
+                          Diskon
+                        </span>
                         <span className="text-green-600 font-medium">- {formatRupiah(discount)}</span>
                       </div>
                     )}
                     <div className="flex justify-between font-bold text-lg pt-2 border-t-2 border-gray-200">
-                      <span>Total</span>
+                      <span className="flex items-center gap-1">
+                        <BiWallet className="text-[#4a90e2]" />
+                        Total
+                      </span>
                       <span className="text-[#4a90e2]">{formatRupiah(total)}</span>
                     </div>
                   </div>
@@ -887,12 +972,12 @@ const ConcertPage = ({ user }) => {
                 {!user ? (
                   <>
                     <BiUser />
-                    <span>Login</span>
+                    <span>Login untuk Membeli</span>
                   </>
                 ) : !selectedTicketType ? (
                   <>
                     <BiPurchaseTag />
-                    <span>Pilih Tiket</span>
+                    <span>Pilih Tipe Tiket</span>
                   </>
                 ) : selectedTicketType.stock === 0 ? (
                   <>
@@ -911,9 +996,29 @@ const ConcertPage = ({ user }) => {
         </div>
       </div>
 
+      {/* Buyer Form Modal */}
       {showBuyerForm && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded shadow-[12px_12px_0px_0px_rgba(0,0,0,0.2)] max-w-2xl w-full max-h-[90vh] overflow-y-auto border-2 border-gray-200 relative">
+            
+            <div className="absolute inset-0 pointer-events-none overflow-hidden">
+              {iconPositions.slice(0, 15).map((pos, i) => (
+                <div
+                  key={i}
+                  className="absolute text-gray-400"
+                  style={{
+                    top: pos.top,
+                    left: pos.left,
+                    transform: `rotate(${pos.rotate}) scale(${pos.scale})`,
+                    opacity: pos.opacity * 0.5,
+                    zIndex: 0
+                  }}
+                >
+                  {React.createElement(pos.icon, { size: 24 })}
+                </div>
+              ))}
+            </div>
+            
             <div className="relative z-10 p-6">
               <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center gap-2">
@@ -922,22 +1027,27 @@ const ConcertPage = ({ user }) => {
                 </div>
                 <button
                   onClick={() => setShowBuyerForm(false)}
-                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded border-2 border-gray-200 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]"
+                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded border-2 border-gray-200 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] transition-colors"
                 >
                   <BiX className="text-xl" />
                 </button>
               </div>
 
-              <div className="mb-4 p-3 bg-[#e6f0ff] border-2 border-[#4a90e2] rounded">
+              <div className="mb-4 p-3 bg-[#e6f0ff] border-2 border-[#4a90e2] rounded flex items-center gap-3 shadow-[4px_4px_0px_0px_rgba(74,144,226,0.3)]">
+                <BiInfoCircle className="text-[#4a90e2] text-xl flex-shrink-0" />
                 <p className="text-sm text-[#4a90e2] font-medium">
-                  Setiap pembeli akan mendapatkan QR code unik. Nomor HP diperlukan.
+                  Setiap pembeli akan mendapatkan QR code unik untuk tiketnya. Nomor HP diperlukan untuk konfirmasi pembayaran.
                 </p>
               </div>
 
               {buyers.map((buyer, index) => (
-                <div key={index} className="mb-6 p-4 border-2 border-gray-200 rounded bg-gray-50">
+                <div key={index} className="mb-6 p-4 border-2 border-gray-200 rounded bg-gray-50 relative shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
+                  
                   <div className="flex justify-between items-center mb-3">
-                    <h3 className="font-bold text-gray-700">Pembeli {index + 1}</h3>
+                    <h3 className="font-bold text-gray-700 flex items-center gap-2">
+                      <BiUser className="text-[#4a90e2]" />
+                      Pembeli {index + 1}
+                    </h3>
                     {buyers.length > 1 && (
                       <button
                         onClick={() => handleRemoveBuyer(index)}
@@ -951,40 +1061,88 @@ const ConcertPage = ({ user }) => {
 
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">Nama Lengkap *</label>
-                      <input
-                        type="text"
-                        value={buyer.name}
-                        onChange={(e) => handleBuyerChange(index, 'name', e.target.value)}
-                        className="w-full px-3 py-2 border-2 border-gray-200 rounded"
-                      />
+                      <label className="block text-sm font-medium text-gray-600 mb-1 flex items-center gap-1">
+                        <BiUser className="text-gray-500" />
+                        Nama Lengkap <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <BiUser className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="text"
+                          value={buyer.name}
+                          onChange={(e) => handleBuyerChange(index, 'name', e.target.value)}
+                          placeholder="Masukkan nama lengkap"
+                          className="w-full pl-10 pr-3 py-2 border-2 border-gray-200 rounded focus:outline-none focus:border-[#4a90e2] bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]"
+                          required
+                        />
+                      </div>
                     </div>
+
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">NIK (16 digit) *</label>
-                      <input
-                        type="text"
-                        value={buyer.nik}
-                        onChange={(e) => handleBuyerChange(index, 'nik', e.target.value.replace(/\D/g, '').slice(0, 16))}
-                        className="w-full px-3 py-2 border-2 border-gray-200 rounded"
-                      />
+                      <label className="block text-sm font-medium text-gray-600 mb-1 flex items-center gap-1">
+                        <BiIdCard className="text-gray-500" />
+                        NIK <span className="text-red-500">*</span> (16 digit)
+                      </label>
+                      <div className="relative">
+                        <BiIdCard className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="text"
+                          value={buyer.nik}
+                          onChange={(e) => handleBuyerChange(index, 'nik', e.target.value.replace(/\D/g, '').slice(0, 16))}
+                          placeholder="16 digit NIK"
+                          maxLength="16"
+                          className="w-full pl-10 pr-3 py-2 border-2 border-gray-200 rounded focus:outline-none focus:border-[#4a90e2] bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]"
+                          required
+                        />
+                      </div>
+                      {buyer.nik && buyer.nik.length < 16 && (
+                        <p className="text-xs text-red-500 mt-1 font-medium flex items-center gap-1">
+                          <BiError />
+                          NIK harus 16 digit
+                        </p>
+                      )}
                     </div>
+
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">Nomor HP *</label>
-                      <input
-                        type="tel"
-                        value={buyer.phone}
-                        onChange={(e) => handleBuyerChange(index, 'phone', e.target.value)}
-                        className="w-full px-3 py-2 border-2 border-gray-200 rounded"
-                      />
+                      <label className="block text-sm font-medium text-gray-600 mb-1 flex items-center gap-1">
+                        <BiPhone className="text-gray-500" />
+                        Nomor HP <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <BiPhone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="tel"
+                          value={buyer.phone}
+                          onChange={(e) => handleBuyerChange(index, 'phone', e.target.value)}
+                          placeholder="Contoh: 081234567890"
+                          className="w-full pl-10 pr-3 py-2 border-2 border-gray-200 rounded focus:outline-none focus:border-[#4a90e2] bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]"
+                          required
+                        />
+                      </div>
+                      {buyer.phone && !validatePhone(buyer.phone) && (
+                        <p className="text-xs text-red-500 mt-1 font-medium flex items-center gap-1">
+                          <BiError />
+                          Nomor HP tidak valid (gunakan 08xx atau 62xx)
+                        </p>
+                      )}
                     </div>
+
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">Alamat *</label>
-                      <textarea
-                        value={buyer.address}
-                        onChange={(e) => handleBuyerChange(index, 'address', e.target.value)}
-                        rows="2"
-                        className="w-full px-3 py-2 border-2 border-gray-200 rounded"
-                      />
+                      <label className="block text-sm font-medium text-gray-600 mb-1 flex items-center gap-1">
+                        <BiHome className="text-gray-500" />
+                        Alamat <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <BiHome className="absolute left-3 top-3 text-gray-400" />
+                        <textarea
+                          value={buyer.address}
+                          onChange={(e) => handleBuyerChange(index, 'address', e.target.value)}
+                          placeholder="Masukkan alamat lengkap"
+                          rows="2"
+                          className="w-full pl-10 pr-3 py-2 border-2 border-gray-200 rounded focus:outline-none focus:border-[#4a90e2] bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]"
+                          required
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -993,31 +1151,47 @@ const ConcertPage = ({ user }) => {
               {selectedTicketType && quantity > 1 && buyers.length < quantity && (
                 <button
                   onClick={handleAddBuyer}
-                  className="w-full mb-4 py-3 border-2 border-dashed border-[#4a90e2] text-[#4a90e2] rounded hover:bg-[#e6f0ff]"
+                  className="w-full mb-4 py-3 border-2 border-dashed border-[#4a90e2] text-[#4a90e2] rounded hover:bg-[#e6f0ff] transition-colors font-medium flex items-center justify-center gap-2"
                 >
-                  + Tambah Pembeli
+                  <BiPlus />
+                  <span>Tambah Pembeli</span>
                 </button>
               )}
 
               {error && (
-                <div className="mb-4 p-4 bg-red-50 border-2 border-red-200 rounded">
-                  <p className="text-sm text-red-600">{error}</p>
+                <div className="mb-4 p-4 bg-red-50 border-2 border-red-200 rounded flex items-start gap-3 shadow-[4px_4px_0px_0px_rgba(239,68,68,0.2)]">
+                  <BiError className="text-red-500 text-xl mt-0.5" />
+                  <div>
+                    <p className="font-medium text-red-800">Gagal membuat pesanan</p>
+                    <p className="text-sm text-red-600 mt-1">{error}</p>
+                  </div>
                 </div>
               )}
 
               <div className="flex space-x-3">
                 <button
                   onClick={() => setShowBuyerForm(false)}
-                  className="flex-1 py-3 border-2 border-gray-200 text-gray-700 rounded hover:bg-gray-50"
+                  className="flex-1 py-3 border-2 border-gray-200 text-gray-700 rounded hover:bg-gray-50 transition-colors font-medium shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] flex items-center justify-center gap-2"
                 >
-                  Batal
+                  <BiX />
+                  <span>Batal</span>
                 </button>
                 <button
                   onClick={createOrder}
                   disabled={loading}
-                  className="flex-1 py-3 bg-[#4a90e2] text-white rounded font-bold hover:bg-[#357abd] disabled:opacity-50"
+                  className="flex-1 py-3 bg-[#4a90e2] text-white rounded font-bold hover:bg-[#357abd] transition-colors disabled:opacity-50 border-2 border-[#357abd] shadow-[4px_4px_0px_0px_rgba(0,0,0,0.15)] flex items-center justify-center gap-2"
                 >
-                  {loading ? 'Memproses...' : 'Simpan & Lanjut'}
+                  {loading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                      <span>Memproses...</span>
+                    </>
+                  ) : (
+                    <>
+                      <BiCheck />
+                      <span>Simpan & Lanjut</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
