@@ -130,9 +130,10 @@ const PaymentPage = ({ user }) => {
   }, [order])
 
   // ============================================================
-  // DOUBLE GUARD: decrease_stock hanya boleh dipanggil 1x per order
+  // TRIPLE GUARD: decrease_stock hanya boleh dipanggil 1x per order
   // Guard 1: React state (stockAlreadyDecreased)
-  // Guard 2: kolom stock_decreased di database
+  // Guard 2 + 3: di dalam SQL function — cek kolom stock_decreased
+  //              dan atomic UPDATE WHERE stock_decreased = false
   // ============================================================
   const decreaseStockOnPayment = async (productId, ticketType, quantity) => {
     try {
@@ -142,41 +143,17 @@ const PaymentPage = ({ user }) => {
         return true
       }
 
-      // Guard 2: cek flag di database
-      const { data: orderCheck, error: checkError } = await supabase
-        .from('orders')
-        .select('stock_decreased')
-        .eq('id', orderId)
-        .single()
-
-      if (!checkError && orderCheck?.stock_decreased === true) {
-        console.warn('Guard 2 (DB flag): stock sudah dikurangi sebelumnya, skip.')
-        setStockAlreadyDecreased(true)
-        return true
-      }
-
-      // Set flag di DB dulu (atomic: hanya update jika masih false)
-      const { error: flagError } = await supabase
-        .from('orders')
-        .update({ stock_decreased: true })
-        .eq('id', orderId)
-        .eq('stock_decreased', false)
-
-      if (flagError) {
-        console.error('Error setting stock_decreased flag:', flagError)
-        return false
-      }
-
-      // Set React state
       setStockAlreadyDecreased(true)
 
-      // Baru panggil decrease_stock
-      console.log('Memanggil decrease_stock dengan:', { productId, ticketType, quantity })
+      // Panggil decrease_stock dengan order_id
+      // SQL function sendiri yang handle guard 2 & 3 secara atomic
+      console.log('Memanggil decrease_stock dengan:', { productId, ticketType, quantity, orderId })
       const { data, error } = await supabase
         .rpc('decrease_stock', {
           p_product_id: productId,
           p_ticket_type: ticketType,
-          p_quantity: quantity
+          p_quantity: quantity,
+          p_order_id: orderId   // <-- kirim order_id ke SQL untuk atomic guard
         })
 
       if (error) {
