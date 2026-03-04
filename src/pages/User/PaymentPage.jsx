@@ -65,6 +65,7 @@ const PaymentPage = ({ user }) => {
   const [emailError, setEmailError] = useState('')
   const [orderHistory, setOrderHistory] = useState([])
   const [updating, setUpdating] = useState(false)
+  const [stockInfo, setStockInfo] = useState(null)
   const { orderId } = useParams()
   const navigate = useNavigate()
 
@@ -125,6 +126,23 @@ const PaymentPage = ({ user }) => {
       return () => clearInterval(timer)
     }
   }, [order])
+
+  // Fungsi untuk cek stok
+  const checkStock = async (productId) => {
+    try {
+      const { data, error } = await supabase
+        .rpc('check_product_stock', {
+          p_product_id: productId
+        })
+      
+      if (error) throw error
+      setStockInfo(data)
+      return data
+    } catch (error) {
+      console.error('Error checking stock:', error)
+      return null
+    }
+  }
 
   const handleExpireOrder = async () => {
     if (!order || order.status !== 'pending' || updating) return
@@ -263,6 +281,11 @@ const PaymentPage = ({ user }) => {
       setOrder(data)
       setProducts(data.products)
       
+      // Cek stok produk
+      if (data.products) {
+        await checkStock(data.product_id)
+      }
+      
       const { data: ticketsData } = await supabase
         .from('tickets')
         .select('*')
@@ -312,7 +335,7 @@ const PaymentPage = ({ user }) => {
       return
     }
 
-    if (!window.confirm('Yakin ingin membatalkan pesanan?')) {
+    if (!window.confirm('Yakin ingin membatalkan pesanan? Stok tidak akan terpengaruh.')) {
       return
     }
 
@@ -465,10 +488,15 @@ const PaymentPage = ({ user }) => {
     try {
       console.log('💰 Processing payment success for order:', order.id)
       console.log('💰 Payment result:', result)
+      console.log('💰 Product ID:', order.product_id, 'Quantity:', order.quantity)
       
       setUpdating(true)
       
-      // Gunakan RPC function untuk update status (handle RLS automatically)
+      // Cek stok sebelum update
+      const stockBefore = await checkStock(order.product_id)
+      console.log('📦 Stock before payment:', stockBefore)
+      
+      // Gunakan RPC function untuk update status (akan otomatis kurangi stok)
       const { data, error } = await supabase
         .rpc('update_order_status_rls', {
           p_order_id: order.id,
@@ -482,6 +510,13 @@ const PaymentPage = ({ user }) => {
       }
 
       console.log('✅ Order status updated to paid via RPC')
+      console.log('✅ Stock reduced automatically by database function')
+      
+      // Cek stok setelah update
+      setTimeout(async () => {
+        const stockAfter = await checkStock(order.product_id)
+        console.log('📦 Stock after payment:', stockAfter)
+      }, 1000)
 
       // Kirim email sukses
       try {
@@ -496,10 +531,11 @@ const PaymentPage = ({ user }) => {
     } catch (error) {
       console.error('❌ Error in payment success handler:', error)
       
-      // Fallback: coba update langsung
+      // Fallback: coba update langsung dengan stock manual
       try {
         console.log('⚠️ Trying direct update as fallback...')
         
+        // Update order status
         const { error: directError } = await supabase
           .from('orders')
           .update({
@@ -516,12 +552,28 @@ const PaymentPage = ({ user }) => {
 
         if (directError) throw directError
         
+        // Kurangi stok manual
+        const { error: stockError } = await supabase
+          .from('products')
+          .update({ 
+            stock: stockInfo?.stock - order.quantity,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', order.product_id)
+          .gte('stock', order.quantity) // Pastikan stok cukup
+        
+        if (stockError) {
+          console.error('⚠️ Failed to reduce stock manually:', stockError)
+        } else {
+          console.log('✅ Stock reduced manually')
+        }
+        
         console.log('✅ Order status updated via direct update')
         navigate(`/payment-success/${order.id}`)
         
       } catch (fallbackError) {
         console.error('❌ Fallback also failed:', fallbackError)
-        alert('Pembayaran berhasil tetapi gagal memperbarui status. Silakan hubungi admin.\n\nOrder ID: ' + order.id + '\nError: ' + fallbackError.message)
+        alert(`Pembayaran berhasil tetapi gagal memperbarui status.\n\nOrder ID: ${order.id}\nError: ${fallbackError.message}\n\nSilakan hubungi admin dengan informasi ini.`)
       }
     } finally {
       setUpdating(false)
@@ -649,7 +701,7 @@ const PaymentPage = ({ user }) => {
               <>
                 <BiCheckCircle className="text-6xl text-green-500 mx-auto mb-4" />
                 <h2 className="text-2xl font-bold text-gray-800 mb-2">Pesanan Sudah Dibayar</h2>
-                <p className="text-gray-600 mb-6">Pesanan Anda sudah dalam status LUNAS.</p>
+                <p className="text-gray-600 mb-6">Pesanan Anda sudah dalam status LUNAS. Stok telah dikurangi.</p>
                 <button
                   onClick={() => navigate(`/payment-success/${order.id}`)}
                   className="px-6 py-3 bg-green-600 text-white rounded border-2 border-green-700 hover:bg-green-700 transition-colors font-medium shadow-[6px_6px_0px_0px_rgba(0,0,0,0.25)]"
@@ -661,13 +713,13 @@ const PaymentPage = ({ user }) => {
               <>
                 <BiXCircle className="text-6xl text-red-500 mx-auto mb-4" />
                 <h2 className="text-2xl font-bold text-gray-800 mb-2">Pesanan Dibatalkan</h2>
-                <p className="text-gray-600 mb-6">Pesanan Anda telah dibatalkan.</p>
+                <p className="text-gray-600 mb-6">Pesanan Anda telah dibatalkan. Stok tidak terpengaruh.</p>
               </>
             ) : (
               <>
                 <BiTimer className="text-6xl text-orange-500 mx-auto mb-4" />
                 <h2 className="text-2xl font-bold text-gray-800 mb-2">Pesanan Kadaluarsa</h2>
-                <p className="text-gray-600 mb-6">Waktu pembayaran telah habis.</p>
+                <p className="text-gray-600 mb-6">Waktu pembayaran telah habis. Stok tidak terpengaruh.</p>
               </>
             )}
             <button
@@ -734,6 +786,16 @@ const PaymentPage = ({ user }) => {
           <div className="mb-4 p-3 bg-green-50 border-2 border-green-200 shadow-[4px_4px_0px_0px_rgba(34,197,94,0.2)] flex items-center gap-2">
             <BiCheckCircle className="text-green-500 text-lg" />
             <p className="text-sm text-green-700 font-medium">Notifikasi telah dikirim ke {order.customer_email}</p>
+          </div>
+        )}
+
+        {/* Stock Info */}
+        {stockInfo && (
+          <div className="mb-4 p-3 bg-blue-50 border-2 border-blue-200 shadow-[4px_4px_0px_0px_rgba(74,144,226,0.2)] flex items-center gap-2">
+            <BiInfoCircle className="text-[#4a90e2] text-lg" />
+            <p className="text-sm text-[#4a90e2] font-medium">
+              Stok tersedia: <span className="font-bold">{stockInfo.stock}</span> tiket
+            </p>
           </div>
         )}
 
