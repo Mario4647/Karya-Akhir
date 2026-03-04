@@ -102,6 +102,7 @@ const ConcertPage = ({ user }) => {
   const [fetchError, setFetchError] = useState('')
   const [isLoadingProducts, setIsLoadingProducts] = useState(true)
   const [stockCheckResult, setStockCheckResult] = useState(null)
+  const [subscription, setSubscription] = useState(null)
   const navigate = useNavigate()
 
   const [iconPositions] = useState(() => {
@@ -119,18 +120,26 @@ const ConcertPage = ({ user }) => {
     return positions
   })
 
+  // Fetch products dengan error handling yang lebih baik
   const fetchProducts = useCallback(async () => {
     setIsLoadingProducts(true)
     setFetchError('')
     
     try {
+      console.log('📦 Fetching products...')
+      
       const { data, error } = await supabase
         .from('products')
         .select('*')
         .eq('is_active', true)
         .order('created_at', { ascending: false })
       
-      if (error) throw error
+      if (error) {
+        console.error('Error fetching products:', error)
+        throw error
+      }
+      
+      console.log('✅ Products fetched:', data?.length || 0)
       
       const processedData = data.map(product => {
         let ticket_types = product.ticket_types;
@@ -154,7 +163,7 @@ const ConcertPage = ({ user }) => {
         ticket_types = ticket_types.map(type => ({
           name: type.name || 'Reguler',
           price: parseFloat(type.price || product.price || 0),
-          stock: parseInt(type.stock || product.stock || 0),
+          stock: parseInt(type.stock || 0),
           description: type.description || ''
         }));
         
@@ -164,12 +173,11 @@ const ConcertPage = ({ user }) => {
         return {
           ...product,
           ticket_types: ticket_types,
-          stock: totalStock, // Update total stock
+          stock: totalStock,
           image_url: product.image_data || product.poster_url
         };
       })
       
-      console.log('✅ Products fetched:', processedData)
       setProducts(processedData || [])
       
       if (processedData && processedData.length > 0) {
@@ -179,39 +187,79 @@ const ConcertPage = ({ user }) => {
         }
       }
     } catch (error) {
-      console.error('Error fetching products:', error)
+      console.error('Error in fetchProducts:', error)
       setFetchError('Gagal memuat data event: ' + error.message)
     } finally {
       setIsLoadingProducts(false)
     }
   }, []);
 
+  // Setup realtime subscription
   useEffect(() => {
     fetchProducts()
     
-    // Subscribe ke perubahan produk untuk real-time update
-    const subscription = supabase
-      .channel('products_changes')
+    // Subscribe ke perubahan produk
+    const productsSubscription = supabase
+      .channel('products-realtime')
       .on('postgres_changes', 
-        { event: 'UPDATE', schema: 'public', table: 'products' }, 
+        { event: '*', schema: 'public', table: 'products' }, 
         (payload) => {
-          console.log('🔄 Product updated:', payload.new)
-          // Update produk yang berubah
-          setProducts(currentProducts => 
-            currentProducts.map(p => 
-              p.id === payload.new.id ? { ...p, ...payload.new } : p
-            )
-          )
-          // Update selected product jika perlu
-          if (selectedProduct?.id === payload.new.id) {
-            setSelectedProduct(prev => ({ ...prev, ...payload.new }))
+          console.log('🔄 Product changed:', payload.eventType, payload.new?.id)
+          
+          if (payload.eventType === 'INSERT') {
+            // Tambah produk baru
+            const newProduct = {
+              ...payload.new,
+              ticket_types: typeof payload.new.ticket_types === 'string' 
+                ? JSON.parse(payload.new.ticket_types) 
+                : payload.new.ticket_types || []
+            }
+            setProducts(prev => [newProduct, ...prev])
+          }
+          
+          if (payload.eventType === 'UPDATE') {
+            // Update produk yang ada
+            setProducts(prev => prev.map(p => 
+              p.id === payload.new.id 
+                ? { 
+                    ...p, 
+                    ...payload.new,
+                    ticket_types: typeof payload.new.ticket_types === 'string' 
+                      ? JSON.parse(payload.new.ticket_types) 
+                      : payload.new.ticket_types || []
+                  }
+                : p
+            ))
+            
+            // Update selected product jika perlu
+            if (selectedProduct?.id === payload.new.id) {
+              setSelectedProduct(prev => ({ 
+                ...prev, 
+                ...payload.new,
+                ticket_types: typeof payload.new.ticket_types === 'string' 
+                  ? JSON.parse(payload.new.ticket_types) 
+                  : payload.new.ticket_types || []
+              }))
+            }
+          }
+          
+          if (payload.eventType === 'DELETE') {
+            // Hapus produk
+            setProducts(prev => prev.filter(p => p.id !== payload.old.id))
+            if (selectedProduct?.id === payload.old.id) {
+              setSelectedProduct(products[0] || null)
+            }
           }
         }
       )
       .subscribe()
-
+    
+    setSubscription(productsSubscription)
+    
     return () => {
-      subscription.unsubscribe()
+      if (productsSubscription) {
+        supabase.removeChannel(productsSubscription)
+      }
     }
   }, [fetchProducts, selectedProduct])
 
@@ -262,7 +310,7 @@ const ConcertPage = ({ user }) => {
         .eq('is_active', true)
         .lte('valid_from', now)
         .gte('valid_until', now)
-        .single()
+        .maybeSingle()
 
       if (error || !data) {
         setPromoError('Kode promo tidak valid atau sudah kadaluarsa')
@@ -359,7 +407,6 @@ const ConcertPage = ({ user }) => {
 
   const checkStock = async (productId, ticketType, qty) => {
     try {
-      // Cek stok dari database langsung
       const { data, error } = await supabase
         .from('products')
         .select('stock, ticket_types')
@@ -368,7 +415,6 @@ const ConcertPage = ({ user }) => {
       
       if (error) throw error
       
-      // Cari stok tiket yang dipilih
       let availableStock = data.stock
       if (ticketType && data.ticket_types) {
         const types = typeof data.ticket_types === 'string' 
@@ -393,18 +439,15 @@ const ConcertPage = ({ user }) => {
   const createOrder = async () => {
     if (!validateBuyers()) return
 
-    // Rate limiting
-    const rateCheck = globalRateLimiter.check(user.id, 'create-order');
-    if (!rateCheck.allowed) {
-      setError(rateCheck.reason);
-      return;
+    if (!globalRateLimiter.check(user.id, 'create-order').allowed) {
+      setError('Terlalu banyak percobaan. Silakan tunggu.')
+      return
     }
 
     setLoading(true)
     setError('')
 
     try {
-      // Cek stok real-time sebelum order
       const stockCheck = await checkStock(
         selectedProduct.id, 
         selectedTicketType.name, 
@@ -415,17 +458,12 @@ const ConcertPage = ({ user }) => {
         throw new Error(`Stok tidak mencukupi. Tersedia: ${stockCheck.stock}`)
       }
 
-      // Generate order number
       const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
-      
-      // Set expiry time (60 menit)
       const expiryTime = new Date()
       expiryTime.setMinutes(expiryTime.getMinutes() + 60)
 
-      // Format nomor HP untuk Midtrans
       const formattedPhone = formatPhoneForMidtrans(buyers[0].phone)
 
-      // Siapkan data order
       const orderData = {
         order_number: orderNumber,
         user_id: user.id,
@@ -455,9 +493,6 @@ const ConcertPage = ({ user }) => {
         updated_at: new Date().toISOString()
       }
 
-      console.log('📦 Creating order:', orderData)
-
-      // Insert order
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert([orderData])
@@ -466,7 +501,6 @@ const ConcertPage = ({ user }) => {
 
       if (orderError) throw orderError
 
-      // Create tickets for each buyer
       const tickets = buyers.map((buyer, index) => ({
         product_id: selectedProduct.id,
         order_id: order.id,
