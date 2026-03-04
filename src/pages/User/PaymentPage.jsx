@@ -38,10 +38,8 @@ import {
   BiMailSend
 } from 'react-icons/bi'
 
-// Konfigurasi Midtrans
 const MIDTRANS_CLIENT_KEY = 'Mid-client-PKxh7PoyLs2QwsBh'
 
-// Array icon untuk background dekoratif
 const decorativeIcons = [
   BiMusic, BiMicrophone, BiCamera, BiVideo, BiStar, BiHeart,
   BiDiamond, BiCrown, BiRocket, BiPalette, BiBrush, BiPaint,
@@ -70,7 +68,6 @@ const PaymentPage = ({ user }) => {
   const { orderId } = useParams()
   const navigate = useNavigate()
 
-  // Generate icon positions
   const [iconPositions] = useState(() => {
     const positions = []
     for (let i = 0; i < 30; i++) {
@@ -86,7 +83,6 @@ const PaymentPage = ({ user }) => {
     return positions
   })
 
-  // Generate icon untuk tombol
   const [buttonIconPositions] = useState(() => {
     const positions = []
     for (let i = 0; i < 20; i++) {
@@ -130,7 +126,6 @@ const PaymentPage = ({ user }) => {
     }
   }, [order])
 
-  // Handle expired order
   const handleExpireOrder = async () => {
     if (!order || order.status !== 'pending' || updating) return
     
@@ -139,10 +134,9 @@ const PaymentPage = ({ user }) => {
       console.log('⏰ Order expired, updating status...')
       
       const { data, error } = await supabase
-        .rpc('update_order_status', {
+        .rpc('update_order_status_rls', {
           p_order_id: order.id,
-          p_new_status: 'expired',
-          p_user_id: user.id
+          p_new_status: 'expired'
         })
 
       if (error) throw error
@@ -161,7 +155,6 @@ const PaymentPage = ({ user }) => {
     }
   }
 
-  // Kirim email notifikasi
   const sendPaymentEmail = async (orderData, productsData, ticketsData) => {
     try {
       if (emailSent) return
@@ -190,6 +183,7 @@ const PaymentPage = ({ user }) => {
             email_sent_at: new Date().toISOString()
           })
           .eq('id', orderData.id)
+          .eq('user_id', user.id)
       } else {
         console.error('❌ Failed to send email:', result.error)
         setEmailError(result.error)
@@ -269,7 +263,6 @@ const PaymentPage = ({ user }) => {
       setOrder(data)
       setProducts(data.products)
       
-      // Fetch tickets
       const { data: ticketsData } = await supabase
         .from('tickets')
         .select('*')
@@ -277,7 +270,6 @@ const PaymentPage = ({ user }) => {
       
       setTickets(ticketsData || [])
       
-      // Fetch order history
       const { data: historyData } = await supabase
         .from('order_history')
         .select('*')
@@ -286,12 +278,10 @@ const PaymentPage = ({ user }) => {
       
       setOrderHistory(historyData || [])
       
-      // Set promo applied jika ada
       if (data.promo_code_id) {
         setPromoApplied(data.promo_codes)
       }
       
-      // Kirim email jika belum dan status masih pending
       if (!data.email_notification_sent && data.status === 'pending') {
         await sendPaymentEmail(data, data.products, ticketsData)
       }
@@ -317,7 +307,6 @@ const PaymentPage = ({ user }) => {
   const handleCancelOrder = async () => {
     if (!order || order.status !== 'pending') return
 
-    // Rate limiting
     if (!globalRateLimiter.check(user.id, 'cancel').allowed) {
       setError('Terlalu banyak percobaan. Silakan tunggu.')
       return
@@ -334,10 +323,9 @@ const PaymentPage = ({ user }) => {
       console.log('🔄 Cancelling order:', order.id)
       
       const { data, error } = await supabase
-        .rpc('update_order_status', {
+        .rpc('update_order_status_rls', {
           p_order_id: order.id,
-          p_new_status: 'cancelled',
-          p_user_id: user.id
+          p_new_status: 'cancelled'
         })
 
       if (error) throw error
@@ -480,12 +468,11 @@ const PaymentPage = ({ user }) => {
       
       setUpdating(true)
       
-      // Update order status menggunakan RPC
+      // Gunakan RPC function untuk update status (handle RLS automatically)
       const { data, error } = await supabase
-        .rpc('update_order_status', {
+        .rpc('update_order_status_rls', {
           p_order_id: order.id,
-          p_new_status: 'paid',
-          p_user_id: user.id
+          p_new_status: 'paid'
         })
 
       if (error) throw error
@@ -496,7 +483,7 @@ const PaymentPage = ({ user }) => {
 
       console.log('✅ Order status updated to paid via RPC')
 
-      // Kirim email sukses (jangan blocking)
+      // Kirim email sukses
       try {
         const emailData = formatEmailData(order, products, tickets)
         await sendEmail('paymentSuccess', emailData)
@@ -504,7 +491,6 @@ const PaymentPage = ({ user }) => {
         console.error('❌ Error sending success email:', emailError)
       }
 
-      // Redirect ke halaman sukses
       navigate(`/payment-success/${order.id}`)
 
     } catch (error) {
@@ -535,7 +521,7 @@ const PaymentPage = ({ user }) => {
         
       } catch (fallbackError) {
         console.error('❌ Fallback also failed:', fallbackError)
-        alert('Pembayaran berhasil tetapi gagal memperbarui status. Silakan hubungi admin.\n\nOrder ID: ' + order.id)
+        alert('Pembayaran berhasil tetapi gagal memperbarui status. Silakan hubungi admin.\n\nOrder ID: ' + order.id + '\nError: ' + fallbackError.message)
       }
     } finally {
       setUpdating(false)
@@ -622,9 +608,7 @@ const PaymentPage = ({ user }) => {
           <div className="bg-white rounded border-2 border-gray-200 shadow-[12px_12px_0px_0px_rgba(0,0,0,0.2)] p-8 text-center max-w-md mx-auto">
             <BiError className="text-6xl text-red-400 mx-auto mb-4" />
             <h2 className="text-2xl font-bold text-gray-800 mb-2">Pesanan Tidak Ditemukan</h2>
-            <p className="text-gray-600 mb-6">
-              Maaf, kami tidak dapat menemukan data pesanan Anda.
-            </p>
+            <p className="text-gray-600 mb-6">Maaf, kami tidak dapat menemukan data pesanan Anda.</p>
             <button
               onClick={() => navigate('/concerts')}
               className="px-6 py-3 bg-[#4a90e2] text-white rounded border-2 border-[#357abd] hover:bg-[#357abd] transition-colors font-medium shadow-[6px_6px_0px_0px_rgba(0,0,0,0.25)] inline-flex items-center gap-2"
@@ -700,7 +684,6 @@ const PaymentPage = ({ user }) => {
 
   return (
     <div className="min-h-screen bg-[#faf7f2] relative overflow-hidden">
-      {/* Decorative Icons Background */}
       <div className="absolute inset-0 pointer-events-none">
         {iconPositions.map((pos, i) => (
           <div
@@ -733,7 +716,7 @@ const PaymentPage = ({ user }) => {
           </div>
           <span className={`text-sm font-medium ${
             apiStatus.includes('terhubung') ? 'text-green-600' : 
-            apiStatus.includes('tidak') ? 'text-red-600' : 'text-yellow-600
+            apiStatus.includes('tidak') ? 'text-red-600' : 'text-yellow-600'
           }`}>
             {apiStatus}
           </span>
@@ -750,9 +733,7 @@ const PaymentPage = ({ user }) => {
         {emailSent && !emailLoading && (
           <div className="mb-4 p-3 bg-green-50 border-2 border-green-200 shadow-[4px_4px_0px_0px_rgba(34,197,94,0.2)] flex items-center gap-2">
             <BiCheckCircle className="text-green-500 text-lg" />
-            <p className="text-sm text-green-700 font-medium">
-              Notifikasi telah dikirim ke {order.customer_email}
-            </p>
+            <p className="text-sm text-green-700 font-medium">Notifikasi telah dikirim ke {order.customer_email}</p>
           </div>
         )}
 
@@ -805,9 +786,7 @@ const PaymentPage = ({ user }) => {
                 >
                   <BiCopy className="text-lg" />
                 </button>
-                {copied && (
-                  <span className="text-xs text-green-500">Tersalin!</span>
-                )}
+                {copied && <span className="text-xs text-green-500">Tersalin!</span>}
               </div>
             </div>
 
@@ -867,7 +846,6 @@ const PaymentPage = ({ user }) => {
         {order.additional_buyers && order.additional_buyers.length > 0 && (
           <div className="bg-white rounded border-2 border-gray-200 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.15)] p-6 mb-6">
             <h2 className="text-xl font-bold text-gray-800 mb-4">Pembeli Lainnya</h2>
-            
             <div className="space-y-3">
               {order.additional_buyers.map((buyer, index) => (
                 <div key={index} className="bg-gray-50 p-4 rounded border-2 border-gray-200 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
@@ -896,7 +874,6 @@ const PaymentPage = ({ user }) => {
 
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-4">
-          {/* Cancel Button */}
           <div className="flex-1 relative overflow-hidden rounded border-2 border-red-200 shadow-[6px_6px_0px_0px_rgba(239,68,68,0.25)]">
             <button
               onClick={handleCancelOrder}
@@ -917,7 +894,6 @@ const PaymentPage = ({ user }) => {
             </button>
           </div>
 
-          {/* Pay Button */}
           <div className="flex-1 relative overflow-hidden rounded border-2 border-[#357abd] shadow-[8px_8px_0px_0px_rgba(0,0,0,0.3)]">
             <button
               onClick={handlePayNow}
