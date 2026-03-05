@@ -632,10 +632,10 @@ const Form = () => {
                 <div className="max-w-7xl mx-auto">
                     <div className="text-center mb-8">
                         <h2 className="text-2xl md:text-3xl font-bold text-gray-800 leading-tight">
-                           Selamat Datang Di Website Management Keuangan Pribadi
+                           Selamat Datang Di Website Penjualan Tiket Konser
                         </h2>
                         <p className="text-base md:text-lg text-gray-600 mt-2">
-                            Daftar dan Login untuk menggunakan fitur management keuangan 
+                            Daftar dan Login untuk membeli tiket
                         </p>
                         <div className="mt-4">
                             <BiMoney className="text-5xl text-[#4a90e2] animate-pulse mx-auto" />
@@ -1092,10 +1092,10 @@ const Form = () => {
 
                                 <div className="text-center mt-8 pt-6 border-t-2 border-gray-200">
                                     <p className="text-sm text-gray-600">
-                                        © {new Date().getFullYear()} Karya Akhir Procommit 2025
+                                        © {new Date().getFullYear()} Kazuyaa 2026
                                         <span className="block text-xs text-gray-500 mt-1">
                                             <BiShield className="inline mr-1" />
-                                            Sistem melacak device untuk keamanan akun Anda
+                                            Sistem mengenkripsi data untuk keamanan akun Anda
                                         </span>
                                     </p>
                                 </div>
