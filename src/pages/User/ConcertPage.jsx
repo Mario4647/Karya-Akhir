@@ -356,35 +356,19 @@ const ConcertPage = ({ user }) => {
 
     try {
       // ============================================================
-      // PERBAIKAN UTAMA: check_and_lock_stock hanya MENGECEK stok,
-      // TIDAK mengurangi stok. Stok hanya berkurang saat payment sukses.
+      // CEK STOK LANGSUNG DI JS - tidak pakai RPC untuk menghindari
+      // error format ticket_types di database.
+      // Data ticket_types sudah ada di selectedTicketType dari state React.
+      // Stok hanya BENAR-BENAR berkurang di DB saat payment sukses.
       // ============================================================
-      console.log('Checking stock availability for:', {
-        product_id: selectedProduct.id,
-        ticket_type: selectedTicketType.name,
-        quantity: quantity
-      });
+      const currentStock = selectedTicketType?.stock ?? 0
 
-      const { data: stockCheck, error: stockError } = await supabase
-        .rpc('check_and_lock_stock', {
-          p_product_id: selectedProduct.id,
-          p_ticket_type: selectedTicketType.name,
-          p_quantity: quantity
-        })
-
-      console.log('Stock check result:', stockCheck);
-
-      if (stockError) {
-        console.error('Stock check error:', stockError);
-        throw new Error('Gagal memeriksa stok: ' + stockError.message);
+      if (currentStock <= 0) {
+        throw new Error('Tiket sudah habis')
       }
 
-      if (!stockCheck || !stockCheck.success) {
-        throw new Error(stockCheck?.message || 'Gagal memeriksa stok');
-      }
-
-      if (!stockCheck.available) {
-        throw new Error(stockCheck.message || 'Stok tidak mencukupi');
+      if (currentStock < quantity) {
+        throw new Error(`Stok tidak mencukupi. Tersisa: ${currentStock} tiket`)
       }
 
       // Stok tersedia — lanjut buat order (stok BELUM dikurangi)
