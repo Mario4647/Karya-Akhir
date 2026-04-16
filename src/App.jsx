@@ -76,8 +76,9 @@ function App() {
     <>
       <Routes>
         {/* ========== PUBLIC ROUTES (TIDAK PERLU PROTECTED ROUTE) ========== */}
-        <Route path="/auth" element={<Form />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
+<Route path="/auth" element={<Form />} />
+<Route path="/reset-password" element={<ResetPassword />} />
+<Route path="/user/pip" element={<CekPIP />} />
 
         {/* ========== TIKET CONCERT ROUTES ========== */}
         
@@ -234,11 +235,7 @@ function App() {
           </ProtectedRoute>
         } />
         
-        <Route path="/user/pip" element={
-          <ProtectedRoute allowedRoles={['user', 'user-raport', 'admin']}>
-            <CekPIP />
-          </ProtectedRoute>
-        } />
+    
 
         {/* Default route */}
         <Route
