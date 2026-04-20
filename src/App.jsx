@@ -28,6 +28,7 @@ import AdminSearchHistory from "./pencarian/pip/AdminSearchHistory";
 import CekPIP from "./user/pip/CekPIP";
 import UserTripDashboard from "./triplist/UserTripDashboard";
 import DDOS from "./pages/DDOS/DDOS";
+import DapodikSyncPage from "./pages/Admin/DapodikSyncPage";
 
 // Import komponen untuk penjualan tiket konser
 import ConcertPage from "./pages/User/ConcertPage";
@@ -178,6 +179,12 @@ function App() {
         <Route path="/dapodik" element={
           <ProtectedRoute allowedRoles={['admin']}>
             <AdminDapodik />
+          </ProtectedRoute>
+        } />
+
+        <Route path="/admin/dapodik" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <DapodikSyncPage />
           </ProtectedRoute>
         } />
         
