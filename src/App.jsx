@@ -29,6 +29,10 @@ import CekPIP from "./user/pip/CekPIP";
 import UserTripDashboard from "./triplist/UserTripDashboard";
 import DDOS from "./pages/DDOS/DDOS";
 import DapodikSyncPage from "./pages/Admin/DapodikSyncPage";
+import AkunTerkunci       from "./pages/AkunTerkunci";
+import AdminAccountLocks  from "./pages/Admin/AdminAccountLocks";
+
+
 
 // Import komponen untuk penjualan tiket konser
 import ConcertPage from "./pages/User/ConcertPage";
@@ -80,6 +84,7 @@ function App() {
 <Route path="/auth" element={<Form />} />
 <Route path="/reset-password" element={<ResetPassword />} />
 <Route path="/user/pip" element={<CekPIP />} />
+        <Route path="/akun-terkunci" element={<AkunTerkunci />} />
 
         {/* ========== TIKET CONCERT ROUTES ========== */}
         
@@ -156,6 +161,11 @@ function App() {
 <Route path="/ddos" element={
   <ProtectedRoute allowedRoles={['user-raport', 'admin']}>
     <DDOS />
+  </ProtectedRoute>
+} />
+        <Route path="/admin/account-locks" element={
+  <ProtectedRoute allowedRoles={['admin']}>
+    <AdminAccountLocks />
   </ProtectedRoute>
 } />
         <Route path="/dataguru" element={
