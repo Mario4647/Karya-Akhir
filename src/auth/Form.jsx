@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useDeviceFingerprint } from "../hooks/useDeviceFingerprint";
 import { banService } from "../services/banService";
 import BanPopup from "../components/bans/BanPopup";
+import AccountLockPopup from '../components/locks/AccountLockPopup';
 import { withoutAuth } from "../authMiddleware";
 import { globalRateLimiter, validateEmail, sanitizeInput } from "../utils/security";
 import {
@@ -64,7 +65,8 @@ const Form = () => {
     const [showBanPopup, setShowBanPopup] = useState(false);
     const [isCheckingBan, setIsCheckingBan] = useState(true);
     const [deviceTracked, setDeviceTracked] = useState(false);
-    
+    const [showLockPopup,  setShowLockPopup]  = useState(false);
+    const [loggedInUserId, setLoggedInUserId] = useState(null);
     const navigate = useNavigate();
     const { fingerprint, deviceInfo, ipAddress, isReady } = useDeviceFingerprint();
 
@@ -462,21 +464,28 @@ const Form = () => {
                 console.log('✅ User logged in successfully:', authData.user.email);
                 
                 setTimeout(() => {
-                    setSubmitSuccess(false);
-                    if (!profileError && profile) {
-                        if (profile.roles === 'admin') {
-                            navigate("/admin");
-                        } else if (profile.roles === 'admin-event') {
-                            navigate("/admin/concert-dashboard");
-                        } else if (profile.roles === 'user-raport') {
-                            navigate("/dashboard-user");
-                        } else {
-                            navigate("/concerts");
-                        }
-                    } else {
-                        navigate("/concerts");
-                    }
-                }, 1500);
+    setSubmitSuccess(false);
+    if (!profileError && profile) {
+        if (profile.roles === 'admin') {
+            navigate("/admin");
+        } else if (profile.roles === 'admin-event') {
+            navigate("/admin/concert-dashboard");
+        } else if (profile.roles === 'user-raport') {
+            if (profile.account_locked) {
+                // Sudah dikunci sebelumnya → langsung ke halaman terkunci
+                navigate("/akun-terkunci", { replace: true });
+            } else {
+                // Belum dikunci → tampilkan popup di halaman ini
+                setLoggedInUserId(authData.user.id);
+                setShowLockPopup(true);
+            }
+        } else {
+            navigate("/concerts");
+        }
+    } else {
+        navigate("/concerts");
+    }
+}, 1500);
             }
         } catch (error) {
             console.error("Sign In Error:", error);
@@ -617,6 +626,13 @@ const Form = () => {
                 />
             )}
 
+
+          {showLockPopup && loggedInUserId && (
+    <AccountLockPopup
+        userId={loggedInUserId}
+        onLocked={() => navigate('/akun-terkunci', { replace: true })}
+    />
+)}
             {/* Loading overlay saat checking ban */}
             {isCheckingBan && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-40">
