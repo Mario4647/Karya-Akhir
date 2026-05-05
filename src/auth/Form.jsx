@@ -638,8 +638,8 @@ const Form = () => {
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-40">
                     <div className="bg-white rounded-xl p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.2)] border-2 border-gray-200 flex flex-col items-center">
                         <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#4a90e2] border-t-transparent mb-4"></div>
-                        <p className="text-gray-700 font-medium">Memeriksa status device...</p>
-                        <p className="text-sm text-gray-500 mt-1">Mohon tunggu sebentar</p>
+                        <p className="text-gray-700 font-medium">Memeriksa status device..</p>
+                        <p className="text-sm text-gray-500 mt-1">Mohon tunggu sebentar.</p>
                     </div>
                 </div>
             )}
