@@ -22,6 +22,22 @@ const AdminSiswa = () => {
   const tableContainerRef = useRef(null);
   const navigate = useNavigate();
 
+  // State untuk filter
+  const [filters, setFilters] = useState({
+    layakPip: {
+      ya: false,
+      tidak: false
+    },
+    kelas: {},
+    jenisKelamin: {
+      l: false,
+      p: false
+    }
+  });
+
+  // Daftar kelas unik dari data
+  const [kelasOptions, setKelasOptions] = useState([]);
+
   // Daftar kolom dari Excel
   const columns = [
     { key: 'no', header: 'No', width: '60px' },
@@ -96,6 +112,24 @@ const AdminSiswa = () => {
     checkAdminAccess();
     fetchSiswaData();
   }, []);
+
+  useEffect(() => {
+    // Update daftar kelas ketika data siswa berubah
+    if (siswaData.length > 0) {
+      const uniqueKelas = [...new Set(siswaData.map(s => s.rombel).filter(k => k && k !== ''))].sort();
+      setKelasOptions(uniqueKelas);
+      
+      // Inisialisasi filter kelas (semua false)
+      const initialKelasFilter = {};
+      uniqueKelas.forEach(kelas => {
+        initialKelasFilter[kelas] = false;
+      });
+      setFilters(prev => ({
+        ...prev,
+        kelas: initialKelasFilter
+      }));
+    }
+  }, [siswaData]);
 
   const checkAdminAccess = async () => {
     try {
@@ -197,6 +231,112 @@ const AdminSiswa = () => {
       setLoading(false);
     }
   };
+
+  // Fungsi untuk menangani perubahan filter
+  const handleFilterChange = (filterType, value) => {
+    setFilters(prev => {
+      if (filterType === 'layakPip') {
+        return {
+          ...prev,
+          layakPip: {
+            ...prev.layakPip,
+            [value]: !prev.layakPip[value]
+          }
+        };
+      } else if (filterType === 'jenisKelamin') {
+        return {
+          ...prev,
+          jenisKelamin: {
+            ...prev.jenisKelamin,
+            [value]: !prev.jenisKelamin[value]
+          }
+        };
+      } else if (filterType === 'kelas') {
+        return {
+          ...prev,
+          kelas: {
+            ...prev.kelas,
+            [value]: !prev.kelas[value]
+          }
+        };
+      }
+      return prev;
+    });
+    setCurrentPage(1); // Reset ke halaman pertama saat filter berubah
+  };
+
+  // Fungsi reset semua filter
+  const resetFilters = () => {
+    const resetKelasFilter = {};
+    kelasOptions.forEach(kelas => {
+      resetKelasFilter[kelas] = false;
+    });
+    
+    setFilters({
+      layakPip: {
+        ya: false,
+        tidak: false
+      },
+      kelas: resetKelasFilter,
+      jenisKelamin: {
+        l: false,
+        p: false
+      }
+    });
+    setSearchTerm('');
+    setCurrentPage(1);
+  };
+
+  // Filter data berdasarkan semua filter yang dipilih
+  const filteredSiswa = siswaData.filter(siswa => {
+    // Filter berdasarkan nama (search)
+    let matchSearch = true;
+    if (searchTerm) {
+      matchSearch = siswa.nama?.toLowerCase().includes(searchTerm.toLowerCase());
+    }
+    
+    // Filter berdasarkan Layak PIP
+    let matchPip = true;
+    const pipYaSelected = filters.layakPip.ya;
+    const pipTidakSelected = filters.layakPip.tidak;
+    
+    if (pipYaSelected || pipTidakSelected) {
+      const isPipYa = siswa.layak_pip === 'Ya';
+      if (pipYaSelected && pipTidakSelected) {
+        // Jika keduanya dipilih, tampilkan semua
+        matchPip = true;
+      } else if (pipYaSelected) {
+        matchPip = isPipYa;
+      } else if (pipTidakSelected) {
+        matchPip = !isPipYa || siswa.layak_pip !== 'Ya';
+      }
+    }
+    
+    // Filter berdasarkan Jenis Kelamin
+    let matchJk = true;
+    const jkLSelected = filters.jenisKelamin.l;
+    const jkPSelected = filters.jenisKelamin.p;
+    
+    if (jkLSelected || jkPSelected) {
+      if (jkLSelected && jkPSelected) {
+        matchJk = true;
+      } else if (jkLSelected) {
+        matchJk = siswa.jk === 'L';
+      } else if (jkPSelected) {
+        matchJk = siswa.jk === 'P';
+      }
+    }
+    
+    // Filter berdasarkan Kelas (Rombel)
+    let matchKelas = true;
+    const selectedKelas = Object.keys(filters.kelas).filter(k => filters.kelas[k] === true);
+    
+    if (selectedKelas.length > 0) {
+      matchKelas = selectedKelas.includes(siswa.rombel);
+    }
+    
+    return matchSearch && matchPip && matchJk && matchKelas;
+  });
 
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
@@ -401,11 +541,6 @@ const AdminSiswa = () => {
     }
   };
 
-  // Filter data berdasarkan pencarian NAMA
-  const filteredSiswa = siswaData.filter(siswa => {
-    return siswa.nama?.toLowerCase().includes(searchTerm.toLowerCase());
-  });
-
   // Pagination logic
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
@@ -551,7 +686,7 @@ const AdminSiswa = () => {
             </div>
 
             {/* Search and Controls */}
-            <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex flex-col md:flex-row gap-4 mb-4">
               <div className="flex-1 relative">
                 <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">🔍</span>
                 <input
@@ -583,6 +718,162 @@ const AdminSiswa = () => {
                 </select>
               </div>
             </div>
+
+            {/* Filter Section */}
+            <div className="bg-gradient-to-r from-gray-50 to-blue-50 rounded-xl p-5 border border-gray-200">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                  <span className="text-lg">🔍</span>
+                  Filter Data
+                </h3>
+                <button
+                  onClick={resetFilters}
+                  className="text-sm text-red-600 hover:text-red-800 flex items-center gap-1 px-3 py-1 rounded-lg hover:bg-red-50 transition-colors"
+                >
+                  <span>🔄</span>
+                  Reset Filter
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Filter Layak PIP */}
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                    <span className="text-orange-600">✅</span>
+                    Layak PIP
+                  </h4>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer hover:bg-orange-50 p-2 rounded-lg transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={filters.layakPip.ya}
+                        onChange={() => handleFilterChange('layakPip', 'ya')}
+                        className="w-4 h-4 text-orange-600 rounded border-gray-300 focus:ring-orange-500"
+                      />
+                      <span className="text-sm text-gray-700">Ya (Layak PIP)</span>
+                      <span className="text-xs text-gray-500 ml-auto">
+                        ({siswaData.filter(s => s.layak_pip === 'Ya').length})
+                      </span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer hover:bg-orange-50 p-2 rounded-lg transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={filters.layakPip.tidak}
+                        onChange={() => handleFilterChange('layakPip', 'tidak')}
+                        className="w-4 h-4 text-gray-600 rounded border-gray-300 focus:ring-orange-500"
+                      />
+                      <span className="text-sm text-gray-700">Tidak Layak PIP</span>
+                      <span className="text-xs text-gray-500 ml-auto">
+                        ({siswaData.filter(s => s.layak_pip !== 'Ya' || !s.layak_pip).length})
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Filter Jenis Kelamin */}
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                    <span className="text-blue-600">👥</span>
+                    Jenis Kelamin
+                  </h4>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer hover:bg-blue-50 p-2 rounded-lg transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={filters.jenisKelamin.l}
+                        onChange={() => handleFilterChange('jenisKelamin', 'l')}
+                        className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700">Laki-laki</span>
+                      <span className="text-xs text-gray-500 ml-auto">
+                        ({siswaData.filter(s => s.jk === 'L').length})
+                      </span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer hover:bg-pink-50 p-2 rounded-lg transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={filters.jenisKelamin.p}
+                        onChange={() => handleFilterChange('jenisKelamin', 'p')}
+                        className="w-4 h-4 text-pink-600 rounded border-gray-300 focus:ring-pink-500"
+                      />
+                      <span className="text-sm text-gray-700">Perempuan</span>
+                      <span className="text-xs text-gray-500 ml-auto">
+                        ({siswaData.filter(s => s.jk === 'P').length})
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Filter Kelas (Rombel) */}
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                    <span className="text-green-600">🏫</span>
+                    Kelas (Rombel)
+                  </h4>
+                  <div className="max-h-48 overflow-y-auto space-y-1 pr-2">
+                    {kelasOptions.map(kelas => (
+                      <label key={kelas} className="flex items-center gap-2 cursor-pointer hover:bg-green-50 p-2 rounded-lg transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={filters.kelas[kelas] || false}
+                          onChange={() => handleFilterChange('kelas', kelas)}
+                          className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500"
+                        />
+                        <span className="text-sm text-gray-700">{kelas}</span>
+                        <span className="text-xs text-gray-500 ml-auto">
+                          ({siswaData.filter(s => s.rombel === kelas).length})
+                        </span>
+                      </label>
+                    ))}
+                    {kelasOptions.length === 0 && (
+                      <p className="text-sm text-gray-500 italic">Tidak ada data kelas</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Active Filters Summary */}
+              {(filters.layakPip.ya || filters.layakPip.tidak || 
+                filters.jenisKelamin.l || filters.jenisKelamin.p || 
+                Object.values(filters.kelas).some(v => v === true) ||
+                searchTerm) && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="text-xs text-gray-600 mb-2">Filter aktif:</div>
+                  <div className="flex flex-wrap gap-2">
+                    {searchTerm && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-md text-xs">
+                        🔍 Pencarian: "{searchTerm}"
+                      </span>
+                    )}
+                    {filters.layakPip.ya && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-800 rounded-md text-xs">
+                        ✅ Layak PIP
+                      </span>
+                    )}
+                    {filters.layakPip.tidak && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-800 rounded-md text-xs">
+                        ❌ Tidak Layak PIP
+                      </span>
+                    )}
+                    {filters.jenisKelamin.l && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-md text-xs">
+                        👨 Laki-laki
+                      </span>
+                    )}
+                    {filters.jenisKelamin.p && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-pink-100 text-pink-800 rounded-md text-xs">
+                        👩 Perempuan
+                      </span>
+                    )}
+                    {Object.keys(filters.kelas).filter(k => filters.kelas[k]).map(kelas => (
+                      <span key={kelas} className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 rounded-md text-xs">
+                        🏫 {kelas}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Table Section */}
@@ -602,7 +893,7 @@ const AdminSiswa = () => {
             <div 
               className="overflow-x-auto rounded-lg border border-gray-200" 
               ref={tableContainerRef}
-              style={{ maxHeight: 'calc(100vh - 300px)' }}
+              style={{ maxHeight: 'calc(100vh - 400px)' }}
             >
               <table className="w-full min-w-max">
                 <thead className="bg-gray-50">
@@ -667,11 +958,21 @@ const AdminSiswa = () => {
               
               {filteredSiswa.length === 0 && (
                 <div className="text-center py-16">
-                  <div className="text-5xl text-gray-300 mb-4">👨‍🎓</div>
+                  <div className="text-5xl text-gray-300 mb-4">🔍</div>
                   <p className="text-gray-600 text-lg mb-2">Tidak ada data siswa</p>
                   <p className="text-sm text-gray-500">
-                    {searchTerm ? `Tidak ditemukan siswa dengan nama "${searchTerm}"` : 'Klik tombol "Import Excel" untuk menambahkan data'}
+                    {searchTerm || Object.values(filters).some(f => 
+                      typeof f === 'object' ? Object.values(f).some(v => v === true) : false
+                    ) 
+                      ? 'Tidak ditemukan siswa yang sesuai dengan filter yang dipilih'
+                      : 'Klik tombol "Import Excel" untuk menambahkan data'}
                   </p>
+                  <button
+                    onClick={resetFilters}
+                    className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm"
+                  >
+                    Reset Filter
+                  </button>
                 </div>
               )}
             </div>
