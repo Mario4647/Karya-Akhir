@@ -648,10 +648,10 @@ const Form = () => {
                 <div className="max-w-7xl mx-auto">
                     <div className="text-center mb-8">
                         <h2 className="text-2xl md:text-3xl font-bold text-gray-800 leading-tight">
-                           Selamat Datang Di Website Penjualan Tiket Konser
+                           Selamat Datang Di Website Mayonaise
                         </h2>
                         <p className="text-base md:text-lg text-gray-600 mt-2">
-                            Daftar dan Login untuk membeli tiket
+                            Daftar dan Login untuk mengakses website
                         </p>
                         <div className="mt-4">
                             <BiMoney className="text-5xl text-[#4a90e2] animate-pulse mx-auto" />
