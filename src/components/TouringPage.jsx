@@ -112,7 +112,12 @@ export default function TouringPage() {
   // ─── STATE ──────────────────────────────────────────────────────────────────
   const [session, setSession] = useState(null);
   const [checkpoints, setCheckpoints] = useState(DEFAULT_CHECKPOINTS);
-  const [transport, setTransport] = useState({ transport_type: "motor", plate_number: "", driver_name: "", fuel_liters: 5 });
+  const [transport, setTransport] = useState({ 
+    transport_type: "motor", 
+    plate_number: "", 
+    driver_name: "", 
+    fuel_liters: 5 
+  });
   const [currentLocation, setCurrentLocation] = useState({ lat: -7.7200, lng: 109.9084 });
   const [sessionStatus, setSessionStatus] = useState("pending");
   const [isTracking, setIsTracking] = useState(false);
@@ -121,50 +126,64 @@ export default function TouringPage() {
   const [selectedCheckpoint, setSelectedCheckpoint] = useState(null);
   const [showSharePanel, setShowSharePanel] = useState(false);
   const [sessionCode, setSessionCode] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("map");
   const [showSettings, setShowSettings] = useState(true);
   const [editingCheckpoint, setEditingCheckpoint] = useState(null);
   const [editForm, setEditForm] = useState({});
-  const [manualDelay, setManualDelay] = useState({ type: "late", minutes: 10 });
+  const [error, setError] = useState(null);
   
   const watchIdRef = useRef(null);
   const notificationIdRef = useRef(0);
   const sessionIdRef = useRef(null);
+  const isMounted = useRef(true);
+  const loadAttempted = useRef(false);
 
   // ─── FUNGSI ──────────────────────────────────────────────────────────────────
 
   // Load atau buat session
   const loadOrCreateSession = useCallback(async () => {
+    // Cegah multiple load
+    if (loadAttempted.current) return;
+    loadAttempted.current = true;
+    
     setIsLoading(true);
+    setError(null);
+    
     try {
       // Cek session aktif di localStorage
       const savedSession = localStorage.getItem("touring_session");
       if (savedSession) {
-        const parsed = JSON.parse(savedSession);
-        const { data, error } = await supabase
-          .from("touring_sessions")
-          .select("*, touring_checkpoints(*)")
-          .eq("id", parsed.id)
-          .single();
-        
-        if (!error && data) {
-          setSession(data);
-          setSessionCode(data.session_code);
-          setSessionStatus(data.status);
-          setTransport({
-            transport_type: data.transport_type,
-            plate_number: data.plate_number || "",
-            driver_name: data.driver_name || "",
-            fuel_liters: data.fuel_liters || 5
-          });
-          if (data.touring_checkpoints) {
-            const sorted = data.touring_checkpoints.sort((a, b) => a.order_index - b.order_index);
-            setCheckpoints(sorted);
+        try {
+          const parsed = JSON.parse(savedSession);
+          const { data, error } = await supabase
+            .from("touring_sessions")
+            .select("*, touring_checkpoints(*)")
+            .eq("id", parsed.id)
+            .single();
+          
+          if (!error && data) {
+            if (!isMounted.current) return;
+            setSession(data);
+            setSessionCode(data.session_code);
+            setSessionStatus(data.status || "pending");
+            setTransport({
+              transport_type: data.transport_type || "motor",
+              plate_number: data.plate_number || "",
+              driver_name: data.driver_name || "",
+              fuel_liters: data.fuel_liters || 5
+            });
+            if (data.touring_checkpoints && data.touring_checkpoints.length > 0) {
+              const sorted = data.touring_checkpoints.sort((a, b) => a.order_index - b.order_index);
+              setCheckpoints(sorted);
+            }
+            sessionIdRef.current = data.id;
+            setIsLoading(false);
+            return;
           }
-          sessionIdRef.current = data.id;
-          setIsLoading(false);
-          return;
+        } catch (parseErr) {
+          console.error("Error parsing saved session:", parseErr);
+          localStorage.removeItem("touring_session");
         }
       }
 
@@ -184,7 +203,14 @@ export default function TouringPage() {
         .select()
         .single();
 
-      if (createError) throw createError;
+      if (createError) {
+        console.error("Create session error:", createError);
+        setError("Gagal membuat sesi: " + createError.message);
+        setIsLoading(false);
+        return;
+      }
+
+      if (!isMounted.current) return;
 
       // Insert checkpoints
       const checkpointsData = DEFAULT_CHECKPOINTS.map((cp, i) => ({
@@ -201,16 +227,25 @@ export default function TouringPage() {
         .from("touring_checkpoints")
         .insert(checkpointsData);
 
-      if (cpError) throw cpError;
+      if (cpError) {
+        console.error("Create checkpoints error:", cpError);
+        setError("Gagal membuat checkpoint: " + cpError.message);
+        setIsLoading(false);
+        return;
+      }
 
       setSession(newSession);
       setSessionCode(code);
       sessionIdRef.current = newSession.id;
       localStorage.setItem("touring_session", JSON.stringify({ id: newSession.id, code }));
+      
     } catch (error) {
       console.error("Error loading session:", error);
+      setError("Terjadi kesalahan: " + error.message);
     } finally {
-      setIsLoading(false);
+      if (isMounted.current) {
+        setIsLoading(false);
+      }
     }
   }, [transport]);
 
@@ -234,19 +269,21 @@ export default function TouringPage() {
 
       // Update checkpoints
       for (const cp of checkpoints) {
-        await supabase
-          .from("touring_checkpoints")
-          .update({
-            city_name: cp.city_name,
-            latitude: cp.latitude,
-            longitude: cp.longitude,
-            scheduled_time: cp.scheduled_time,
-            order_index: checkpoints.indexOf(cp),
-            status: cp.status || "pending",
-            delay_minutes: cp.delay_minutes || 0
-          })
-          .eq("id", cp.id)
-          .eq("session_id", sessionIdRef.current);
+        if (cp.id) {
+          await supabase
+            .from("touring_checkpoints")
+            .update({
+              city_name: cp.city_name,
+              latitude: cp.latitude,
+              longitude: cp.longitude,
+              scheduled_time: cp.scheduled_time,
+              order_index: checkpoints.indexOf(cp),
+              status: cp.status || "pending",
+              delay_minutes: cp.delay_minutes || 0
+            })
+            .eq("id", cp.id)
+            .eq("session_id", sessionIdRef.current);
+        }
       }
     } catch (error) {
       console.error("Error saving to database:", error);
@@ -295,7 +332,7 @@ export default function TouringPage() {
       },
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
     );
-  }, [saveToDatabase, checkpoints]);
+  }, [saveToDatabase]);
 
   const stopTracking = useCallback(() => {
     if (watchIdRef.current) {
@@ -449,18 +486,23 @@ export default function TouringPage() {
   // ─── INIT ──────────────────────────────────────────────────────────────────
 
   useEffect(() => {
+    isMounted.current = true;
     loadOrCreateSession();
-  }, [loadOrCreateSession]);
 
-  useEffect(() => {
     // Cek view mode dari URL
     const params = new URLSearchParams(window.location.search);
     const viewCode = params.get("view");
     if (viewCode) {
-      // Redirect ke halaman view
       window.location.href = `/touring-view?code=${viewCode}`;
     }
-  }, []);
+
+    return () => {
+      isMounted.current = false;
+      if (watchIdRef.current) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+    };
+  }, [loadOrCreateSession]);
 
   // ─── RENDER ────────────────────────────────────────────────────────────────
 
@@ -469,6 +511,25 @@ export default function TouringPage() {
       <div style={styles.loadingContainer}>
         <div style={styles.loadingSpinner}></div>
         <p style={styles.loadingText}>Memuat session...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={styles.loadingContainer}>
+        <FiAlertCircle size={48} color="#EF4444" />
+        <h3 style={{ color: "#F1F5F9", marginTop: "16px" }}>Terjadi Kesalahan</h3>
+        <p style={{ color: "#94A3B8", maxWidth: "400px", textAlign: "center" }}>{error}</p>
+        <button 
+          onClick={() => {
+            loadAttempted.current = false;
+            loadOrCreateSession();
+          }} 
+          style={{ ...btnPrimary, marginTop: "16px" }}
+        >
+          <FiRefreshCw size={14} /> Coba Lagi
+        </button>
       </div>
     );
   }
@@ -483,7 +544,11 @@ export default function TouringPage() {
           <span style={styles.sessionBadge}>#{sessionCode}</span>
         </div>
         <div style={styles.headerRight}>
-          <span style={{ ...styles.statusBadge, background: sessionStatus === "active" ? "#065F46" : "#1E293B", color: sessionStatus === "active" ? "#6EE7B7" : "#94A3B8" }}>
+          <span style={{ 
+            ...styles.statusBadge, 
+            background: sessionStatus === "active" ? "#065F46" : "#1E293B", 
+            color: sessionStatus === "active" ? "#6EE7B7" : "#94A3B8" 
+          }}>
             {sessionStatus === "active" ? <FiZap size={12} /> : <FiClock size={12} />}
             {sessionStatus === "active" ? "Sedang Berjalan" : "Belum Mulai"}
           </span>
@@ -537,7 +602,7 @@ export default function TouringPage() {
                       type="number"
                       step="0.5"
                       value={transport.fuel_liters}
-                      onChange={e => setTransport({ ...transport, fuel_liters: parseFloat(e.target.value) })}
+                      onChange={e => setTransport({ ...transport, fuel_liters: parseFloat(e.target.value) || 0 })}
                       style={inputStyle}
                       placeholder="Jumlah Bensin (Liter)"
                     />
@@ -578,7 +643,7 @@ export default function TouringPage() {
                             type="number"
                             step="0.0001"
                             value={editForm.latitude || ""}
-                            onChange={e => setEditForm({ ...editForm, latitude: parseFloat(e.target.value) })}
+                            onChange={e => setEditForm({ ...editForm, latitude: parseFloat(e.target.value) || 0 })}
                             style={inputStyle}
                             placeholder="Latitude"
                           />
@@ -586,7 +651,7 @@ export default function TouringPage() {
                             type="number"
                             step="0.0001"
                             value={editForm.longitude || ""}
-                            onChange={e => setEditForm({ ...editForm, longitude: parseFloat(e.target.value) })}
+                            onChange={e => setEditForm({ ...editForm, longitude: parseFloat(e.target.value) || 0 })}
                             style={inputStyle}
                             placeholder="Longitude"
                           />
@@ -717,11 +782,15 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
   const markersRef = useRef([]);
   const polylineRef = useRef(null);
   const currentMarkerRef = useRef(null);
+  const initializedRef = useRef(false);
 
   useEffect(() => {
-    if (mapInstanceRef.current) return;
+    if (initializedRef.current || mapInstanceRef.current) return;
     const L = window.L;
-    if (!L) return;
+    if (!L) {
+      console.warn("Leaflet not loaded");
+      return;
+    }
 
     const startLat = checkpoints[0]?.latitude || -7.7200;
     const startLng = checkpoints[0]?.longitude || 109.9084;
@@ -735,15 +804,20 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
     }).addTo(map);
 
     map.setView([startLat, startLng], 9);
+    initializedRef.current = true;
     renderMarkers(L, map);
 
     return () => {
-      map.remove();
-      mapInstanceRef.current = null;
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+        initializedRef.current = false;
+      }
     };
   }, []);
 
   const renderMarkers = (L, map) => {
+    if (!map) return;
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
 
@@ -760,7 +834,6 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
           <b>${cp.city_name}</b><br>
           Jadwal: ${cp.scheduled_time || "--:--"}<br>
           ${cp.delay_minutes ? `Delay: ${cp.delay_minutes} menit` : ""}
-          ${onReportDelay ? `<br><button onclick="window.reportDelay('${cp.id}')">Lapor Telat</button>` : ""}
         `)
         .addTo(map);
       markersRef.current.push(marker);
@@ -779,13 +852,13 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
 
   useEffect(() => {
     const L = window.L;
-    if (!L || !mapInstanceRef.current) return;
+    if (!L || !mapInstanceRef.current || !initializedRef.current) return;
     renderMarkers(L, mapInstanceRef.current);
   }, [checkpoints]);
 
   useEffect(() => {
     const L = window.L;
-    if (!L || !mapInstanceRef.current || !currentLocation) return;
+    if (!L || !mapInstanceRef.current || !currentLocation || !initializedRef.current) return;
 
     if (currentMarkerRef.current) currentMarkerRef.current.remove();
 
@@ -807,15 +880,6 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
       mapInstanceRef.current.setView([currentLocation.lat, currentLocation.lng], 13, { animate: true });
     }
   }, [currentLocation, isTracking]);
-
-  // Register window function for popup
-  useEffect(() => {
-    window.reportDelay = (id) => {
-      const cp = checkpoints.find(c => c.id === id);
-      if (cp && onReportDelay) onReportDelay(cp);
-    };
-    return () => { delete window.reportDelay; };
-  }, [checkpoints, onReportDelay]);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
