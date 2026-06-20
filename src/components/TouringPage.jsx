@@ -8,7 +8,8 @@ import {
   FiNavigation, FiUser, FiDroplet, FiArrowUp, FiArrowDown,
   FiRefreshCw, FiEye, FiX, FiChevronUp, FiChevronDown,
   FiZap, FiMenu, FiMap, FiBell, FiList, FiPlay, FiSquare,
-  FiHash, FiGlobe, FiMinus, FiInfo, FiLink, FiEyeOff
+  FiHash, FiGlobe, FiMinus, FiInfo, FiLink, FiEyeOff,
+  FiCalendar, FiClock as FiClockIcon, FiUsers, FiMoreVertical
 } from "react-icons/fi";
 import { MdTwoWheeler, MdDirectionsCar, MdDirectionsWalk } from "react-icons/md";
 
@@ -34,6 +35,38 @@ function getDistanceKm(lat1, lon1, lat2, lon2) {
 function formatTime(hhmm) {
   if (!hhmm) return "--:--";
   return hhmm;
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return "-";
+  const date = new Date(dateStr);
+  return date.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function formatTimeAgo(dateStr) {
+  if (!dateStr) return "-";
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diff = Math.floor((now - date) / 1000);
+  
+  if (diff < 60) return `${diff} detik lalu`;
+  if (diff < 3600) return `${Math.floor(diff / 60)} menit lalu`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} jam lalu`;
+  return `${Math.floor(diff / 86400)} hari lalu`;
+}
+
+function getTransportIcon(type) {
+  const icons = {
+    motor: <MdTwoWheeler size={16} />,
+    mobil: <MdDirectionsCar size={16} />,
+    jalan: <MdDirectionsWalk size={16} />
+  };
+  return icons[type] || <MdDirectionsCar size={16} />;
+}
+
+function getTransportLabel(type) {
+  const labels = { motor: "Motor", mobil: "Mobil", jalan: "Jalan Kaki" };
+  return labels[type] || "Mobil";
 }
 
 const DEFAULT_CHECKPOINTS = [
@@ -110,6 +143,8 @@ const iconBtn = {
 
 export default function TouringPage() {
   // ─── STATE ──────────────────────────────────────────────────────────────────
+  const [sessions, setSessions] = useState([]);
+  const [selectedSessionId, setSelectedSessionId] = useState(null);
   const [session, setSession] = useState(null);
   const [checkpoints, setCheckpoints] = useState(DEFAULT_CHECKPOINTS);
   const [transport, setTransport] = useState({ 
@@ -127,11 +162,12 @@ export default function TouringPage() {
   const [showSharePanel, setShowSharePanel] = useState(false);
   const [sessionCode, setSessionCode] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("map");
   const [showSettings, setShowSettings] = useState(true);
   const [editingCheckpoint, setEditingCheckpoint] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [error, setError] = useState(null);
+  const [showSessionList, setShowSessionList] = useState(true);
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
   
   const watchIdRef = useRef(null);
   const notificationIdRef = useRef(0);
@@ -141,76 +177,144 @@ export default function TouringPage() {
 
   // ─── FUNGSI ──────────────────────────────────────────────────────────────────
 
-  // Load atau buat session
-  const loadOrCreateSession = useCallback(async () => {
-    // Cegah multiple load
-    if (loadAttempted.current) return;
-    loadAttempted.current = true;
-    
-    setIsLoading(true);
-    setError(null);
-    
+  // Load semua session
+  const loadAllSessions = useCallback(async () => {
     try {
-      // Cek session aktif di localStorage
-      const savedSession = localStorage.getItem("touring_session");
-      if (savedSession) {
-        try {
-          const parsed = JSON.parse(savedSession);
-          const { data, error } = await supabase
-            .from("touring_sessions")
-            .select("*, touring_checkpoints(*)")
-            .eq("id", parsed.id)
-            .single();
-          
-          if (!error && data) {
-            if (!isMounted.current) return;
-            setSession(data);
-            setSessionCode(data.session_code);
-            setSessionStatus(data.status || "pending");
-            setTransport({
-              transport_type: data.transport_type || "motor",
-              plate_number: data.plate_number || "",
-              driver_name: data.driver_name || "",
-              fuel_liters: data.fuel_liters || 5
-            });
-            if (data.touring_checkpoints && data.touring_checkpoints.length > 0) {
-              const sorted = data.touring_checkpoints.sort((a, b) => a.order_index - b.order_index);
-              setCheckpoints(sorted);
+      const { data, error } = await supabase
+        .from("touring_sessions")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      
+      if (isMounted.current) {
+        setSessions(data || []);
+        
+        // Jika ada session aktif di localStorage, pilih itu
+        const savedSession = localStorage.getItem("touring_session");
+        if (savedSession) {
+          try {
+            const parsed = JSON.parse(savedSession);
+            const existing = data?.find(s => s.id === parsed.id);
+            if (existing) {
+              setSelectedSessionId(existing.id);
+              loadSessionData(existing.id);
+              return;
             }
-            sessionIdRef.current = data.id;
-            setIsLoading(false);
-            return;
-          }
-        } catch (parseErr) {
-          console.error("Error parsing saved session:", parseErr);
-          localStorage.removeItem("touring_session");
+          } catch (e) {}
+        }
+        
+        // Jika tidak ada, pilih session pertama atau buat baru
+        if (data && data.length > 0) {
+          setSelectedSessionId(data[0].id);
+          loadSessionData(data[0].id);
+        } else {
+          // Buat session baru
+          createNewSession();
         }
       }
+    } catch (error) {
+      console.error("Error loading sessions:", error);
+      setError("Gagal memuat daftar perjalanan");
+    } finally {
+      if (isMounted.current) {
+        setIsLoading(false);
+      }
+    }
+  }, []);
 
-      // Buat session baru
+  // Load data session tertentu
+  const loadSessionData = useCallback(async (sessionId) => {
+    try {
+      setIsLoading(true);
+      
+      const { data, error } = await supabase
+        .from("touring_sessions")
+        .select("*, touring_checkpoints(*)")
+        .eq("id", sessionId)
+        .single();
+
+      if (error) throw error;
+
+      if (!isMounted.current) return;
+
+      setSession(data);
+      setSessionCode(data.session_code);
+      setSessionStatus(data.status || "pending");
+      setTransport({
+        transport_type: data.transport_type || "motor",
+        plate_number: data.plate_number || "",
+        driver_name: data.driver_name || "",
+        fuel_liters: data.fuel_liters || 5
+      });
+      
+      if (data.touring_checkpoints && data.touring_checkpoints.length > 0) {
+        const sorted = data.touring_checkpoints.sort((a, b) => a.order_index - b.order_index);
+        setCheckpoints(sorted);
+      } else {
+        setCheckpoints(DEFAULT_CHECKPOINTS);
+      }
+      
+      sessionIdRef.current = data.id;
+      setSelectedSessionId(data.id);
+      localStorage.setItem("touring_session", JSON.stringify({ id: data.id, code: data.session_code }));
+
+      // Load notifications
+      const { data: notifData } = await supabase
+        .from("touring_notifications")
+        .select("*")
+        .eq("session_id", data.id)
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (notifData) {
+        setNotifications(notifData);
+      }
+
+      // Load latest tracking
+      const { data: trackData } = await supabase
+        .from("touring_location_tracking")
+        .select("*")
+        .eq("session_id", data.id)
+        .order("recorded_at", { ascending: false })
+        .limit(1);
+
+      if (trackData && trackData.length > 0) {
+        setCurrentLocation({
+          lat: trackData[0].latitude,
+          lng: trackData[0].longitude
+        });
+      }
+
+    } catch (error) {
+      console.error("Error loading session data:", error);
+      setError("Gagal memuat data perjalanan");
+    } finally {
+      if (isMounted.current) {
+        setIsLoading(false);
+      }
+    }
+  }, []);
+
+  // Buat session baru
+  const createNewSession = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setIsCreatingNew(true);
+      
       const code = generateSessionCode();
       const { data: newSession, error: createError } = await supabase
         .from("touring_sessions")
         .insert({
           session_code: code,
-          title: "Touring Session",
-          transport_type: transport.transport_type,
-          plate_number: transport.plate_number,
-          driver_name: transport.driver_name,
-          fuel_liters: transport.fuel_liters,
+          title: `Touring ${new Date().toLocaleDateString("id-ID")}`,
+          transport_type: "motor",
           status: "pending"
         })
         .select()
         .single();
 
-      if (createError) {
-        console.error("Create session error:", createError);
-        setError("Gagal membuat sesi: " + createError.message);
-        setIsLoading(false);
-        return;
-      }
-
-      if (!isMounted.current) return;
+      if (createError) throw createError;
 
       // Insert checkpoints
       const checkpointsData = DEFAULT_CHECKPOINTS.map((cp, i) => ({
@@ -227,27 +331,67 @@ export default function TouringPage() {
         .from("touring_checkpoints")
         .insert(checkpointsData);
 
-      if (cpError) {
-        console.error("Create checkpoints error:", cpError);
-        setError("Gagal membuat checkpoint: " + cpError.message);
-        setIsLoading(false);
-        return;
+      if (cpError) throw cpError;
+
+      // Refresh session list
+      const { data: sessionsData } = await supabase
+        .from("touring_sessions")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (sessionsData) {
+        setSessions(sessionsData);
       }
 
-      setSession(newSession);
-      setSessionCode(code);
+      setSelectedSessionId(newSession.id);
       sessionIdRef.current = newSession.id;
-      localStorage.setItem("touring_session", JSON.stringify({ id: newSession.id, code }));
+      localStorage.setItem("touring_session", JSON.stringify({ id: newSession.id, code: newSession.session_code }));
       
+      await loadSessionData(newSession.id);
+
     } catch (error) {
-      console.error("Error loading session:", error);
-      setError("Terjadi kesalahan: " + error.message);
+      console.error("Error creating session:", error);
+      setError("Gagal membuat perjalanan baru");
     } finally {
       if (isMounted.current) {
         setIsLoading(false);
+        setIsCreatingNew(false);
       }
     }
-  }, [transport]);
+  }, [loadSessionData]);
+
+  // Hapus session
+  const deleteSession = useCallback(async (sessionId) => {
+    if (!window.confirm("Apakah Anda yakin ingin menghapus perjalanan ini?")) return;
+    
+    try {
+      // Hapus dari database (cascade akan menghapus child tables)
+      const { error } = await supabase
+        .from("touring_sessions")
+        .delete()
+        .eq("id", sessionId);
+
+      if (error) throw error;
+
+      // Refresh list
+      setSessions(prev => prev.filter(s => s.id !== sessionId));
+      
+      // Jika yang dihapus adalah session yang sedang aktif
+      if (selectedSessionId === sessionId) {
+        const remaining = sessions.filter(s => s.id !== sessionId);
+        if (remaining.length > 0) {
+          setSelectedSessionId(remaining[0].id);
+          loadSessionData(remaining[0].id);
+        } else {
+          // Buat baru
+          createNewSession();
+        }
+      }
+    } catch (error) {
+      console.error("Error deleting session:", error);
+      alert("Gagal menghapus perjalanan");
+    }
+  }, [selectedSessionId, sessions, loadSessionData, createNewSession]);
 
   // Simpan perubahan ke database
   const saveToDatabase = useCallback(async () => {
@@ -285,6 +429,17 @@ export default function TouringPage() {
             .eq("session_id", sessionIdRef.current);
         }
       }
+
+      // Refresh session list
+      const { data: sessionsData } = await supabase
+        .from("touring_sessions")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (sessionsData) {
+        setSessions(sessionsData);
+      }
+
     } catch (error) {
       console.error("Error saving to database:", error);
     }
@@ -300,7 +455,6 @@ export default function TouringPage() {
     setIsTracking(true);
     setSessionStatus("active");
 
-    // Update status di database
     supabase
       .from("touring_sessions")
       .update({ status: "active" })
@@ -312,7 +466,6 @@ export default function TouringPage() {
         const { latitude, longitude, speed, heading } = position.coords;
         setCurrentLocation({ lat: latitude, lng: longitude });
 
-        // Simpan tracking ke database
         await supabase
           .from("touring_location_tracking")
           .insert({
@@ -323,7 +476,6 @@ export default function TouringPage() {
             heading: heading || 0
           });
 
-        // Cek checkpoint terdekat
         checkForCheckpoint(latitude, longitude);
       },
       (error) => {
@@ -351,7 +503,7 @@ export default function TouringPage() {
 
   // Cek checkpoint
   const checkForCheckpoint = useCallback((lat, lng) => {
-    const threshold = 0.5; // 500 meter
+    const threshold = 0.5;
     const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
@@ -360,12 +512,10 @@ export default function TouringPage() {
       
       const dist = getDistanceKm(lat, lng, cp.latitude, cp.longitude);
       if (dist < threshold) {
-        // Tandai reached
         const updated = [...checkpoints];
         updated[index] = { ...cp, status: "reached", actual_arrival_time: now.toISOString() };
         setCheckpoints(updated);
 
-        // Hitung delay
         if (cp.scheduled_time) {
           const [h, m] = cp.scheduled_time.split(":").map(Number);
           const scheduledMinutes = h * 60 + m;
@@ -373,7 +523,6 @@ export default function TouringPage() {
           updated[index].delay_minutes = delay;
           setCheckpoints(updated);
 
-          // Kirim notifikasi
           if (delay > 5) {
             addNotification("late", `Telat ${delay} menit di ${cp.city_name}`, delay);
           } else if (delay < -5) {
@@ -393,7 +542,6 @@ export default function TouringPage() {
     const id = notificationIdRef.current++;
     setNotifications(prev => [{ id, type, message, minutes, created_at: new Date().toISOString() }, ...prev].slice(0, 10));
 
-    // Simpan ke database
     supabase
       .from("touring_notifications")
       .insert({
@@ -487,7 +635,7 @@ export default function TouringPage() {
 
   useEffect(() => {
     isMounted.current = true;
-    loadOrCreateSession();
+    loadAllSessions();
 
     // Cek view mode dari URL
     const params = new URLSearchParams(window.location.search);
@@ -502,15 +650,15 @@ export default function TouringPage() {
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
     };
-  }, [loadOrCreateSession]);
+  }, [loadAllSessions]);
 
   // ─── RENDER ────────────────────────────────────────────────────────────────
 
-  if (isLoading) {
+  if (isLoading && sessions.length === 0) {
     return (
       <div style={styles.loadingContainer}>
         <div style={styles.loadingSpinner}></div>
-        <p style={styles.loadingText}>Memuat session...</p>
+        <p style={styles.loadingText}>Memuat perjalanan...</p>
       </div>
     );
   }
@@ -524,7 +672,7 @@ export default function TouringPage() {
         <button 
           onClick={() => {
             loadAttempted.current = false;
-            loadOrCreateSession();
+            loadAllSessions();
           }} 
           style={{ ...btnPrimary, marginTop: "16px" }}
         >
@@ -541,7 +689,12 @@ export default function TouringPage() {
         <div style={styles.headerLeft}>
           <FiMapPin size={24} color="#3B82F6" />
           <h1 style={styles.headerTitle}>Touring Tracker</h1>
-          <span style={styles.sessionBadge}>#{sessionCode}</span>
+          <button 
+            onClick={() => setShowSessionList(!showSessionList)} 
+            style={{ ...iconBtn, padding: "4px 10px", background: showSessionList ? "#1D4ED8" : "#1E293B", color: showSessionList ? "#93C5FD" : "#94A3B8" }}
+          >
+            <FiList size={14} />
+          </button>
         </div>
         <div style={styles.headerRight}>
           <span style={{ 
@@ -563,10 +716,102 @@ export default function TouringPage() {
 
       {/* Main Content */}
       <div style={styles.mainContent}>
-        {/* Sidebar Settings */}
+        {/* Session List Sidebar */}
+        {showSessionList && (
+          <aside style={styles.sessionSidebar}>
+            <div style={styles.sessionSidebarHeader}>
+              <h3 style={styles.sessionSidebarTitle}>
+                <FiList size={16} /> Daftar Perjalanan
+              </h3>
+              <button onClick={createNewSession} style={{ ...btnPrimary, padding: "6px 12px", fontSize: "12px" }}>
+                <FiPlus size={14} /> Baru
+              </button>
+            </div>
+            <div style={styles.sessionList}>
+              {sessions.map(s => (
+                <div
+                  key={s.id}
+                  onClick={() => {
+                    setSelectedSessionId(s.id);
+                    loadSessionData(s.id);
+                  }}
+                  style={{
+                    ...styles.sessionItem,
+                    background: selectedSessionId === s.id ? "#1D4ED8" : "#1E293B",
+                    borderColor: selectedSessionId === s.id ? "#3B82F6" : "#334155"
+                  }}
+                >
+                  <div style={styles.sessionItemLeft}>
+                    <div style={styles.sessionCode}>{s.session_code}</div>
+                    <div style={styles.sessionMeta}>
+                      <span style={styles.sessionMetaItem}>
+                        <FiCalendar size={10} /> {formatDate(s.created_at)}
+                      </span>
+                      <span style={styles.sessionMetaItem}>
+                        {getTransportIcon(s.transport_type)} {getTransportLabel(s.transport_type)}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={styles.sessionItemRight}>
+                    <span style={{
+                      ...styles.sessionStatusBadge,
+                      background: s.status === "active" ? "#065F46" : s.status === "completed" ? "#1E293B" : "#1E293B",
+                      color: s.status === "active" ? "#6EE7B7" : s.status === "completed" ? "#94A3B8" : "#94A3B8"
+                    }}>
+                      {s.status === "active" ? "Active" : s.status === "completed" ? "Selesai" : "Pending"}
+                    </span>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteSession(s.id);
+                      }}
+                      style={{ ...iconBtn, padding: "2px 6px", color: "#EF4444", border: "none" }}
+                    >
+                      <FiTrash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {sessions.length === 0 && (
+                <div style={styles.emptySession}>
+                  <p>Belum ada perjalanan</p>
+                  <button onClick={createNewSession} style={{ ...btnPrimary, marginTop: "8px" }}>
+                    <FiPlus size={14} /> Buat Perjalanan Baru
+                  </button>
+                </div>
+              )}
+            </div>
+          </aside>
+        )}
+
+        {/* Settings Sidebar */}
         {showSettings && (
           <aside style={styles.sidebar}>
             <div style={styles.sidebarContent}>
+              {/* Session Info */}
+              <div style={styles.section}>
+                <h3 style={styles.sectionTitle}><FiInfo size={14} /> Informasi Sesi</h3>
+                <div style={styles.sessionInfo}>
+                  <div style={styles.sessionInfoRow}>
+                    <span style={styles.sessionInfoLabel}>Kode</span>
+                    <span style={styles.sessionInfoValue}>{sessionCode}</span>
+                  </div>
+                  <div style={styles.sessionInfoRow}>
+                    <span style={styles.sessionInfoLabel}>Dibuat</span>
+                    <span style={styles.sessionInfoValue}>{formatTimeAgo(session?.created_at)}</span>
+                  </div>
+                  <div style={styles.sessionInfoRow}>
+                    <span style={styles.sessionInfoLabel}>Status</span>
+                    <span style={{
+                      ...styles.sessionInfoValue,
+                      color: sessionStatus === "active" ? "#6EE7B7" : "#94A3B8"
+                    }}>
+                      {sessionStatus === "active" ? "Berjalan" : sessionStatus === "completed" ? "Selesai" : "Belum Mulai"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
               {/* Transport Form */}
               <div style={styles.section}>
                 <h3 style={styles.sectionTitle}><FiTruck size={14} /> Transportasi</h3>
@@ -839,7 +1084,6 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
       markersRef.current.push(marker);
     });
 
-    // Draw route
     if (polylineRef.current) polylineRef.current.remove();
     const latlngs = checkpoints.map(cp => [cp.latitude, cp.longitude]);
     polylineRef.current = L.polyline(latlngs, { 
@@ -1022,16 +1266,6 @@ const styles = {
     color: "#F1F5F9",
     margin: 0
   },
-  sessionBadge: {
-    background: "#1D4ED8",
-    color: "#93C5FD",
-    padding: "4px 12px",
-    borderRadius: "20px",
-    fontSize: "12px",
-    fontWeight: "600",
-    letterSpacing: "1px",
-    fontFamily: "monospace"
-  },
   headerRight: {
     display: "flex",
     alignItems: "center",
@@ -1053,9 +1287,92 @@ const styles = {
     height: "calc(100vh - 80px)",
     overflow: "hidden"
   },
+  sessionSidebar: {
+    width: "280px",
+    minWidth: "250px",
+    background: "#0F172A",
+    borderRight: "1px solid #1E293B",
+    display: "flex",
+    flexDirection: "column",
+    flexShrink: 0
+  },
+  sessionSidebarHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "16px",
+    borderBottom: "1px solid #1E293B"
+  },
+  sessionSidebarTitle: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    color: "#94A3B8",
+    fontSize: "14px",
+    fontWeight: "600",
+    margin: 0
+  },
+  sessionList: {
+    flex: 1,
+    overflowY: "auto",
+    padding: "8px"
+  },
+  sessionItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "10px 12px",
+    borderRadius: "8px",
+    border: "1px solid #334155",
+    marginBottom: "6px",
+    cursor: "pointer",
+    transition: "all 0.2s"
+  },
+  sessionItemLeft: {
+    flex: 1,
+    minWidth: 0
+  },
+  sessionCode: {
+    color: "#F1F5F9",
+    fontWeight: "700",
+    fontSize: "13px",
+    fontFamily: "monospace",
+    letterSpacing: "0.5px"
+  },
+  sessionMeta: {
+    display: "flex",
+    gap: "8px",
+    marginTop: "2px",
+    flexWrap: "wrap"
+  },
+  sessionMetaItem: {
+    color: "#64748B",
+    fontSize: "10px",
+    display: "flex",
+    alignItems: "center",
+    gap: "3px"
+  },
+  sessionItemRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    flexShrink: 0
+  },
+  sessionStatusBadge: {
+    fontSize: "9px",
+    padding: "2px 8px",
+    borderRadius: "12px",
+    fontWeight: "600",
+    textTransform: "uppercase"
+  },
+  emptySession: {
+    textAlign: "center",
+    padding: "32px 16px",
+    color: "#64748B"
+  },
   sidebar: {
-    width: "360px",
-    minWidth: "320px",
+    width: "340px",
+    minWidth: "300px",
     background: "#0F172A",
     borderRight: "1px solid #1E293B",
     overflowY: "auto",
@@ -1082,6 +1399,25 @@ const styles = {
     color: "#94A3B8",
     margin: "0 0 12px 0"
   },
+  sessionInfo: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px"
+  },
+  sessionInfoRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center"
+  },
+  sessionInfoLabel: {
+    color: "#64748B",
+    fontSize: "12px"
+  },
+  sessionInfoValue: {
+    color: "#F1F5F9",
+    fontSize: "12px",
+    fontWeight: "600"
+  },
   transportGrid: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr 1fr",
@@ -1107,7 +1443,7 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     gap: "6px",
-    maxHeight: "300px",
+    maxHeight: "250px",
     overflowY: "auto"
   },
   checkpointItem: {
