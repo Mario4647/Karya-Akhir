@@ -11,6 +11,8 @@ import ScrollToTop from "./components/ScrollToTop";
 import Footer from "./components/Footer";
 import ResetPassword from "./components/ResetPassword";
 
+import TouringPage from "./components/TouringPage";
+import TouringView from "./components/TouringView";
 import Form from "./auth/Form";
 import UserSearch from "./dashboard-user/pencarian/UserSearch";
 import AdminSearchLog from "./pencarian/AdminSearchLog";
@@ -85,7 +87,12 @@ function App() {
 <Route path="/reset-password" element={<ResetPassword />} />
 <Route path="/user/pip" element={<CekPIP />} />
         <Route path="/akun-terkunci" element={<AkunTerkunci />} />
-
+<Route path="/touring" element={
+  <ProtectedRoute allowedRoles={['user', 'user-raport', 'admin', 'admin-event']}>
+    <TouringPage />
+  </ProtectedRoute>
+} />
+<Route path="/touring-view" element={<TouringView />} />
         {/* ========== TIKET CONCERT ROUTES ========== */}
         
         {/* Halaman User Tiket */}
