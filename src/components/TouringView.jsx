@@ -1,7 +1,7 @@
 // TouringView.jsx
 // Halaman View untuk Memantau Perjalanan Orang Lain
 import { useState, useEffect, useRef } from "react";
-import { supabase } from "./supabaseClient";
+import { supabase } from "../supabaseClient";
 import {
   FiMapPin, FiClock, FiTruck, FiUser, FiDroplet,
   FiCheckCircle, FiAlertCircle, FiNavigation,
