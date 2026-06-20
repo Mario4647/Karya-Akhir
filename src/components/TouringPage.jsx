@@ -1,7 +1,7 @@
 // TouringPage.jsx
 // Halaman Utama Touring Tracker - Atur dan Jalankan Sistem
 import { useState, useEffect, useRef, useCallback } from "react";
-import { supabase } from "./supabaseClient";
+import { supabase } from "../supabaseClient";
 import {
   FiMapPin, FiClock, FiTruck, FiAlertCircle, FiCheckCircle,
   FiSettings, FiShare2, FiPlus, FiTrash2, FiEdit2, FiSave,
