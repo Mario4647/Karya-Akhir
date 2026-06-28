@@ -6,10 +6,9 @@ import {
   FiMapPin, FiClock, FiTruck, FiUser, FiDroplet,
   FiCheckCircle, FiAlertCircle, FiNavigation,
   FiShare2, FiEye, FiEyeOff, FiZap, FiInfo,
-  FiArrowUp, FiArrowDown, FiRefreshCw, FiCalendar,
-  FiTrain
+  FiArrowUp, FiArrowDown, FiRefreshCw, FiCalendar
 } from "react-icons/fi";
-import { MdTwoWheeler, MdDirectionsCar, MdDirectionsWalk } from "react-icons/md";
+import { MdTwoWheeler, MdDirectionsCar, MdDirectionsWalk, MdTrain } from "react-icons/md";
 
 // ─── UTILS ────────────────────────────────────────────────────────────────────
 
@@ -41,7 +40,7 @@ function getTransportIcon(type) {
     motor: <MdTwoWheeler size={20} />,
     mobil: <MdDirectionsCar size={20} />,
     jalan: <MdDirectionsWalk size={20} />,
-    kereta: <FiTrain size={20} />
+    kereta: <MdTrain size={20} />
   };
   return icons[type] || <MdDirectionsCar size={20} />;
 }
@@ -62,6 +61,9 @@ const styles = {
     flexDirection: "column",
     fontFamily: "'Inter', system-ui, -apple-system, sans-serif"
   },
+  containerMobile: {
+    fontSize: "14px"
+  },
   header: {
     display: "flex",
     justifyContent: "space-between",
@@ -71,6 +73,9 @@ const styles = {
     borderBottom: "1px solid #334155",
     flexWrap: "wrap",
     gap: "12px"
+  },
+  headerMobile: {
+    padding: "12px 16px"
   },
   headerLeft: {
     display: "flex",
@@ -82,6 +87,9 @@ const styles = {
     fontWeight: "700",
     color: "#F1F5F9",
     margin: 0
+  },
+  headerTitleMobile: {
+    fontSize: "16px"
   },
   headerRight: {
     display: "flex",
@@ -98,17 +106,32 @@ const styles = {
     fontSize: "12px",
     fontWeight: "600"
   },
+  statusBadgeMobile: {
+    padding: "4px 10px",
+    fontSize: "10px"
+  },
   mainContent: {
     display: "flex",
     flex: 1,
     height: "calc(100vh - 80px)",
     overflow: "hidden"
   },
+  mainContentMobile: {
+    flexDirection: "column",
+    height: "auto",
+    minHeight: "calc(100vh - 120px)"
+  },
   mapContainer: {
     flex: 1,
     padding: "16px",
     background: "#0F172A",
-    position: "relative"
+    position: "relative",
+    minHeight: "300px"
+  },
+  mapContainerMobile: {
+    padding: "8px",
+    minHeight: "250px",
+    height: "50vh"
   },
   sidebar: {
     width: "340px",
@@ -121,6 +144,14 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     gap: "16px"
+  },
+  sidebarMobile: {
+    width: "100%",
+    minWidth: "unset",
+    borderLeft: "none",
+    borderTop: "1px solid #1E293B",
+    padding: "12px",
+    maxHeight: "50vh"
   },
   infoCard: {
     background: "#1E293B",
@@ -154,6 +185,9 @@ const styles = {
     maxHeight: "300px",
     overflowY: "auto"
   },
+  checkpointListMobile: {
+    maxHeight: "200px"
+  },
   checkpointItem: {
     display: "flex",
     alignItems: "center",
@@ -171,12 +205,16 @@ const styles = {
     flexShrink: 0
   },
   checkpointInfo: {
-    flex: 1
+    flex: 1,
+    minWidth: 0
   },
   checkpointName: {
     color: "#F1F5F9",
     fontWeight: "600",
     fontSize: "13px"
+  },
+  checkpointNameMobile: {
+    fontSize: "12px"
   },
   checkpointTime: {
     color: "#64748B",
@@ -185,6 +223,9 @@ const styles = {
     alignItems: "center",
     gap: "4px",
     flexWrap: "wrap"
+  },
+  checkpointTimeMobile: {
+    fontSize: "10px"
   },
   checkpointBadge: {
     fontSize: "10px",
@@ -225,41 +266,6 @@ const styles = {
     height: "100%",
     color: "#64748B",
     gap: "12px"
-  },
-  // Responsive mobile
-  containerMobile: {
-    fontSize: "14px"
-  },
-  headerMobile: {
-    padding: "12px 16px"
-  },
-  headerTitleMobile: {
-    fontSize: "16px"
-  },
-  statusBadgeMobile: {
-    padding: "4px 10px",
-    fontSize: "10px"
-  },
-  mainContentMobile: {
-    flexDirection: "column",
-    height: "auto",
-    minHeight: "calc(100vh - 120px)"
-  },
-  sidebarMobile: {
-    width: "100%",
-    minWidth: "unset",
-    borderLeft: "none",
-    borderTop: "1px solid #1E293B",
-    padding: "12px",
-    maxHeight: "50vh"
-  },
-  mapContainerMobile: {
-    padding: "8px",
-    minHeight: "250px",
-    height: "50vh"
-  },
-  checkpointListMobile: {
-    maxHeight: "200px"
   },
   notificationPanelMobile: {
     bottom: "12px",
@@ -638,13 +644,13 @@ export default function TouringView() {
                       background: isReached ? "#10B981" : isNext ? "#3B82F6" : "#475569"
                     }} />
                     <div style={styles.checkpointInfo}>
-                      <div style={styles.checkpointName}>
+                      <div style={{ ...styles.checkpointName, ...(isMobile ? styles.checkpointNameMobile : {}) }}>
                         {cp.city_name}
                         {cp.is_final_destination && <span style={{ color: "#F59E0B", marginLeft: "4px" }}>🏁</span>}
                         {isReached && <FiCheckCircle size={12} color="#10B981" style={{ marginLeft: "6px" }} />}
                         {isNext && <span style={{ color: "#60A5FA", fontSize: "10px", marginLeft: "6px" }}>NEXT</span>}
                       </div>
-                      <div style={styles.checkpointTime}>
+                      <div style={{ ...styles.checkpointTime, ...(isMobile ? styles.checkpointTimeMobile : {}) }}>
                         <FiCalendar size={10} /> {formatDate(cp.scheduled_date)}
                         <FiClock size={10} /> {formatTime(cp.scheduled_time)}
                         {cp.delay_minutes !== 0 && cp.delay_minutes != null && (
