@@ -9,7 +9,8 @@ import {
   FiRefreshCw, FiEye, FiX, FiChevronUp, FiChevronDown,
   FiZap, FiMenu, FiMap, FiBell, FiList, FiPlay, FiSquare,
   FiHash, FiGlobe, FiMinus, FiInfo, FiLink, FiEyeOff,
-  FiCalendar, FiClock as FiClockIcon, FiUsers, FiMoreVertical
+  FiCalendar, FiClock as FiClockIcon, FiUsers, FiMoreVertical,
+  FiPower, FiAlertTriangle, FiTrain
 } from "react-icons/fi";
 import { MdTwoWheeler, MdDirectionsCar, MdDirectionsWalk } from "react-icons/md";
 
@@ -43,6 +44,18 @@ function formatDate(dateStr) {
   return date.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 }
 
+function formatDateTime(dateStr) {
+  if (!dateStr) return "-";
+  const date = new Date(dateStr);
+  return date.toLocaleDateString("id-ID", { 
+    day: "numeric", 
+    month: "short", 
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
 function formatTimeAgo(dateStr) {
   if (!dateStr) return "-";
   const date = new Date(dateStr);
@@ -59,25 +72,89 @@ function getTransportIcon(type) {
   const icons = {
     motor: <MdTwoWheeler size={16} />,
     mobil: <MdDirectionsCar size={16} />,
-    jalan: <MdDirectionsWalk size={16} />
+    jalan: <MdDirectionsWalk size={16} />,
+    kereta: <FiTrain size={16} />
   };
   return icons[type] || <MdDirectionsCar size={16} />;
 }
 
 function getTransportLabel(type) {
-  const labels = { motor: "Motor", mobil: "Mobil", jalan: "Jalan Kaki" };
+  const labels = { motor: "Motor", mobil: "Mobil", jalan: "Jalan Kaki", kereta: "Kereta" };
   return labels[type] || "Mobil";
 }
 
+const TRANSPORT_OPTIONS = [
+  { value: "motor", label: "Motor", icon: <MdTwoWheeler size={20} /> },
+  { value: "mobil", label: "Mobil", icon: <MdDirectionsCar size={20} /> },
+  { value: "kereta", label: "Kereta", icon: <FiTrain size={20} /> },
+  { value: "jalan", label: "Jalan Kaki", icon: <MdDirectionsWalk size={20} /> }
+];
+
 const DEFAULT_CHECKPOINTS = [
-  { city_name: "Kutoarjo", latitude: -7.7200, longitude: 109.9084, scheduled_time: "07:00" },
-  { city_name: "Yogyakarta", latitude: -7.7956, longitude: 110.3695, scheduled_time: "08:30" },
-  { city_name: "Klaten", latitude: -7.7059, longitude: 110.6077, scheduled_time: "09:30" },
-  { city_name: "Wonogiri", latitude: -7.8126, longitude: 110.9228, scheduled_time: "11:00" },
-  { city_name: "Purwantoro", latitude: -7.8717, longitude: 111.3321, scheduled_time: "12:30" },
-  { city_name: "Ponorogo", latitude: -7.8683, longitude: 111.4617, scheduled_time: "14:00" },
-  { city_name: "Trenggalek", latitude: -8.0501, longitude: 111.7082, scheduled_time: "15:30" },
-  { city_name: "Tulungagung", latitude: -8.0661, longitude: 111.9044, scheduled_time: "17:00" },
+  { 
+    city_name: "Kutoarjo", 
+    latitude: -7.7200, 
+    longitude: 109.9084, 
+    scheduled_date: new Date().toISOString().split('T')[0],
+    scheduled_time: "07:00",
+    is_final_destination: false
+  },
+  { 
+    city_name: "Yogyakarta", 
+    latitude: -7.7956, 
+    longitude: 110.3695, 
+    scheduled_date: new Date().toISOString().split('T')[0],
+    scheduled_time: "08:30",
+    is_final_destination: false
+  },
+  { 
+    city_name: "Klaten", 
+    latitude: -7.7059, 
+    longitude: 110.6077, 
+    scheduled_date: new Date().toISOString().split('T')[0],
+    scheduled_time: "09:30",
+    is_final_destination: false
+  },
+  { 
+    city_name: "Wonogiri", 
+    latitude: -7.8126, 
+    longitude: 110.9228, 
+    scheduled_date: new Date().toISOString().split('T')[0],
+    scheduled_time: "11:00",
+    is_final_destination: false
+  },
+  { 
+    city_name: "Purwantoro", 
+    latitude: -7.8717, 
+    longitude: 111.3321, 
+    scheduled_date: new Date().toISOString().split('T')[0],
+    scheduled_time: "12:30",
+    is_final_destination: false
+  },
+  { 
+    city_name: "Ponorogo", 
+    latitude: -7.8683, 
+    longitude: 111.4617, 
+    scheduled_date: new Date().toISOString().split('T')[0],
+    scheduled_time: "14:00",
+    is_final_destination: false
+  },
+  { 
+    city_name: "Trenggalek", 
+    latitude: -8.0501, 
+    longitude: 111.7082, 
+    scheduled_date: new Date().toISOString().split('T')[0],
+    scheduled_time: "15:30",
+    is_final_destination: false
+  },
+  { 
+    city_name: "Tulungagung", 
+    latitude: -8.0661, 
+    longitude: 111.9044, 
+    scheduled_date: new Date().toISOString().split('T')[0],
+    scheduled_time: "17:00",
+    is_final_destination: true
+  },
 ];
 
 // ─── STYLES ───────────────────────────────────────────────────────────────────
@@ -168,12 +245,27 @@ export default function TouringPage() {
   const [error, setError] = useState(null);
   const [showSessionList, setShowSessionList] = useState(true);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [lateDeparture, setLateDeparture] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   
   const watchIdRef = useRef(null);
   const notificationIdRef = useRef(0);
   const sessionIdRef = useRef(null);
   const isMounted = useRef(true);
   const loadAttempted = useRef(false);
+  const autoStartIntervalRef = useRef(null);
+  const backgroundIntervalRef = useRef(null);
+
+  // ─── RESPONSIVE ─────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // ─── FUNGSI ──────────────────────────────────────────────────────────────────
 
@@ -190,7 +282,6 @@ export default function TouringPage() {
       if (isMounted.current) {
         setSessions(data || []);
         
-        // Jika ada session aktif di localStorage, pilih itu
         const savedSession = localStorage.getItem("touring_session");
         if (savedSession) {
           try {
@@ -204,12 +295,10 @@ export default function TouringPage() {
           } catch (e) {}
         }
         
-        // Jika tidak ada, pilih session pertama atau buat baru
         if (data && data.length > 0) {
           setSelectedSessionId(data[0].id);
           loadSessionData(data[0].id);
         } else {
-          // Buat session baru
           createNewSession();
         }
       }
@@ -241,6 +330,7 @@ export default function TouringPage() {
       setSession(data);
       setSessionCode(data.session_code);
       setSessionStatus(data.status || "pending");
+      setLateDeparture(data.late_departure || false);
       setTransport({
         transport_type: data.transport_type || "motor",
         plate_number: data.plate_number || "",
@@ -286,6 +376,15 @@ export default function TouringPage() {
         });
       }
 
+      // Check if already tracking
+      if (data.status === "active") {
+        setIsTracking(true);
+        startBackgroundTracking(data.id);
+      }
+
+      // Start auto-start checker
+      startAutoStartChecker(data.id);
+
     } catch (error) {
       console.error("Error loading session data:", error);
       setError("Gagal memuat data perjalanan");
@@ -303,13 +402,15 @@ export default function TouringPage() {
       setIsCreatingNew(true);
       
       const code = generateSessionCode();
+      const today = new Date().toISOString().split('T')[0];
       const { data: newSession, error: createError } = await supabase
         .from("touring_sessions")
         .insert({
           session_code: code,
           title: `Touring ${new Date().toLocaleDateString("id-ID")}`,
           transport_type: "motor",
-          status: "pending"
+          status: "pending",
+          late_departure: false
         })
         .select()
         .single();
@@ -323,8 +424,11 @@ export default function TouringPage() {
         city_name: cp.city_name,
         latitude: cp.latitude,
         longitude: cp.longitude,
+        scheduled_date: cp.scheduled_date || today,
         scheduled_time: cp.scheduled_time,
-        status: "pending"
+        scheduled_datetime: new Date(`${cp.scheduled_date || today}T${cp.scheduled_time}:00`).toISOString(),
+        status: "pending",
+        is_final_destination: cp.is_final_destination || false
       }));
 
       const { error: cpError } = await supabase
@@ -365,7 +469,6 @@ export default function TouringPage() {
     if (!window.confirm("Apakah Anda yakin ingin menghapus perjalanan ini?")) return;
     
     try {
-      // Hapus dari database (cascade akan menghapus child tables)
       const { error } = await supabase
         .from("touring_sessions")
         .delete()
@@ -373,17 +476,14 @@ export default function TouringPage() {
 
       if (error) throw error;
 
-      // Refresh list
       setSessions(prev => prev.filter(s => s.id !== sessionId));
       
-      // Jika yang dihapus adalah session yang sedang aktif
       if (selectedSessionId === sessionId) {
         const remaining = sessions.filter(s => s.id !== sessionId);
         if (remaining.length > 0) {
           setSelectedSessionId(remaining[0].id);
           loadSessionData(remaining[0].id);
         } else {
-          // Buat baru
           createNewSession();
         }
       }
@@ -398,7 +498,6 @@ export default function TouringPage() {
     if (!sessionIdRef.current) return;
 
     try {
-      // Update session
       await supabase
         .from("touring_sessions")
         .update({
@@ -407,30 +506,36 @@ export default function TouringPage() {
           driver_name: transport.driver_name,
           fuel_liters: transport.fuel_liters,
           status: sessionStatus,
+          late_departure: lateDeparture,
           updated_at: new Date().toISOString()
         })
         .eq("id", sessionIdRef.current);
 
-      // Update checkpoints
       for (const cp of checkpoints) {
         if (cp.id) {
+          const scheduledDatetime = cp.scheduled_date && cp.scheduled_time 
+            ? new Date(`${cp.scheduled_date}T${cp.scheduled_time}:00`).toISOString()
+            : null;
+          
           await supabase
             .from("touring_checkpoints")
             .update({
               city_name: cp.city_name,
               latitude: cp.latitude,
               longitude: cp.longitude,
+              scheduled_date: cp.scheduled_date,
               scheduled_time: cp.scheduled_time,
+              scheduled_datetime: scheduledDatetime,
               order_index: checkpoints.indexOf(cp),
               status: cp.status || "pending",
-              delay_minutes: cp.delay_minutes || 0
+              delay_minutes: cp.delay_minutes || 0,
+              is_final_destination: cp.is_final_destination || false
             })
             .eq("id", cp.id)
             .eq("session_id", sessionIdRef.current);
         }
       }
 
-      // Refresh session list
       const { data: sessionsData } = await supabase
         .from("touring_sessions")
         .select("*")
@@ -443,9 +548,124 @@ export default function TouringPage() {
     } catch (error) {
       console.error("Error saving to database:", error);
     }
-  }, [checkpoints, transport, sessionStatus]);
+  }, [checkpoints, transport, sessionStatus, lateDeparture]);
 
-  // Tracking lokasi
+  // ─── BACKGROUND TRACKING ──────────────────────────────────────────────────
+
+  const startBackgroundTracking = useCallback((sessionId) => {
+    if (backgroundIntervalRef.current) {
+      clearInterval(backgroundIntervalRef.current);
+    }
+
+    // Update lokasi setiap 10 detik di background
+    backgroundIntervalRef.current = setInterval(() => {
+      if (!sessionId) return;
+      
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const { latitude, longitude, speed, heading } = position.coords;
+          setCurrentLocation({ lat: latitude, lng: longitude });
+
+          await supabase
+            .from("touring_location_tracking")
+            .insert({
+              session_id: sessionId,
+              latitude,
+              longitude,
+              speed: speed || 0,
+              heading: heading || 0
+            });
+
+          checkForCheckpoint(latitude, longitude);
+        },
+        (error) => {
+          console.error("Background geolocation error:", error);
+        },
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+      );
+    }, 10000);
+  }, []);
+
+  const stopBackgroundTracking = useCallback(() => {
+    if (backgroundIntervalRef.current) {
+      clearInterval(backgroundIntervalRef.current);
+      backgroundIntervalRef.current = null;
+    }
+  }, []);
+
+  // ─── AUTO START CHECKER ──────────────────────────────────────────────────
+
+  const startAutoStartChecker = useCallback((sessionId) => {
+    if (autoStartIntervalRef.current) {
+      clearInterval(autoStartIntervalRef.current);
+    }
+
+    autoStartIntervalRef.current = setInterval(async () => {
+      if (!sessionId || lateDeparture || sessionStatus === "active" || sessionStatus === "completed") return;
+
+      try {
+        const { data: cpData } = await supabase
+          .from("touring_checkpoints")
+          .select("*")
+          .eq("session_id", sessionId)
+          .eq("order_index", 0)
+          .single();
+
+        if (!cpData || !cpData.scheduled_date || !cpData.scheduled_time) return;
+
+        const scheduledDateTime = new Date(`${cpData.scheduled_date}T${cpData.scheduled_time}:00`);
+        const now = new Date();
+        
+        // Auto-start jika waktu sekarang >= jadwal berangkat
+        if (now >= scheduledDateTime) {
+          // Cek apakah sudah mencapai final destination
+          const { data: finalCp } = await supabase
+            .from("touring_checkpoints")
+            .select("*")
+            .eq("session_id", sessionId)
+            .eq("is_final_destination", true)
+            .single();
+
+          if (finalCp && finalCp.status === "reached") {
+            // Sudah sampai tujuan akhir, stop
+            await supabase
+              .from("touring_sessions")
+              .update({ 
+                status: "completed",
+                completed_at: new Date().toISOString()
+              })
+              .eq("id", sessionId);
+            setSessionStatus("completed");
+            stopTracking();
+            return;
+          }
+
+          // Auto start
+          const { data: sessionData } = await supabase
+            .from("touring_sessions")
+            .update({ 
+              status: "active",
+              auto_started: true
+            })
+            .eq("id", sessionId)
+            .select()
+            .single();
+
+          if (sessionData) {
+            setSessionStatus("active");
+            setIsTracking(true);
+            startBackgroundTracking(sessionId);
+            addNotification("info", "Perjalanan dimulai otomatis sesuai jadwal", 0);
+          }
+        }
+      } catch (error) {
+        console.error("Auto-start checker error:", error);
+      }
+    }, 30000); // Cek setiap 30 detik
+  }, [lateDeparture, sessionStatus]);
+
+  // ─── TRACKING FUNCTIONS ──────────────────────────────────────────────────
+
   const startTracking = useCallback(() => {
     if (!navigator.geolocation) {
       alert("Browser Anda tidak mendukung Geolocation");
@@ -454,12 +674,24 @@ export default function TouringPage() {
 
     setIsTracking(true);
     setSessionStatus("active");
+    setLateDeparture(false);
 
     supabase
       .from("touring_sessions")
-      .update({ status: "active" })
+      .update({ 
+        status: "active",
+        late_departure: false,
+        auto_started: false
+      })
       .eq("id", sessionIdRef.current)
       .then(() => saveToDatabase());
+
+    startBackgroundTracking(sessionIdRef.current);
+
+    // Watch position untuk real-time update
+    if (watchIdRef.current) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+    }
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       async (position) => {
@@ -480,28 +712,34 @@ export default function TouringPage() {
       },
       (error) => {
         console.error("Geolocation error:", error);
-        alert("Gagal mendapatkan lokasi. Pastikan GPS aktif.");
       },
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
     );
-  }, [saveToDatabase]);
+  }, [saveToDatabase, startBackgroundTracking]);
 
-  const stopTracking = useCallback(() => {
+  const stopTracking = useCallback(async () => {
     if (watchIdRef.current) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     }
+    stopBackgroundTracking();
     setIsTracking(false);
-    setSessionStatus("pending");
-    
-    supabase
-      .from("touring_sessions")
-      .update({ status: "pending" })
-      .eq("id", sessionIdRef.current)
-      .then(() => saveToDatabase());
-  }, [saveToDatabase]);
+    setSessionStatus("completed");
 
-  // Cek checkpoint
+    await supabase
+      .from("touring_sessions")
+      .update({ 
+        status: "completed",
+        completed_at: new Date().toISOString()
+      })
+      .eq("id", sessionIdRef.current);
+
+    saveToDatabase();
+    addNotification("info", "Perjalanan telah selesai", 0);
+  }, [saveToDatabase, stopBackgroundTracking]);
+
+  // ─── CHECK CHECKPOINT ──────────────────────────────────────────────────
+
   const checkForCheckpoint = useCallback((lat, lng) => {
     const threshold = 0.5;
     const now = new Date();
@@ -513,34 +751,50 @@ export default function TouringPage() {
       const dist = getDistanceKm(lat, lng, cp.latitude, cp.longitude);
       if (dist < threshold) {
         const updated = [...checkpoints];
-        updated[index] = { ...cp, status: "reached", actual_arrival_time: now.toISOString() };
+        updated[index] = { 
+          ...cp, 
+          status: "reached", 
+          actual_arrival_time: now.toISOString() 
+        };
         setCheckpoints(updated);
 
-        if (cp.scheduled_time) {
-          const [h, m] = cp.scheduled_time.split(":").map(Number);
-          const scheduledMinutes = h * 60 + m;
-          const delay = currentMinutes - scheduledMinutes;
-          updated[index].delay_minutes = delay;
+        if (cp.scheduled_time && cp.scheduled_date) {
+          const scheduledDateTime = new Date(`${cp.scheduled_date}T${cp.scheduled_time}:00`);
+          const delayMinutes = Math.floor((now - scheduledDateTime) / 60000);
+          updated[index].delay_minutes = delayMinutes;
           setCheckpoints(updated);
 
-          if (delay > 5) {
-            addNotification("late", `Telat ${delay} menit di ${cp.city_name}`, delay);
-          } else if (delay < -5) {
-            addNotification("early", `Lebih awal ${Math.abs(delay)} menit di ${cp.city_name}`, delay);
+          if (delayMinutes > 5) {
+            addNotification("late", `Telat ${delayMinutes} menit di ${cp.city_name}`, delayMinutes);
+          } else if (delayMinutes < -5) {
+            addNotification("early", `Lebih awal ${Math.abs(delayMinutes)} menit di ${cp.city_name}`, delayMinutes);
           } else {
             addNotification("arrived", `Tiba tepat waktu di ${cp.city_name}`, 0);
           }
         }
 
         saveToDatabase();
+
+        // Check if final destination reached
+        if (cp.is_final_destination) {
+          stopTracking();
+          addNotification("info", `🎉 Perjalanan selesai! Tiba di tujuan akhir: ${cp.city_name}`, 0);
+        }
       }
     });
-  }, [checkpoints, saveToDatabase]);
+  }, [checkpoints, saveToDatabase, stopTracking]);
 
-  // Notifikasi
+  // ─── NOTIFICATIONS ─────────────────────────────────────────────────────
+
   const addNotification = useCallback((type, message, minutes) => {
     const id = notificationIdRef.current++;
-    setNotifications(prev => [{ id, type, message, minutes, created_at: new Date().toISOString() }, ...prev].slice(0, 10));
+    setNotifications(prev => [{ 
+      id, 
+      type, 
+      message, 
+      minutes, 
+      created_at: new Date().toISOString() 
+    }, ...prev].slice(0, 10));
 
     supabase
       .from("touring_notifications")
@@ -558,7 +812,8 @@ export default function TouringPage() {
     setNotifications(prev => prev.filter(n => n.id !== id));
   }, []);
 
-  // Manual delay/early
+  // ─── MANUAL DELAY ──────────────────────────────────────────────────────
+
   const handleManualDelay = useCallback((cp, type, minutes) => {
     const updated = checkpoints.map(c => {
       if (c.id === cp.id) {
@@ -577,7 +832,21 @@ export default function TouringPage() {
     saveToDatabase();
   }, [checkpoints, addNotification, saveToDatabase]);
 
-  // Edit checkpoint
+  // ─── LATE DEPARTURE ──────────────────────────────────────────────────
+
+  const handleLateDeparture = useCallback(() => {
+    setLateDeparture(true);
+    supabase
+      .from("touring_sessions")
+      .update({ late_departure: true })
+      .eq("id", sessionIdRef.current)
+      .then(() => {
+        addNotification("info", "⚠️ Berangkat telat, auto-start dinonaktifkan", 0);
+      });
+  }, [addNotification]);
+
+  // ─── EDIT CHECKPOINT ──────────────────────────────────────────────────
+
   const startEditCheckpoint = useCallback((cp, index) => {
     setEditingCheckpoint(index);
     setEditForm({ ...cp });
@@ -592,14 +861,18 @@ export default function TouringPage() {
     saveToDatabase();
   }, [editingCheckpoint, editForm, checkpoints, saveToDatabase]);
 
-  // Tambah/hapus/move checkpoint
+  // ─── CHECKPOINT CRUD ──────────────────────────────────────────────────
+
   const addCheckpoint = useCallback(() => {
+    const today = new Date().toISOString().split('T')[0];
     const newCp = { 
       city_name: "Kota Baru", 
       latitude: -7.5, 
       longitude: 110.0, 
+      scheduled_date: today,
       scheduled_time: "12:00", 
-      status: "pending" 
+      status: "pending",
+      is_final_destination: false
     };
     setCheckpoints([...checkpoints, newCp]);
     saveToDatabase();
@@ -619,7 +892,8 @@ export default function TouringPage() {
     saveToDatabase();
   }, [checkpoints, saveToDatabase]);
 
-  // Share panel
+  // ─── SHARE ────────────────────────────────────────────────────────────
+
   const shareLink = useCallback(() => {
     const url = `${window.location.origin}${window.location.pathname}?view=${sessionCode}`;
     return url;
@@ -631,13 +905,12 @@ export default function TouringPage() {
     alert("Link pemantau berhasil disalin!");
   }, [shareLink]);
 
-  // ─── INIT ──────────────────────────────────────────────────────────────────
+  // ─── INIT ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
     isMounted.current = true;
     loadAllSessions();
 
-    // Cek view mode dari URL
     const params = new URLSearchParams(window.location.search);
     const viewCode = params.get("view");
     if (viewCode) {
@@ -649,10 +922,14 @@ export default function TouringPage() {
       if (watchIdRef.current) {
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
+      stopBackgroundTracking();
+      if (autoStartIntervalRef.current) {
+        clearInterval(autoStartIntervalRef.current);
+      }
     };
-  }, [loadAllSessions]);
+  }, [loadAllSessions, stopBackgroundTracking]);
 
-  // ─── RENDER ────────────────────────────────────────────────────────────────
+  // ─── RENDER ────────────────────────────────────────────────────────────
 
   if (isLoading && sessions.length === 0) {
     return (
@@ -682,42 +959,74 @@ export default function TouringPage() {
     );
   }
 
+  const isSessionComplete = sessionStatus === "completed" || 
+    checkpoints.some(cp => cp.is_final_destination && cp.status === "reached");
+
   return (
-    <div style={styles.container}>
+    <div style={{ ...styles.container, ...(isMobile ? styles.containerMobile : {}) }}>
       {/* Header */}
-      <header style={styles.header}>
+      <header style={{ ...styles.header, ...(isMobile ? styles.headerMobile : {}) }}>
         <div style={styles.headerLeft}>
-          <FiMapPin size={24} color="#3B82F6" />
-          <h1 style={styles.headerTitle}>Touring Tracker</h1>
-          <button 
-            onClick={() => setShowSessionList(!showSessionList)} 
-            style={{ ...iconBtn, padding: "4px 10px", background: showSessionList ? "#1D4ED8" : "#1E293B", color: showSessionList ? "#93C5FD" : "#94A3B8" }}
-          >
-            <FiList size={14} />
-          </button>
+          <FiMapPin size={isMobile ? 20 : 24} color="#3B82F6" />
+          <h1 style={{ ...styles.headerTitle, ...(isMobile ? styles.headerTitleMobile : {}) }}>
+            Touring Tracker
+          </h1>
+          {!isMobile && (
+            <button 
+              onClick={() => setShowSessionList(!showSessionList)} 
+              style={{ ...iconBtn, padding: "4px 10px", background: showSessionList ? "#1D4ED8" : "#1E293B", color: showSessionList ? "#93C5FD" : "#94A3B8" }}
+            >
+              <FiList size={14} />
+            </button>
+          )}
         </div>
-        <div style={styles.headerRight}>
+        <div style={{ ...styles.headerRight, ...(isMobile ? styles.headerRightMobile : {}) }}>
           <span style={{ 
             ...styles.statusBadge, 
-            background: sessionStatus === "active" ? "#065F46" : "#1E293B", 
-            color: sessionStatus === "active" ? "#6EE7B7" : "#94A3B8" 
+            ...(isMobile ? styles.statusBadgeMobile : {}),
+            background: isSessionComplete ? "#1E293B" : sessionStatus === "active" ? "#065F46" : "#1E293B", 
+            color: isSessionComplete ? "#94A3B8" : sessionStatus === "active" ? "#6EE7B7" : "#94A3B8" 
           }}>
-            {sessionStatus === "active" ? <FiZap size={12} /> : <FiClock size={12} />}
-            {sessionStatus === "active" ? "Sedang Berjalan" : "Belum Mulai"}
+            {isSessionComplete ? <FiCheckCircle size={12} /> : sessionStatus === "active" ? <FiZap size={12} /> : <FiClock size={12} />}
+            {isSessionComplete ? "Selesai" : sessionStatus === "active" ? "Berjalan" : "Belum Mulai"}
           </span>
-          <button onClick={() => setShowSharePanel(true)} style={btnPrimary}>
-            <FiShare2 size={14} /> Bagikan
-          </button>
-          <button onClick={() => setShowSettings(!showSettings)} style={{ ...iconBtn, padding: "8px 12px" }}>
-            <FiSettings size={16} />
-          </button>
+          {!isMobile && (
+            <>
+              <button onClick={() => setShowSharePanel(true)} style={{ ...btnPrimary, ...(isMobile ? btnPrimaryMobile : {}) }}>
+                <FiShare2 size={14} /> Bagikan
+              </button>
+              <button onClick={() => setShowSettings(!showSettings)} style={{ ...iconBtn, padding: "8px 12px" }}>
+                <FiSettings size={16} />
+              </button>
+            </>
+          )}
+          {isMobile && (
+            <button onClick={() => setShowMobileMenu(!showMobileMenu)} style={{ ...iconBtn, padding: "8px 12px" }}>
+              <FiMenu size={20} />
+            </button>
+          )}
         </div>
       </header>
 
+      {/* Mobile Menu */}
+      {isMobile && showMobileMenu && (
+        <div style={styles.mobileMenu}>
+          <button onClick={() => { setShowMobileMenu(false); setShowSessionList(!showSessionList); }} style={styles.mobileMenuItem}>
+            <FiList size={16} /> Daftar Perjalanan
+          </button>
+          <button onClick={() => { setShowMobileMenu(false); setShowSharePanel(true); }} style={styles.mobileMenuItem}>
+            <FiShare2 size={16} /> Bagikan
+          </button>
+          <button onClick={() => { setShowMobileMenu(false); setShowSettings(!showSettings); }} style={styles.mobileMenuItem}>
+            <FiSettings size={16} /> Pengaturan
+          </button>
+        </div>
+      )}
+
       {/* Main Content */}
-      <div style={styles.mainContent}>
+      <div style={{ ...styles.mainContent, ...(isMobile ? styles.mainContentMobile : {}) }}>
         {/* Session List Sidebar */}
-        {showSessionList && (
+        {showSessionList && !isMobile && (
           <aside style={styles.sessionSidebar}>
             <div style={styles.sessionSidebarHeader}>
               <h3 style={styles.sessionSidebarTitle}>
@@ -784,9 +1093,54 @@ export default function TouringPage() {
           </aside>
         )}
 
+        {/* Mobile Session List */}
+        {isMobile && showSessionList && (
+          <div style={styles.mobileSessionList}>
+            <div style={styles.mobileSessionHeader}>
+              <span style={{ color: "#94A3B8", fontSize: "14px", fontWeight: "600" }}>
+                <FiList size={14} style={{ marginRight: "8px" }} />
+                Daftar Perjalanan
+              </span>
+              <button onClick={createNewSession} style={{ ...btnPrimary, padding: "4px 12px", fontSize: "11px" }}>
+                <FiPlus size={12} /> Baru
+              </button>
+            </div>
+            <div style={styles.mobileSessionItems}>
+              {sessions.slice(0, 5).map(s => (
+                <div
+                  key={s.id}
+                  onClick={() => {
+                    setSelectedSessionId(s.id);
+                    loadSessionData(s.id);
+                    setShowSessionList(false);
+                  }}
+                  style={{
+                    ...styles.mobileSessionItem,
+                    background: selectedSessionId === s.id ? "#1D4ED8" : "#1E293B"
+                  }}
+                >
+                  <span style={styles.mobileSessionCode}>{s.session_code}</span>
+                  <span style={{
+                    ...styles.sessionStatusBadge,
+                    background: s.status === "active" ? "#065F46" : "#1E293B",
+                    color: s.status === "active" ? "#6EE7B7" : "#94A3B8"
+                  }}>
+                    {s.status === "active" ? "Active" : s.status === "completed" ? "Selesai" : "Pending"}
+                  </span>
+                </div>
+              ))}
+              {sessions.length > 5 && (
+                <div style={{ color: "#64748B", fontSize: "12px", textAlign: "center", padding: "8px" }}>
+                  +{sessions.length - 5} lainnya
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Settings Sidebar */}
         {showSettings && (
-          <aside style={styles.sidebar}>
+          <aside style={{ ...styles.sidebar, ...(isMobile ? styles.sidebarMobile : {}) }}>
             <div style={styles.sidebarContent}>
               {/* Session Info */}
               <div style={styles.section}>
@@ -804,28 +1158,31 @@ export default function TouringPage() {
                     <span style={styles.sessionInfoLabel}>Status</span>
                     <span style={{
                       ...styles.sessionInfoValue,
-                      color: sessionStatus === "active" ? "#6EE7B7" : "#94A3B8"
+                      color: isSessionComplete ? "#94A3B8" : sessionStatus === "active" ? "#6EE7B7" : "#94A3B8"
                     }}>
-                      {sessionStatus === "active" ? "Berjalan" : sessionStatus === "completed" ? "Selesai" : "Belum Mulai"}
+                      {isSessionComplete ? "✅ Selesai" : sessionStatus === "active" ? "🟢 Berjalan" : "⏳ Belum Mulai"}
                     </span>
                   </div>
+                  {lateDeparture && (
+                    <div style={{ ...styles.sessionInfoRow, color: "#F59E0B" }}>
+                      <span style={styles.sessionInfoLabel}><FiAlertTriangle size={12} /> Status</span>
+                      <span style={{ color: "#F59E0B", fontSize: "12px" }}>⏰ Berangkat Telat</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Transport Form */}
               <div style={styles.section}>
                 <h3 style={styles.sectionTitle}><FiTruck size={14} /> Transportasi</h3>
-                <div style={styles.transportGrid}>
-                  {[
-                    { value: "motor", label: "Motor", icon: <MdTwoWheeler size={20} /> },
-                    { value: "mobil", label: "Mobil", icon: <MdDirectionsCar size={20} /> },
-                    { value: "jalan", label: "Jalan Kaki", icon: <MdDirectionsWalk size={20} /> }
-                  ].map(t => (
+                <div style={{ ...styles.transportGrid, ...(isMobile ? styles.transportGridMobile : {}) }}>
+                  {TRANSPORT_OPTIONS.map(t => (
                     <button
                       key={t.value}
                       onClick={() => setTransport({ ...transport, transport_type: t.value })}
                       style={{
                         ...styles.transportBtn,
+                        ...(isMobile ? styles.transportBtnMobile : {}),
                         borderColor: transport.transport_type === t.value ? "#3B82F6" : "#334155",
                         background: transport.transport_type === t.value ? "rgba(59,130,246,0.15)" : "#1E293B",
                         color: transport.transport_type === t.value ? "#60A5FA" : "#64748B"
@@ -835,7 +1192,7 @@ export default function TouringPage() {
                     </button>
                   ))}
                 </div>
-                {transport.transport_type !== "jalan" && (
+                {transport.transport_type !== "jalan" && transport.transport_type !== "kereta" && (
                   <>
                     <input
                       value={transport.plate_number}
@@ -853,11 +1210,19 @@ export default function TouringPage() {
                     />
                   </>
                 )}
+                {transport.transport_type === "kereta" && (
+                  <input
+                    value={transport.plate_number || "Kereta"}
+                    disabled
+                    style={{ ...inputStyle, opacity: 0.5 }}
+                    placeholder="Kereta tidak memerlukan plat"
+                  />
+                )}
                 <input
                   value={transport.driver_name}
                   onChange={e => setTransport({ ...transport, driver_name: e.target.value })}
                   style={inputStyle}
-                  placeholder="Nama Pengemudi"
+                  placeholder="Nama Pengemudi/Penumpang"
                 />
                 <button onClick={saveToDatabase} style={{ ...btnPrimary, width: "100%", justifyContent: "center" }}>
                   <FiSave size={14} /> Simpan Data
@@ -867,7 +1232,7 @@ export default function TouringPage() {
               {/* Checkpoints Editor */}
               <div style={styles.section}>
                 <h3 style={styles.sectionTitle}><FiMap size={14} /> Rute & Jadwal</h3>
-                <div style={styles.checkpointList}>
+                <div style={{ ...styles.checkpointList, ...(isMobile ? styles.checkpointListMobile : {}) }}>
                   {checkpoints.map((cp, i) => (
                     <div key={i} style={styles.checkpointItem}>
                       {editingCheckpoint === i ? (
@@ -877,6 +1242,12 @@ export default function TouringPage() {
                             onChange={e => setEditForm({ ...editForm, city_name: e.target.value })}
                             style={inputStyle}
                             placeholder="Nama Kota"
+                          />
+                          <input
+                            type="date"
+                            value={editForm.scheduled_date || ""}
+                            onChange={e => setEditForm({ ...editForm, scheduled_date: e.target.value })}
+                            style={inputStyle}
                           />
                           <input
                             type="time"
@@ -900,6 +1271,14 @@ export default function TouringPage() {
                             style={inputStyle}
                             placeholder="Longitude"
                           />
+                          <label style={{ color: "#94A3B8", fontSize: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                            <input
+                              type="checkbox"
+                              checked={editForm.is_final_destination || false}
+                              onChange={e => setEditForm({ ...editForm, is_final_destination: e.target.checked })}
+                            />
+                            Tujuan Akhir
+                          </label>
                           <div style={styles.editActions}>
                             <button onClick={() => setEditingCheckpoint(null)} style={btnSecondary}>Batal</button>
                             <button onClick={saveEditCheckpoint} style={btnPrimary}>Simpan</button>
@@ -907,11 +1286,18 @@ export default function TouringPage() {
                         </div>
                       ) : (
                         <div style={styles.checkpointRow}>
-                          <div style={styles.checkpointNumber}>{i + 1}</div>
+                          <div style={{ ...styles.checkpointNumber, ...(isMobile ? styles.checkpointNumberMobile : {}) }}>
+                            {i + 1}
+                          </div>
                           <div style={styles.checkpointInfo}>
-                            <div style={styles.checkpointName}>{cp.city_name}</div>
-                            <div style={styles.checkpointTime}>
-                              <FiClock size={10} /> {formatTime(cp.scheduled_time)}
+                            <div style={{ ...styles.checkpointName, ...(isMobile ? styles.checkpointNameMobile : {}) }}>
+                              {cp.city_name}
+                              {cp.is_final_destination && (
+                                <span style={{ color: "#F59E0B", fontSize: "10px", marginLeft: "6px" }}>🏁</span>
+                              )}
+                            </div>
+                            <div style={{ ...styles.checkpointTime, ...(isMobile ? styles.checkpointTimeMobile : {}) }}>
+                              <FiCalendar size={10} /> {formatDate(cp.scheduled_date)} <FiClock size={10} /> {formatTime(cp.scheduled_time)}
                               {cp.delay_minutes !== 0 && cp.delay_minutes != null && (
                                 <span style={{ color: cp.delay_minutes > 0 ? "#FCA5A5" : "#FDE68A", marginLeft: "8px" }}>
                                   {cp.delay_minutes > 0 ? <FiArrowDown size={10} /> : <FiArrowUp size={10} />}
@@ -920,7 +1306,7 @@ export default function TouringPage() {
                               )}
                             </div>
                           </div>
-                          <div style={styles.checkpointActions}>
+                          <div style={{ ...styles.checkpointActions, ...(isMobile ? styles.checkpointActionsMobile : {}) }}>
                             <button onClick={() => moveCheckpoint(i, -1)} style={iconBtn}><FiChevronUp size={12} /></button>
                             <button onClick={() => moveCheckpoint(i, 1)} style={iconBtn}><FiChevronDown size={12} /></button>
                             <button onClick={() => startEditCheckpoint(cp, i)} style={iconBtn}><FiEdit2 size={12} /></button>
@@ -938,14 +1324,31 @@ export default function TouringPage() {
 
               {/* Control Buttons */}
               <div style={styles.section}>
-                {!isTracking ? (
-                  <button onClick={startTracking} style={{ ...btnPrimary, width: "100%", justifyContent: "center", background: "#10B981" }}>
-                    <FiPlay size={14} /> Mulai Perjalanan
-                  </button>
+                {!isSessionComplete ? (
+                  !isTracking ? (
+                    <>
+                      <button onClick={startTracking} style={{ ...btnPrimary, width: "100%", justifyContent: "center", background: "#10B981" }}>
+                        <FiPlay size={14} /> Mulai Perjalanan
+                      </button>
+                      <button onClick={handleLateDeparture} style={{ ...btnSecondary, width: "100%", justifyContent: "center", marginTop: "8px", borderColor: "#F59E0B", color: "#F59E0B" }}>
+                        <FiAlertTriangle size={14} /> Telat Berangkat
+                      </button>
+                      {lateDeparture && (
+                        <div style={{ color: "#F59E0B", fontSize: "12px", textAlign: "center", marginTop: "8px" }}>
+                          ⚠️ Auto-start dinonaktifkan karena berangkat telat
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <button onClick={stopTracking} style={{ ...btnPrimary, width: "100%", justifyContent: "center", background: "#EF4444" }}>
+                      <FiSquare size={14} /> Selesaikan Perjalanan
+                    </button>
+                  )
                 ) : (
-                  <button onClick={stopTracking} style={{ ...btnPrimary, width: "100%", justifyContent: "center", background: "#EF4444" }}>
-                    <FiSquare size={14} /> Hentikan Perjalanan
-                  </button>
+                  <div style={{ textAlign: "center", color: "#6EE7B7", padding: "12px" }}>
+                    <FiCheckCircle size={24} style={{ display: "block", margin: "0 auto 8px" }} />
+                    Perjalanan Selesai! 🎉
+                  </div>
                 )}
               </div>
             </div>
@@ -953,7 +1356,7 @@ export default function TouringPage() {
         )}
 
         {/* Map Area */}
-        <div style={styles.mapContainer}>
+        <div style={{ ...styles.mapContainer, ...(isMobile ? styles.mapContainerMobile : {}) }}>
           <TouringMap
             checkpoints={checkpoints}
             currentLocation={currentLocation}
@@ -973,20 +1376,23 @@ export default function TouringPage() {
               saveToDatabase();
             }}
             isTracking={isTracking}
+            isMobile={isMobile}
           />
         </div>
       </div>
 
       {/* Notification Panel */}
       {notifications.length > 0 && (
-        <div style={styles.notificationPanel}>
+        <div style={{ ...styles.notificationPanel, ...(isMobile ? styles.notificationPanelMobile : {}) }}>
           {notifications.map(n => (
             <div key={n.id} style={{
               ...styles.notificationItem,
-              borderColor: n.type === "late" ? "#EF4444" : n.type === "early" ? "#F59E0B" : "#10B981"
+              ...(isMobile ? styles.notificationItemMobile : {}),
+              borderColor: n.type === "late" ? "#EF4444" : n.type === "early" ? "#F59E0B" : n.type === "info" ? "#3B82F6" : "#10B981"
             }}>
               {n.type === "late" ? <FiArrowDown color="#EF4444" /> :
                n.type === "early" ? <FiArrowUp color="#F59E0B" /> :
+               n.type === "info" ? <FiInfo color="#3B82F6" /> :
                <FiCheckCircle color="#10B981" />}
               <span style={styles.notificationMessage}>{n.message}</span>
               <button onClick={() => removeNotification(n.id)} style={styles.notificationClose}>
@@ -1003,6 +1409,7 @@ export default function TouringPage() {
           checkpoint={selectedCheckpoint}
           onClose={() => { setShowDelayModal(false); setSelectedCheckpoint(null); }}
           onSubmit={(type, minutes) => handleManualDelay(selectedCheckpoint, type, minutes)}
+          isMobile={isMobile}
         />
       )}
 
@@ -1013,6 +1420,7 @@ export default function TouringPage() {
           onClose={() => setShowSharePanel(false)}
           onCopy={copyLink}
           shareUrl={shareLink()}
+          isMobile={isMobile}
         />
       )}
     </div>
@@ -1021,7 +1429,7 @@ export default function TouringPage() {
 
 // ─── MAP COMPONENT ────────────────────────────────────────────────────────────
 
-function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay, onMarkReached, isTracking }) {
+function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay, onMarkReached, isTracking, isMobile }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
@@ -1040,7 +1448,10 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
     const startLat = checkpoints[0]?.latitude || -7.7200;
     const startLng = checkpoints[0]?.longitude || 109.9084;
 
-    const map = L.map(mapRef.current, { zoomControl: true, attributionControl: true });
+    const map = L.map(mapRef.current, { 
+      zoomControl: !isMobile,
+      attributionControl: true 
+    });
     mapInstanceRef.current = map;
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -1048,7 +1459,7 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
       maxZoom: 19,
     }).addTo(map);
 
-    map.setView([startLat, startLng], 9);
+    map.setView([startLat, startLng], isMobile ? 8 : 9);
     initializedRef.current = true;
     renderMarkers(L, map);
 
@@ -1059,7 +1470,7 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
         initializedRef.current = false;
       }
     };
-  }, []);
+  }, [isMobile]);
 
   const renderMarkers = (L, map) => {
     if (!map) return;
@@ -1068,17 +1479,20 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
 
     checkpoints.forEach((cp, i) => {
       const color = cp.status === "reached" ? "#10B981" : cp.status === "active" ? "#3B82F6" : "#6B7280";
+      const size = isMobile ? 28 : 34;
       const icon = L.divIcon({
-        html: `<div style="background:${color};color:white;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:13px;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)">${i + 1}</div>`,
+        html: `<div style="background:${color};color:white;border-radius:50%;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:${isMobile ? 10 : 13}px;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)">${i + 1}</div>`,
         className: "",
-        iconSize: [34, 34],
-        iconAnchor: [17, 17],
+        iconSize: [size, size],
+        iconAnchor: [size/2, size/2],
       });
       const marker = L.marker([cp.latitude, cp.longitude], { icon })
         .bindPopup(`
           <b>${cp.city_name}</b><br>
+          Tanggal: ${cp.scheduled_date || "--"}<br>
           Jadwal: ${cp.scheduled_time || "--:--"}<br>
           ${cp.delay_minutes ? `Delay: ${cp.delay_minutes} menit` : ""}
+          ${cp.is_final_destination ? "<br>🏁 Tujuan Akhir" : ""}
         `)
         .addTo(map);
       markersRef.current.push(marker);
@@ -1088,7 +1502,7 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
     const latlngs = checkpoints.map(cp => [cp.latitude, cp.longitude]);
     polylineRef.current = L.polyline(latlngs, { 
       color: "#3B82F6", 
-      weight: 3, 
+      weight: isMobile ? 2 : 3, 
       opacity: 0.6, 
       dashArray: "8,4" 
     }).addTo(map);
@@ -1098,7 +1512,7 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
     const L = window.L;
     if (!L || !mapInstanceRef.current || !initializedRef.current) return;
     renderMarkers(L, mapInstanceRef.current);
-  }, [checkpoints]);
+  }, [checkpoints, isMobile]);
 
   useEffect(() => {
     const L = window.L;
@@ -1106,14 +1520,15 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
 
     if (currentMarkerRef.current) currentMarkerRef.current.remove();
 
+    const size = isMobile ? 30 : 40;
     const pulseIcon = L.divIcon({
-      html: `<div style="position:relative;width:40px;height:40px;display:flex;align-items:center;justify-content:center">
-        <div style="position:absolute;width:40px;height:40px;background:rgba(59,130,246,0.2);border-radius:50%;animation:ping 1.5s infinite"></div>
-        <div style="width:20px;height:20px;background:#3B82F6;border-radius:50%;border:3px solid white;box-shadow:0 0 12px rgba(59,130,246,0.6);position:relative;z-index:1"></div>
+      html: `<div style="position:relative;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center">
+        <div style="position:absolute;width:${size}px;height:${size}px;background:rgba(59,130,246,0.2);border-radius:50%;animation:ping 1.5s infinite"></div>
+        <div style="width:${isMobile ? 14 : 20}px;height:${isMobile ? 14 : 20}px;background:#3B82F6;border-radius:50%;border:3px solid white;box-shadow:0 0 12px rgba(59,130,246,0.6);position:relative;z-index:1"></div>
       </div>`,
       className: "",
-      iconSize: [40, 40],
-      iconAnchor: [20, 20],
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2],
     });
 
     currentMarkerRef.current = L.marker([currentLocation.lat, currentLocation.lng], { icon: pulseIcon })
@@ -1121,9 +1536,9 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
       .addTo(mapInstanceRef.current);
 
     if (isTracking) {
-      mapInstanceRef.current.setView([currentLocation.lat, currentLocation.lng], 13, { animate: true });
+      mapInstanceRef.current.setView([currentLocation.lat, currentLocation.lng], isMobile ? 11 : 13, { animate: true });
     }
-  }, [currentLocation, isTracking]);
+  }, [currentLocation, isTracking, isMobile]);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
@@ -1135,24 +1550,27 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
 
 // ─── DELAY MODAL ──────────────────────────────────────────────────────────────
 
-function DelayModal({ checkpoint, onClose, onSubmit }) {
+function DelayModal({ checkpoint, onClose, onSubmit, isMobile }) {
   const [type, setType] = useState("late");
   const [minutes, setMinutes] = useState(10);
 
   return (
     <div style={styles.modalOverlay}>
-      <div style={styles.modalContent}>
+      <div style={{ ...styles.modalContent, ...(isMobile ? styles.modalContentMobile : {}) }}>
         <div style={styles.modalHeader}>
-          <h3 style={styles.modalTitle}><FiBell size={18} color="#3B82F6" /> Lapor Keterlambatan/Awal</h3>
+          <h3 style={{ ...styles.modalTitle, ...(isMobile ? styles.modalTitleMobile : {}) }}>
+            <FiBell size={18} color="#3B82F6" /> Lapor Keterlambatan/Awal
+          </h3>
           <button onClick={onClose} style={iconBtn}><FiX size={18} /></button>
         </div>
         <p style={styles.modalSubtitle}>Checkpoint: <strong style={{ color: "#94A3B8" }}>{checkpoint?.city_name}</strong></p>
 
-        <div style={styles.modalTypeButtons}>
+        <div style={{ ...styles.modalTypeButtons, ...(isMobile ? styles.modalTypeButtonsMobile : {}) }}>
           <button
             onClick={() => setType("late")}
             style={{
               ...styles.modalTypeBtn,
+              ...(isMobile ? styles.modalTypeBtnMobile : {}),
               background: type === "late" ? "#7F1D1D" : "#1E293B",
               borderColor: type === "late" ? "#EF4444" : "#334155",
               color: type === "late" ? "#FCA5A5" : "#64748B"
@@ -1164,6 +1582,7 @@ function DelayModal({ checkpoint, onClose, onSubmit }) {
             onClick={() => setType("early")}
             style={{
               ...styles.modalTypeBtn,
+              ...(isMobile ? styles.modalTypeBtnMobile : {}),
               background: type === "early" ? "#78350F" : "#1E293B",
               borderColor: type === "early" ? "#F59E0B" : "#334155",
               color: type === "early" ? "#FDE68A" : "#64748B"
@@ -1175,20 +1594,20 @@ function DelayModal({ checkpoint, onClose, onSubmit }) {
 
         <div style={styles.modalMinutes}>
           <label style={styles.modalLabel}>Jumlah Menit</label>
-          <div style={styles.modalMinutesControl}>
+          <div style={{ ...styles.modalMinutesControl, ...(isMobile ? styles.modalMinutesControlMobile : {}) }}>
             <button onClick={() => setMinutes(m => Math.max(1, m - 5))} style={iconBtn}><FiMinus size={16} /></button>
             <input
               type="number"
               value={minutes}
               onChange={e => setMinutes(parseInt(e.target.value) || 0)}
-              style={{ ...inputStyle, textAlign: "center", width: "80px", fontSize: "20px", fontWeight: "700" }}
+              style={{ ...inputStyle, textAlign: "center", width: isMobile ? "60px" : "80px", fontSize: isMobile ? "16px" : "20px", fontWeight: "700" }}
               min={1}
             />
             <button onClick={() => setMinutes(m => m + 5)} style={iconBtn}><FiPlus size={16} /></button>
           </div>
         </div>
 
-        <div style={styles.modalActions}>
+        <div style={{ ...styles.modalActions, ...(isMobile ? styles.modalActionsMobile : {}) }}>
           <button onClick={onClose} style={btnSecondary}>Batal</button>
           <button
             onClick={() => onSubmit(type, minutes)}
@@ -1204,23 +1623,25 @@ function DelayModal({ checkpoint, onClose, onSubmit }) {
 
 // ─── SHARE PANEL ──────────────────────────────────────────────────────────────
 
-function SharePanel({ sessionCode, onClose, onCopy, shareUrl }) {
+function SharePanel({ sessionCode, onClose, onCopy, shareUrl, isMobile }) {
   return (
     <div style={styles.modalOverlay}>
-      <div style={{ ...styles.modalContent, maxWidth: "420px" }}>
+      <div style={{ ...styles.modalContent, maxWidth: isMobile ? "95%" : "420px", ...(isMobile ? styles.modalContentMobile : {}) }}>
         <div style={styles.modalHeader}>
-          <h3 style={styles.modalTitle}><FiShare2 size={18} color="#3B82F6" /> Bagikan Lokasi</h3>
+          <h3 style={{ ...styles.modalTitle, ...(isMobile ? styles.modalTitleMobile : {}) }}>
+            <FiShare2 size={18} color="#3B82F6" /> Bagikan Lokasi
+          </h3>
           <button onClick={onClose} style={iconBtn}><FiX size={18} /></button>
         </div>
 
-        <div style={styles.shareCodeBox}>
+        <div style={{ ...styles.shareCodeBox, ...(isMobile ? styles.shareCodeBoxMobile : {}) }}>
           <div style={styles.shareCodeLabel}>KODE SESI</div>
-          <div style={styles.shareCode}>{sessionCode}</div>
+          <div style={{ ...styles.shareCode, ...(isMobile ? styles.shareCodeMobile : {}) }}>{sessionCode}</div>
         </div>
 
-        <div style={styles.shareUrlBox}>
+        <div style={{ ...styles.shareUrlBox, ...(isMobile ? styles.shareUrlBoxMobile : {}) }}>
           <div style={styles.shareCodeLabel}>LINK PEMANTAU</div>
-          <div style={styles.shareUrl}>{shareUrl}</div>
+          <div style={{ ...styles.shareUrl, ...(isMobile ? styles.shareUrlMobile : {}) }}>{shareUrl}</div>
         </div>
 
         <button onClick={onCopy} style={{ ...btnPrimary, width: "100%", justifyContent: "center" }}>
@@ -1245,6 +1666,9 @@ const styles = {
     flexDirection: "column",
     fontFamily: "'Inter', system-ui, -apple-system, sans-serif"
   },
+  containerMobile: {
+    fontSize: "14px"
+  },
   header: {
     display: "flex",
     justifyContent: "space-between",
@@ -1254,6 +1678,10 @@ const styles = {
     borderBottom: "1px solid #334155",
     flexWrap: "wrap",
     gap: "12px"
+  },
+  headerMobile: {
+    padding: "12px 16px",
+    gap: "8px"
   },
   headerLeft: {
     display: "flex",
@@ -1266,11 +1694,17 @@ const styles = {
     color: "#F1F5F9",
     margin: 0
   },
+  headerTitleMobile: {
+    fontSize: "16px"
+  },
   headerRight: {
     display: "flex",
     alignItems: "center",
     gap: "10px",
     flexWrap: "wrap"
+  },
+  headerRightMobile: {
+    gap: "6px"
   },
   statusBadge: {
     display: "flex",
@@ -1281,11 +1715,20 @@ const styles = {
     fontSize: "12px",
     fontWeight: "600"
   },
+  statusBadgeMobile: {
+    padding: "4px 10px",
+    fontSize: "10px"
+  },
   mainContent: {
     display: "flex",
     flex: 1,
     height: "calc(100vh - 80px)",
     overflow: "hidden"
+  },
+  mainContentMobile: {
+    flexDirection: "column",
+    height: "auto",
+    minHeight: "calc(100vh - 120px)"
   },
   sessionSidebar: {
     width: "280px",
@@ -1379,6 +1822,14 @@ const styles = {
     padding: "16px",
     flexShrink: 0
   },
+  sidebarMobile: {
+    width: "100%",
+    minWidth: "unset",
+    borderRight: "none",
+    borderBottom: "1px solid #1E293B",
+    padding: "12px",
+    maxHeight: "60vh"
+  },
   sidebarContent: {
     display: "flex",
     flexDirection: "column",
@@ -1420,9 +1871,13 @@ const styles = {
   },
   transportGrid: {
     display: "grid",
-    gridTemplateColumns: "1fr 1fr 1fr",
+    gridTemplateColumns: "1fr 1fr 1fr 1fr",
     gap: "6px",
     marginBottom: "12px"
+  },
+  transportGridMobile: {
+    gridTemplateColumns: "1fr 1fr",
+    gap: "4px"
   },
   transportBtn: {
     display: "flex",
@@ -1439,12 +1894,19 @@ const styles = {
     fontWeight: "600",
     transition: "all 0.2s"
   },
+  transportBtnMobile: {
+    padding: "8px",
+    fontSize: "10px"
+  },
   checkpointList: {
     display: "flex",
     flexDirection: "column",
     gap: "6px",
     maxHeight: "250px",
     overflowY: "auto"
+  },
+  checkpointListMobile: {
+    maxHeight: "200px"
   },
   checkpointItem: {
     background: "#0F172A",
@@ -1470,24 +1932,41 @@ const styles = {
     fontWeight: "700",
     flexShrink: 0
   },
+  checkpointNumberMobile: {
+    width: "24px",
+    height: "24px",
+    fontSize: "10px"
+  },
   checkpointInfo: {
-    flex: 1
+    flex: 1,
+    minWidth: 0
   },
   checkpointName: {
     color: "#F1F5F9",
     fontWeight: "600",
     fontSize: "13px"
   },
+  checkpointNameMobile: {
+    fontSize: "12px"
+  },
   checkpointTime: {
     color: "#64748B",
     fontSize: "11px",
     display: "flex",
     alignItems: "center",
-    gap: "4px"
+    gap: "4px",
+    flexWrap: "wrap"
+  },
+  checkpointTimeMobile: {
+    fontSize: "10px"
   },
   checkpointActions: {
     display: "flex",
-    gap: "2px"
+    gap: "2px",
+    flexShrink: 0
+  },
+  checkpointActionsMobile: {
+    gap: "1px"
   },
   editForm: {
     display: "flex",
@@ -1502,7 +1981,13 @@ const styles = {
   mapContainer: {
     flex: 1,
     padding: "16px",
-    background: "#0F172A"
+    background: "#0F172A",
+    minHeight: "300px"
+  },
+  mapContainerMobile: {
+    padding: "8px",
+    minHeight: "250px",
+    height: "50vh"
   },
   notificationPanel: {
     position: "fixed",
@@ -1514,6 +1999,13 @@ const styles = {
     zIndex: 9999,
     maxWidth: "380px"
   },
+  notificationPanelMobile: {
+    bottom: "12px",
+    right: "12px",
+    left: "12px",
+    maxWidth: "unset",
+    width: "auto"
+  },
   notificationItem: {
     display: "flex",
     alignItems: "center",
@@ -1524,6 +2016,11 @@ const styles = {
     borderRadius: "8px",
     boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
     animation: "slideIn 0.3s ease"
+  },
+  notificationItemMobile: {
+    padding: "10px 12px",
+    fontSize: "12px",
+    gap: "8px"
   },
   notificationMessage: {
     flex: 1,
@@ -1555,6 +2052,11 @@ const styles = {
     width: "380px",
     maxWidth: "95%"
   },
+  modalContentMobile: {
+    padding: "16px",
+    width: "95%",
+    margin: "10px"
+  },
   modalHeader: {
     display: "flex",
     justifyContent: "space-between",
@@ -1570,6 +2072,9 @@ const styles = {
     fontWeight: "700",
     margin: 0
   },
+  modalTitleMobile: {
+    fontSize: "16px"
+  },
   modalSubtitle: {
     color: "#64748B",
     fontSize: "13px",
@@ -1579,6 +2084,9 @@ const styles = {
     display: "flex",
     gap: "8px",
     marginBottom: "16px"
+  },
+  modalTypeButtonsMobile: {
+    gap: "4px"
   },
   modalTypeBtn: {
     flex: 1,
@@ -1594,6 +2102,11 @@ const styles = {
     fontWeight: "600",
     transition: "all 0.2s"
   },
+  modalTypeBtnMobile: {
+    padding: "8px",
+    fontSize: "12px",
+    gap: "4px"
+  },
   modalMinutes: {
     marginBottom: "20px"
   },
@@ -1608,16 +2121,25 @@ const styles = {
     alignItems: "center",
     gap: "12px"
   },
+  modalMinutesControlMobile: {
+    gap: "8px"
+  },
   modalActions: {
     display: "flex",
     gap: "8px",
     justifyContent: "flex-end"
+  },
+  modalActionsMobile: {
+    gap: "4px"
   },
   shareCodeBox: {
     background: "#1E293B",
     borderRadius: "10px",
     padding: "16px",
     marginBottom: "16px"
+  },
+  shareCodeBoxMobile: {
+    padding: "12px"
   },
   shareCodeLabel: {
     color: "#64748B",
@@ -1631,16 +2153,26 @@ const styles = {
     letterSpacing: "6px",
     fontFamily: "monospace"
   },
+  shareCodeMobile: {
+    fontSize: "22px",
+    letterSpacing: "4px"
+  },
   shareUrlBox: {
     background: "#1E293B",
     borderRadius: "10px",
     padding: "12px",
     marginBottom: "16px"
   },
+  shareUrlBoxMobile: {
+    padding: "10px"
+  },
   shareUrl: {
     color: "#94A3B8",
     fontSize: "12px",
     wordBreak: "break-all"
+  },
+  shareUrlMobile: {
+    fontSize: "11px"
   },
   shareInfo: {
     color: "#475569",
@@ -1672,6 +2204,59 @@ const styles = {
     color: "#64748B",
     marginTop: "16px",
     fontSize: "14px"
+  },
+  // Mobile Menu
+  mobileMenu: {
+    background: "#1E293B",
+    padding: "12px 16px",
+    borderBottom: "1px solid #334155",
+    display: "flex",
+    gap: "12px",
+    flexWrap: "wrap"
+  },
+  mobileMenuItem: {
+    background: "none",
+    border: "none",
+    color: "#94A3B8",
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    padding: "6px 12px",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontSize: "13px",
+    transition: "all 0.2s"
+  },
+  mobileSessionList: {
+    background: "#0F172A",
+    borderBottom: "1px solid #1E293B",
+    padding: "8px 12px"
+  },
+  mobileSessionHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "8px"
+  },
+  mobileSessionItems: {
+    display: "flex",
+    gap: "6px",
+    flexWrap: "wrap"
+  },
+  mobileSessionItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "6px 10px",
+    borderRadius: "6px",
+    background: "#1E293B",
+    cursor: "pointer",
+    fontSize: "12px"
+  },
+  mobileSessionCode: {
+    color: "#F1F5F9",
+    fontWeight: "600",
+    fontFamily: "monospace"
   }
 };
 
@@ -1685,6 +2270,11 @@ styleSheet.textContent = `
   @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
+  }
+  @media (max-width: 768px) {
+    .leaflet-control-zoom {
+      display: none !important;
+    }
   }
 `;
 document.head.appendChild(styleSheet);
