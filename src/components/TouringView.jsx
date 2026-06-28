@@ -66,6 +66,63 @@ function getTransportLabel(type) {
 
 // ─── STYLES ───────────────────────────────────────────────────────────────────
 
+const inputStyle = {
+  background: "#0F172A",
+  border: "1px solid #334155",
+  borderRadius: "8px",
+  color: "#F1F5F9",
+  padding: "8px 12px",
+  fontSize: "13px",
+  width: "100%",
+  outline: "none",
+  boxSizing: "border-box",
+  transition: "border-color 0.2s"
+};
+
+const btnPrimary = {
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+  padding: "10px 20px",
+  background: "#3B82F6",
+  color: "white",
+  border: "none",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontSize: "13px",
+  fontWeight: "600",
+  transition: "all 0.2s"
+};
+
+const btnSecondary = {
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+  padding: "10px 20px",
+  background: "#1E293B",
+  color: "#94A3B8",
+  border: "1px solid #334155",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontSize: "13px",
+  fontWeight: "600",
+  transition: "all 0.2s"
+};
+
+const iconBtn = {
+  background: "#1E293B",
+  border: "1px solid #334155",
+  borderRadius: "6px",
+  color: "#94A3B8",
+  cursor: "pointer",
+  padding: "6px 8px",
+  display: "flex",
+  alignItems: "center",
+  gap: "4px",
+  fontSize: "12px",
+  transition: "all 0.2s"
+};
+
 const styles = {
   container: {
     minHeight: "100vh",
@@ -124,7 +181,6 @@ const styles = {
     padding: "4px 10px",
     fontSize: "10px"
   },
-  // Status Bar - Sama seperti TouringPage
   statusBar: {
     background: "#1E293B",
     borderBottom: "1px solid #334155",
@@ -362,18 +418,6 @@ const styles = {
     color: "#64748B",
     gap: "12px"
   },
-  notificationPanelMobile: {
-    bottom: "12px",
-    right: "12px",
-    left: "12px",
-    maxWidth: "unset",
-    width: "auto"
-  },
-  notificationItemMobile: {
-    padding: "10px 12px",
-    fontSize: "12px",
-    gap: "8px"
-  },
   notificationPanel: {
     position: "fixed",
     bottom: "24px",
@@ -383,6 +427,13 @@ const styles = {
     gap: "8px",
     zIndex: 9999,
     maxWidth: "380px"
+  },
+  notificationPanelMobile: {
+    bottom: "12px",
+    right: "12px",
+    left: "12px",
+    maxWidth: "unset",
+    width: "auto"
   },
   notificationItem: {
     display: "flex",
@@ -395,6 +446,11 @@ const styles = {
     boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
     animation: "slideIn 0.3s ease"
   },
+  notificationItemMobile: {
+    padding: "10px 12px",
+    fontSize: "12px",
+    gap: "8px"
+  },
   notificationMessage: {
     flex: 1,
     color: "#F1F5F9",
@@ -406,6 +462,27 @@ const styles = {
     color: "#64748B",
     cursor: "pointer",
     padding: "4px"
+  },
+  loadingContainer: {
+    minHeight: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#0F172A"
+  },
+  loadingSpinner: {
+    width: "48px",
+    height: "48px",
+    border: "4px solid #1E293B",
+    borderTop: "4px solid #3B82F6",
+    borderRadius: "50%",
+    animation: "spin 1s linear infinite"
+  },
+  loadingText: {
+    color: "#64748B",
+    marginTop: "16px",
+    fontSize: "14px"
   }
 };
 
@@ -419,7 +496,7 @@ export default function TouringView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(new Date());
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [isMobile, setIsMobile] = useState(false);
   const [currentStatus, setCurrentStatus] = useState({ 
     status: "idle", 
     location_name: "Menunggu",
@@ -431,17 +508,13 @@ export default function TouringView() {
 
   const sessionCodeRef = useRef(null);
   const subscriptionRef = useRef(null);
-  const mapInstanceRef = useRef(null);
+  const isMounted = useRef(true);
 
   // Responsive
   useEffect(() => {
+    setIsMobile(window.innerWidth < 768);
     const handleResize = () => {
       setIsMobile(window.innerWidth < 768);
-      if (mapInstanceRef.current) {
-        setTimeout(() => {
-          mapInstanceRef.current.invalidateSize();
-        }, 300);
-      }
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -450,6 +523,7 @@ export default function TouringView() {
   // ─── LOAD SESSION ──────────────────────────────────────────────────────────
 
   useEffect(() => {
+    isMounted.current = true;
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     if (!code) {
@@ -461,6 +535,7 @@ export default function TouringView() {
     loadSession(code);
 
     return () => {
+      isMounted.current = false;
       if (subscriptionRef.current) {
         supabase.removeChannel(subscriptionRef.current);
       }
@@ -480,6 +555,8 @@ export default function TouringView() {
         setLoading(false);
         return;
       }
+
+      if (!isMounted.current) return;
 
       setSession(sessionData);
 
@@ -521,6 +598,7 @@ export default function TouringView() {
           heading: trackData[0].heading || 0,
           recorded_at: trackData[0].recorded_at
         });
+        setLastUpdate(new Date(trackData[0].recorded_at));
       }
 
       // Load notifications
@@ -576,6 +654,7 @@ export default function TouringView() {
           filter: `session_id=eq.${sessionId}`
         },
         (payload) => {
+          if (!isMounted.current) return;
           const { latitude, longitude, speed, heading, recorded_at } = payload.new;
           setCurrentLocation({ lat: latitude, lng: longitude, speed, heading, recorded_at });
           setLastUpdate(new Date());
@@ -590,6 +669,7 @@ export default function TouringView() {
           filter: `session_id=eq.${sessionId}`
         },
         (payload) => {
+          if (!isMounted.current) return;
           setCheckpoints(prev => {
             const idx = prev.findIndex(c => c.id === payload.new.id);
             if (idx === -1) return prev;
@@ -608,6 +688,7 @@ export default function TouringView() {
           filter: `session_id=eq.${sessionId}`
         },
         (payload) => {
+          if (!isMounted.current) return;
           setNotifications(prev => [payload.new, ...prev].slice(0, 20));
         }
       )
@@ -620,7 +701,7 @@ export default function TouringView() {
           filter: `id=eq.${sessionId}`
         },
         (payload) => {
-          // Update status ketika session diupdate
+          if (!isMounted.current) return;
           if (payload.new.current_status) {
             setCurrentStatus({
               status: payload.new.current_status,
@@ -641,6 +722,7 @@ export default function TouringView() {
           filter: `session_id=eq.${sessionId}`
         },
         (payload) => {
+          if (!isMounted.current) return;
           setStatusLogs(prev => [payload.new, ...prev].slice(0, 10));
         }
       )
@@ -655,14 +737,7 @@ export default function TouringView() {
     return (
       <div style={styles.container}>
         <div style={{ ...styles.emptyState, height: "100vh" }}>
-          <div style={{
-            width: "48px",
-            height: "48px",
-            border: "4px solid #1E293B",
-            borderTop: "4px solid #3B82F6",
-            borderRadius: "50%",
-            animation: "spin 1s linear infinite"
-          }}></div>
+          <div style={styles.loadingSpinner}></div>
           <p style={{ color: "#64748B" }}>Memuat data perjalanan...</p>
         </div>
       </div>
@@ -706,7 +781,6 @@ export default function TouringView() {
     }
   }
 
-  // Hitung total delay
   const totalDelay = checkpoints.reduce((sum, cp) => sum + (cp.delay_minutes || 0), 0);
 
   return (
@@ -751,7 +825,7 @@ export default function TouringView() {
         </div>
       </header>
 
-      {/* Status Bar - Sama seperti TouringPage */}
+      {/* Status Bar */}
       {session?.status === "active" && !isComplete && (
         <div style={styles.statusBar}>
           <div style={styles.statusBarContent}>
@@ -789,7 +863,6 @@ export default function TouringView() {
             </button>
           </div>
           
-          {/* Status Detail Popup */}
           {showStatusDetail && (
             <div style={styles.statusDetailPopup}>
               <div style={styles.statusDetailItem}>
@@ -852,7 +925,6 @@ export default function TouringView() {
             currentStatus={currentStatus}
             isComplete={isComplete}
           />
-          {/* Live Indicator */}
           {session?.status === "active" && currentLocation && !isComplete && (
             <div style={{
               position: "absolute",
@@ -1105,7 +1177,10 @@ function ViewMap({ checkpoints, currentLocation, sessionStatus, nextCheckpoint, 
   useEffect(() => {
     if (initializedRef.current || mapInstanceRef.current) return;
     const L = window.L;
-    if (!L) return;
+    if (!L) {
+      console.warn("Leaflet not loaded");
+      return;
+    }
 
     const startLat = currentLocation?.lat || checkpoints[0]?.latitude || -7.7200;
     const startLng = currentLocation?.lng || checkpoints[0]?.longitude || 109.9084;
@@ -1193,7 +1268,6 @@ function ViewMap({ checkpoints, currentLocation, sessionStatus, nextCheckpoint, 
     renderMarkers(L, mapInstanceRef.current);
   }, [checkpoints, isMobile]);
 
-  // Smooth animation for current location
   useEffect(() => {
     const L = window.L;
     if (!L || !mapInstanceRef.current || !currentLocation || !initializedRef.current) return;
@@ -1226,7 +1300,6 @@ function ViewMap({ checkpoints, currentLocation, sessionStatus, nextCheckpoint, 
       }
     }
 
-    // Update marker popup with status
     if (currentMarkerRef.current && currentStatus) {
       const statusText = currentStatus.status === "running" ? "🟢 Berjalan" : 
                          currentStatus.status === "stopped" ? "🟡 Berhenti" : "⏳ Idle";
@@ -1239,7 +1312,6 @@ function ViewMap({ checkpoints, currentLocation, sessionStatus, nextCheckpoint, 
 
   }, [currentLocation, sessionStatus, isMobile, currentStatus, isComplete]);
 
-  // Invalidate map on resize
   useEffect(() => {
     if (mapInstanceRef.current) {
       setTimeout(() => {
