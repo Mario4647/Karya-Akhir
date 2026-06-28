@@ -1,4 +1,5 @@
-// TouringView.jsx - Halaman View dengan Nama Kota di Maps
+// TouringView.jsx
+// Halaman View untuk Memantau Perjalanan
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabaseClient";
 import {
@@ -365,15 +366,23 @@ export default function TouringView() {
       setSession(sessionData);
       setTotalDistance(sessionData.total_distance_km || 0);
 
+      // Load checkpoints dari database
       const { data: cpData, error: cpError } = await supabase
         .from("touring_checkpoints")
         .select("*")
         .eq("session_id", sessionData.id)
+        .eq("is_deleted", false)
         .order("order_index");
 
-      if (!cpError && cpData) {
-        setCheckpoints(cpData);
+      // Jika tidak ada checkpoint, coba dari checkpoints_data
+      let finalCpData = [];
+      if (!cpError && cpData && cpData.length > 0) {
+        finalCpData = cpData;
+      } else if (sessionData.checkpoints_data && sessionData.checkpoints_data.length > 0) {
+        finalCpData = sessionData.checkpoints_data;
       }
+      
+      setCheckpoints(finalCpData);
 
       const { data: trackData } = await supabase
         .from("touring_location_tracking")
@@ -635,7 +644,7 @@ export default function TouringView() {
 
       {/* Main Content */}
       <div style={{ ...styles.mainContent, ...(isMobile ? styles.mainContentMobile : {}) }}>
-        {/* Map */}
+        {/* Map - PASTI MUNCUL */}
         <div style={{ ...styles.mapContainer, ...(isMobile ? styles.mapContainerMobile : {}) }}>
           <ViewMap
             checkpoints={checkpoints}
@@ -741,7 +750,7 @@ export default function TouringView() {
                 const isNext = cp.status !== "reached" && !checkpoints.find(c => c.status !== "reached" && c.order_index < cp.order_index);
                 
                 return (
-                  <div key={cp.id} style={{
+                  <div key={cp.id || cp.order_index} style={{
                     ...styles.checkpointItem,
                     borderColor: isReached ? "#065F46" : isNext ? "#1D4ED8" : "#334155",
                     opacity: isReached ? 0.8 : 1
@@ -836,7 +845,7 @@ export default function TouringView() {
         }
         @media (max-width: 768px) {
           .leaflet-control-zoom {
-            display: none !important;
+            display: flex !important;
           }
         }
       `}</style>
@@ -866,7 +875,7 @@ function ViewMap({ checkpoints, currentLocation, sessionStatus, nextCheckpoint, 
         link.rel = 'stylesheet';
         link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
         document.head.appendChild(link);
-        initMap();
+        setTimeout(initMap, 300);
       };
       document.head.appendChild(script);
       return;
@@ -887,12 +896,14 @@ function ViewMap({ checkpoints, currentLocation, sessionStatus, nextCheckpoint, 
     const L = window.L;
     if (!L) return;
 
-    const startLat = currentLocation?.lat || checkpoints[0]?.latitude || -7.7200;
-    const startLng = currentLocation?.lng || checkpoints[0]?.longitude || 109.9084;
+    const startLat = currentLocation?.lat || (checkpoints[0]?.latitude || -7.7200);
+    const startLng = currentLocation?.lng || (checkpoints[0]?.longitude || 109.9084);
 
     const map = L.map(mapRef.current, { 
       zoomControl: true,
-      attributionControl: true 
+      attributionControl: true,
+      fadeAnimation: true,
+      zoomAnimation: true
     });
     mapInstanceRef.current = map;
 
@@ -903,6 +914,11 @@ function ViewMap({ checkpoints, currentLocation, sessionStatus, nextCheckpoint, 
 
     map.setView([startLat, startLng], isMobile ? 8 : 9);
     initializedRef.current = true;
+    
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 100);
+    
     renderMarkers(L, map);
   };
 
@@ -945,13 +961,15 @@ function ViewMap({ checkpoints, currentLocation, sessionStatus, nextCheckpoint, 
     });
 
     if (polylineRef.current) polylineRef.current.remove();
-    const latlngs = checkpoints.map(cp => [cp.latitude, cp.longitude]);
-    polylineRef.current = L.polyline(latlngs, { 
-      color: "#3B82F6", 
-      weight: isMobile ? 2 : 3, 
-      opacity: 0.5, 
-      dashArray: "8,4" 
-    }).addTo(map);
+    if (checkpoints.length > 1) {
+      const latlngs = checkpoints.map(cp => [cp.latitude, cp.longitude]);
+      polylineRef.current = L.polyline(latlngs, { 
+        color: "#3B82F6", 
+        weight: isMobile ? 2 : 3, 
+        opacity: 0.5, 
+        dashArray: "8,4" 
+      }).addTo(map);
+    }
 
     const reachedIndex = checkpoints.findIndex(c => c.status === "reached");
     if (reachedIndex >= 0 && reachedIndex < checkpoints.length - 1) {
@@ -1014,10 +1032,30 @@ function ViewMap({ checkpoints, currentLocation, sessionStatus, nextCheckpoint, 
     if (sessionStatus === "active") {
       mapInstanceRef.current.setView([currentLocation.lat, currentLocation.lng], isMobile ? 11 : 13, { animate: true });
     }
+    
+    setTimeout(() => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      }
+    }, 200);
   }, [currentLocation, sessionStatus, isMobile, statusMessage, totalDistance, stops]);
 
+  // Force invalidate size on resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (mapInstanceRef.current) {
+        setTimeout(() => {
+          mapInstanceRef.current.invalidateSize();
+        }, 300);
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%" }}>
+    <div style={{ position: "relative", width: "100%", height: "100%", minHeight: "250px" }}>
       <style>{`
         @keyframes ping {
           0% { transform: scale(1); opacity: 1; }
@@ -1029,13 +1067,18 @@ function ViewMap({ checkpoints, currentLocation, sessionStatus, nextCheckpoint, 
         .leaflet-popup-content {
           margin: 8px 10px !important;
         }
+        .leaflet-container {
+          width: 100% !important;
+          height: 100% !important;
+          min-height: 250px !important;
+        }
         @media (max-width: 768px) {
           .leaflet-control-zoom {
-            display: none !important;
+            display: flex !important;
           }
         }
       `}</style>
-      <div ref={mapRef} style={{ width: "100%", height: "100%", borderRadius: "10px" }} />
+      <div ref={mapRef} style={{ width: "100%", height: "100%", minHeight: "250px", borderRadius: "10px" }} />
     </div>
   );
 }
