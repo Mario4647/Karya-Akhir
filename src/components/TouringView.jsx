@@ -1,12 +1,14 @@
 // TouringView.jsx
-// Halaman View untuk Memantau Perjalanan Orang Lain
+// Halaman View untuk Memantau Perjalanan Orang Lain - Sinkron dengan TouringPage
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabaseClient";
 import {
   FiMapPin, FiClock, FiTruck, FiUser, FiDroplet,
   FiCheckCircle, FiAlertCircle, FiNavigation,
   FiShare2, FiEye, FiEyeOff, FiZap, FiInfo,
-  FiArrowUp, FiArrowDown, FiRefreshCw, FiCalendar
+  FiArrowUp, FiArrowDown, FiRefreshCw, FiCalendar,
+  FiActivity, FiPause, FiWifi, FiWifiOff, FiTarget,
+  FiCompass, FiRadio
 } from "react-icons/fi";
 import { MdTwoWheeler, MdDirectionsCar, MdDirectionsWalk, MdTrain } from "react-icons/md";
 
@@ -33,6 +35,18 @@ function formatDate(dateStr) {
   if (!dateStr) return "-";
   const date = new Date(dateStr);
   return date.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function formatTimeAgo(dateStr) {
+  if (!dateStr) return "-";
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diff = Math.floor((now - date) / 1000);
+  
+  if (diff < 60) return `${diff} detik lalu`;
+  if (diff < 3600) return `${Math.floor(diff / 60)} menit lalu`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} jam lalu`;
+  return `${Math.floor(diff / 86400)} hari lalu`;
 }
 
 function getTransportIcon(type) {
@@ -109,6 +123,87 @@ const styles = {
   statusBadgeMobile: {
     padding: "4px 10px",
     fontSize: "10px"
+  },
+  // Status Bar - Sama seperti TouringPage
+  statusBar: {
+    background: "#1E293B",
+    borderBottom: "1px solid #334155",
+    padding: "8px 16px",
+    position: "relative"
+  },
+  statusBarContent: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    flexWrap: "wrap"
+  },
+  statusIcon: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "36px",
+    height: "36px",
+    borderRadius: "50%",
+    background: "rgba(16, 185, 129, 0.1)",
+    flexShrink: 0
+  },
+  statusInfo: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px"
+  },
+  statusText: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    fontSize: "14px",
+    fontWeight: "600",
+    flexWrap: "wrap"
+  },
+  statusLocation: {
+    color: "#94A3B8",
+    fontSize: "12px",
+    fontWeight: "400"
+  },
+  statusSpeed: {
+    color: "#64748B",
+    fontSize: "11px"
+  },
+  statusDetailBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: "4px",
+    padding: "4px 12px",
+    background: "#0F172A",
+    border: "1px solid #334155",
+    borderRadius: "6px",
+    color: "#94A3B8",
+    cursor: "pointer",
+    fontSize: "12px",
+    transition: "all 0.2s"
+  },
+  statusDetailPopup: {
+    position: "absolute",
+    top: "calc(100% + 8px)",
+    right: "16px",
+    background: "#0F172A",
+    border: "1px solid #334155",
+    borderRadius: "10px",
+    padding: "12px 16px",
+    minWidth: "200px",
+    zIndex: 100,
+    boxShadow: "0 8px 24px rgba(0,0,0,0.4)"
+  },
+  statusDetailItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    padding: "4px 0",
+    fontSize: "12px",
+    borderBottom: "1px solid #1E293B"
+  },
+  statusDetailLabel: {
+    color: "#64748B"
   },
   mainContent: {
     display: "flex",
@@ -278,6 +373,39 @@ const styles = {
     padding: "10px 12px",
     fontSize: "12px",
     gap: "8px"
+  },
+  notificationPanel: {
+    position: "fixed",
+    bottom: "24px",
+    right: "24px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    zIndex: 9999,
+    maxWidth: "380px"
+  },
+  notificationItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    padding: "12px 16px",
+    background: "#1E293B",
+    borderLeft: "4px solid #3B82F6",
+    borderRadius: "8px",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+    animation: "slideIn 0.3s ease"
+  },
+  notificationMessage: {
+    flex: 1,
+    color: "#F1F5F9",
+    fontSize: "13px"
+  },
+  notificationClose: {
+    background: "none",
+    border: "none",
+    color: "#64748B",
+    cursor: "pointer",
+    padding: "4px"
   }
 };
 
@@ -292,14 +420,28 @@ export default function TouringView() {
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [currentStatus, setCurrentStatus] = useState({ 
+    status: "idle", 
+    location_name: "Menunggu",
+    speed: 0,
+    last_update: null
+  });
+  const [showStatusDetail, setShowStatusDetail] = useState(false);
+  const [statusLogs, setStatusLogs] = useState([]);
 
   const sessionCodeRef = useRef(null);
   const subscriptionRef = useRef(null);
+  const mapInstanceRef = useRef(null);
 
   // Responsive
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 768);
+      if (mapInstanceRef.current) {
+        setTimeout(() => {
+          mapInstanceRef.current.invalidateSize();
+        }, 300);
+      }
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -341,16 +483,29 @@ export default function TouringView() {
 
       setSession(sessionData);
 
+      // Load current status dari session
+      if (sessionData.current_status) {
+        setCurrentStatus({
+          status: sessionData.current_status,
+          location_name: sessionData.current_location_name || "Lokasi tidak diketahui",
+          speed: 0,
+          last_update: sessionData.last_location_update || new Date()
+        });
+      }
+
+      // Load checkpoints - filter yang tidak dihapus
       const { data: cpData, error: cpError } = await supabase
         .from("touring_checkpoints")
         .select("*")
         .eq("session_id", sessionData.id)
+        .eq("is_deleted", false)
         .order("order_index");
 
       if (!cpError && cpData) {
         setCheckpoints(cpData);
       }
 
+      // Load latest tracking
       const { data: trackData } = await supabase
         .from("touring_location_tracking")
         .select("*")
@@ -362,12 +517,13 @@ export default function TouringView() {
         setCurrentLocation({
           lat: trackData[0].latitude,
           lng: trackData[0].longitude,
-          speed: trackData[0].speed,
-          heading: trackData[0].heading,
+          speed: trackData[0].speed || 0,
+          heading: trackData[0].heading || 0,
           recorded_at: trackData[0].recorded_at
         });
       }
 
+      // Load notifications
       const { data: notifData } = await supabase
         .from("touring_notifications")
         .select("*")
@@ -379,7 +535,21 @@ export default function TouringView() {
         setNotifications(notifData);
       }
 
+      // Load status logs terbaru
+      const { data: logsData } = await supabase
+        .from("touring_status_logs")
+        .select("*")
+        .eq("session_id", sessionData.id)
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      if (logsData) {
+        setStatusLogs(logsData);
+      }
+
+      // Subscribe to realtime updates
       subscribeToRealtime(sessionData.id);
+
       setLoading(false);
     } catch (err) {
       console.error("Error loading session:", err);
@@ -396,7 +566,7 @@ export default function TouringView() {
     }
 
     const channel = supabase
-      .channel(`session-${sessionId}`)
+      .channel(`session-view-${sessionId}`)
       .on(
         "postgres_changes",
         {
@@ -439,6 +609,39 @@ export default function TouringView() {
         },
         (payload) => {
           setNotifications(prev => [payload.new, ...prev].slice(0, 20));
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "touring_sessions",
+          filter: `id=eq.${sessionId}`
+        },
+        (payload) => {
+          // Update status ketika session diupdate
+          if (payload.new.current_status) {
+            setCurrentStatus({
+              status: payload.new.current_status,
+              location_name: payload.new.current_location_name || "Lokasi tidak diketahui",
+              speed: 0,
+              last_update: payload.new.last_location_update || new Date()
+            });
+          }
+          setSession(prev => ({ ...prev, ...payload.new }));
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "touring_status_logs",
+          filter: `session_id=eq.${sessionId}`
+        },
+        (payload) => {
+          setStatusLogs(prev => [payload.new, ...prev].slice(0, 10));
         }
       )
       .subscribe();
@@ -485,7 +688,8 @@ export default function TouringView() {
   const transportLabel = session ? getTransportLabel(session.transport_type) : "";
   const reachedCount = checkpoints.filter(c => c.status === "reached").length;
   const totalCheckpoints = checkpoints.length;
-  const isComplete = checkpoints.some(cp => cp.is_final_destination && cp.status === "reached");
+  const isComplete = checkpoints.some(cp => cp.is_final_destination && cp.status === "reached") || 
+                     session?.status === "completed";
 
   let nextCheckpoint = null;
   let distanceToNext = null;
@@ -501,6 +705,9 @@ export default function TouringView() {
       );
     }
   }
+
+  // Hitung total delay
+  const totalDelay = checkpoints.reduce((sum, cp) => sum + (cp.delay_minutes || 0), 0);
 
   return (
     <div style={{ ...styles.container, ...(isMobile ? styles.containerMobile : {}) }}>
@@ -544,6 +751,94 @@ export default function TouringView() {
         </div>
       </header>
 
+      {/* Status Bar - Sama seperti TouringPage */}
+      {session?.status === "active" && !isComplete && (
+        <div style={styles.statusBar}>
+          <div style={styles.statusBarContent}>
+            <div style={styles.statusIcon}>
+              {currentStatus.status === "running" ? (
+                <FiActivity size={20} color="#10B981" />
+              ) : currentStatus.status === "stopped" ? (
+                <FiPause size={20} color="#F59E0B" />
+              ) : (
+                <FiClock size={20} color="#94A3B8" />
+              )}
+            </div>
+            <div style={styles.statusInfo}>
+              <div style={styles.statusText}>
+                {currentStatus.status === "running" ? (
+                  <span style={{ color: "#10B981" }}>🟢 Sedang Berjalan</span>
+                ) : currentStatus.status === "stopped" ? (
+                  <span style={{ color: "#F59E0B" }}>🟡 Sedang Berhenti</span>
+                ) : (
+                  <span style={{ color: "#94A3B8" }}>⏳ Menunggu</span>
+                )}
+                <span style={styles.statusLocation}>{currentStatus.location_name || "Lokasi tidak diketahui"}</span>
+              </div>
+              {currentLocation?.speed !== undefined && currentStatus.status === "running" && (
+                <span style={styles.statusSpeed}>
+                  {(currentLocation.speed * 3.6).toFixed(1)} km/jam
+                </span>
+              )}
+            </div>
+            <button 
+              onClick={() => setShowStatusDetail(!showStatusDetail)}
+              style={styles.statusDetailBtn}
+            >
+              <FiInfo size={14} /> Detail
+            </button>
+          </div>
+          
+          {/* Status Detail Popup */}
+          {showStatusDetail && (
+            <div style={styles.statusDetailPopup}>
+              <div style={styles.statusDetailItem}>
+                <span style={styles.statusDetailLabel}>Status</span>
+                <span style={{ 
+                  color: currentStatus.status === "running" ? "#10B981" : 
+                         currentStatus.status === "stopped" ? "#F59E0B" : "#94A3B8"
+                }}>
+                  {currentStatus.status === "running" ? "🟢 Berjalan" : 
+                   currentStatus.status === "stopped" ? "🟡 Berhenti" : "⏳ Idle"}
+                </span>
+              </div>
+              <div style={styles.statusDetailItem}>
+                <span style={styles.statusDetailLabel}>Lokasi</span>
+                <span>{currentStatus.location_name || "-"}</span>
+              </div>
+              {currentLocation?.speed !== undefined && (
+                <div style={styles.statusDetailItem}>
+                  <span style={styles.statusDetailLabel}>Kecepatan</span>
+                  <span>{(currentLocation.speed * 3.6).toFixed(1)} km/jam</span>
+                </div>
+              )}
+              <div style={styles.statusDetailItem}>
+                <span style={styles.statusDetailLabel}>Update</span>
+                <span>{currentStatus.last_update ? formatTimeAgo(currentStatus.last_update) : "-"}</span>
+              </div>
+              <div style={styles.statusDetailItem}>
+                <span style={styles.statusDetailLabel}>Progress</span>
+                <span>{reachedCount}/{totalCheckpoints} Kota</span>
+              </div>
+              {totalDelay !== 0 && (
+                <div style={styles.statusDetailItem}>
+                  <span style={styles.statusDetailLabel}>Total Delay</span>
+                  <span style={{ color: totalDelay > 0 ? "#FCA5A5" : "#FDE68A" }}>
+                    {totalDelay > 0 ? `+${totalDelay}` : totalDelay} menit
+                  </span>
+                </div>
+              )}
+              <div style={styles.statusDetailItem}>
+                <span style={styles.statusDetailLabel}>Sinyal GPS</span>
+                <span style={{ color: "#10B981" }}>
+                  <FiWifi size={12} /> Aktif
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Main Content */}
       <div style={{ ...styles.mainContent, ...(isMobile ? styles.mainContentMobile : {}) }}>
         {/* Map */}
@@ -554,8 +849,11 @@ export default function TouringView() {
             sessionStatus={session?.status}
             nextCheckpoint={nextCheckpoint}
             isMobile={isMobile}
+            currentStatus={currentStatus}
+            isComplete={isComplete}
           />
-          {session?.status === "active" && currentLocation && (
+          {/* Live Indicator */}
+          {session?.status === "active" && currentLocation && !isComplete && (
             <div style={{
               position: "absolute",
               bottom: "24px",
@@ -590,6 +888,11 @@ export default function TouringView() {
                   ✅ Selesai
                 </span>
               )}
+              {session?.late_departure && (
+                <span style={{ color: "#F59E0B", fontSize: "11px", fontWeight: "600" }}>
+                  ⏰ Telat Berangkat
+                </span>
+              )}
             </div>
             <div style={styles.infoRow}>
               <span style={styles.infoLabel}><FiUser size={12} /> Pengemudi</span>
@@ -612,6 +915,17 @@ export default function TouringView() {
                 <span style={styles.infoLabel}><FiNavigation size={12} /> Ke {nextCheckpoint.city_name}</span>
                 <span style={styles.infoValue}>
                   {distanceToNext < 1 ? `${(distanceToNext * 1000).toFixed(0)} m` : `${distanceToNext.toFixed(1)} km`}
+                </span>
+              </div>
+            )}
+            {totalDelay !== 0 && (
+              <div style={styles.infoRow}>
+                <span style={styles.infoLabel}><FiClock size={12} /> Total Delay</span>
+                <span style={{ 
+                  color: totalDelay > 0 ? "#FCA5A5" : "#FDE68A",
+                  fontWeight: "600"
+                }}>
+                  {totalDelay > 0 ? `+${totalDelay}` : totalDelay} menit
                 </span>
               </div>
             )}
@@ -678,6 +992,47 @@ export default function TouringView() {
             </div>
           </div>
 
+          {/* Status Logs */}
+          {statusLogs.length > 0 && (
+            <div style={styles.infoCard}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                <span style={{ color: "#94A3B8", fontSize: "13px", fontWeight: "600" }}>
+                  <FiActivity size={14} style={{ marginRight: "6px" }} />
+                  Riwayat Status
+                </span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px", maxHeight: isMobile ? "80px" : "120px", overflowY: "auto" }}>
+                {statusLogs.slice(0, isMobile ? 3 : 5).map((log, i) => (
+                  <div key={log.id || i} style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "4px 8px",
+                    background: "#0F172A",
+                    borderRadius: "4px",
+                    fontSize: isMobile ? "10px" : "11px"
+                  }}>
+                    {log.status === "running" ? (
+                      <FiActivity size={10} color="#10B981" />
+                    ) : log.status === "stopped" ? (
+                      <FiPause size={10} color="#F59E0B" />
+                    ) : (
+                      <FiClock size={10} color="#94A3B8" />
+                    )}
+                    <span style={{ color: "#94A3B8", flex: 1 }}>
+                      {log.status === "running" ? "🟢 Berjalan" : 
+                       log.status === "stopped" ? "🟡 Berhenti" : "⏳ Idle"}
+                      {log.location_name && ` - ${log.location_name}`}
+                    </span>
+                    <span style={{ color: "#475569", fontSize: "9px" }}>
+                      {formatTimeAgo(log.created_at)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Notifications */}
           {notifications.length > 0 && (
             <div style={styles.infoCard}>
@@ -687,23 +1042,23 @@ export default function TouringView() {
                   Notifikasi
                 </span>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: isMobile ? "80px" : "120px", overflowY: "auto" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px", maxHeight: isMobile ? "80px" : "120px", overflowY: "auto" }}>
                 {notifications.slice(0, isMobile ? 3 : 5).map((n, i) => (
                   <div key={n.id || i} style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: "8px",
-                    padding: "6px 10px",
+                    gap: "6px",
+                    padding: "4px 8px",
                     background: "#0F172A",
-                    borderRadius: "6px",
-                    fontSize: isMobile ? "11px" : "12px"
+                    borderRadius: "4px",
+                    fontSize: isMobile ? "10px" : "11px"
                   }}>
-                    {n.type === "late" ? <FiArrowDown size={12} color="#EF4444" /> :
-                     n.type === "early" ? <FiArrowUp size={12} color="#F59E0B" /> :
-                     n.type === "info" ? <FiInfo size={12} color="#3B82F6" /> :
-                     <FiCheckCircle size={12} color="#10B981" />}
+                    {n.type === "late" ? <FiArrowDown size={10} color="#EF4444" /> :
+                     n.type === "early" ? <FiArrowUp size={10} color="#F59E0B" /> :
+                     n.type === "info" ? <FiInfo size={10} color="#3B82F6" /> :
+                     <FiCheckCircle size={10} color="#10B981" />}
                     <span style={{ color: "#94A3B8", flex: 1 }}>{n.message}</span>
-                    <span style={{ color: "#475569", fontSize: "10px" }}>
+                    <span style={{ color: "#475569", fontSize: "9px" }}>
                       {new Date(n.created_at).toLocaleTimeString("id-ID")}
                     </span>
                   </div>
@@ -723,6 +1078,10 @@ export default function TouringView() {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
+        @keyframes slideIn {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
         @media (max-width: 768px) {
           .leaflet-control-zoom {
             display: none !important;
@@ -735,7 +1094,7 @@ export default function TouringView() {
 
 // ─── VIEW MAP ────────────────────────────────────────────────────────────────
 
-function ViewMap({ checkpoints, currentLocation, sessionStatus, nextCheckpoint, isMobile }) {
+function ViewMap({ checkpoints, currentLocation, sessionStatus, nextCheckpoint, isMobile, currentStatus, isComplete }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
@@ -834,35 +1193,69 @@ function ViewMap({ checkpoints, currentLocation, sessionStatus, nextCheckpoint, 
     renderMarkers(L, mapInstanceRef.current);
   }, [checkpoints, isMobile]);
 
+  // Smooth animation for current location
   useEffect(() => {
     const L = window.L;
     if (!L || !mapInstanceRef.current || !currentLocation || !initializedRef.current) return;
 
-    if (currentMarkerRef.current) currentMarkerRef.current.remove();
+    if (currentMarkerRef.current) {
+      const latlng = [currentLocation.lat, currentLocation.lng];
+      currentMarkerRef.current.setLatLng(latlng);
+      
+      if (sessionStatus === "active" && !isComplete) {
+        mapInstanceRef.current.panTo(latlng, { animate: true, duration: 0.5 });
+      }
+    } else {
+      const size = isMobile ? 30 : 40;
+      const pulseIcon = L.divIcon({
+        html: `<div style="position:relative;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center">
+          <div style="position:absolute;width:${size}px;height:${size}px;background:rgba(59,130,246,0.2);border-radius:50%;animation:ping 1.5s infinite"></div>
+          <div style="width:${isMobile ? 14 : 20}px;height:${isMobile ? 14 : 20}px;background:#3B82F6;border-radius:50%;border:3px solid white;box-shadow:0 0 12px rgba(59,130,246,0.6);position:relative;z-index:1"></div>
+        </div>`,
+        className: "",
+        iconSize: [size, size],
+        iconAnchor: [size/2, size/2],
+      });
 
-    const size = isMobile ? 30 : 40;
-    const pulseIcon = L.divIcon({
-      html: `<div style="position:relative;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center">
-        <div style="position:absolute;width:${size}px;height:${size}px;background:rgba(59,130,246,0.2);border-radius:50%;animation:ping 1.5s infinite"></div>
-        <div style="width:${isMobile ? 14 : 20}px;height:${isMobile ? 14 : 20}px;background:#3B82F6;border-radius:50%;border:3px solid white;box-shadow:0 0 12px rgba(59,130,246,0.6);position:relative;z-index:1"></div>
-      </div>`,
-      className: "",
-      iconSize: [size, size],
-      iconAnchor: [size/2, size/2],
-    });
+      currentMarkerRef.current = L.marker([currentLocation.lat, currentLocation.lng], { icon: pulseIcon })
+        .bindPopup("📍 Lokasi Saat Ini")
+        .addTo(mapInstanceRef.current);
 
-    currentMarkerRef.current = L.marker([currentLocation.lat, currentLocation.lng], { icon: pulseIcon })
-      .bindPopup("📍 Lokasi Saat Ini")
-      .addTo(mapInstanceRef.current);
-
-    if (sessionStatus === "active") {
-      mapInstanceRef.current.setView([currentLocation.lat, currentLocation.lng], isMobile ? 11 : 13, { animate: true });
+      if (sessionStatus === "active" && !isComplete) {
+        mapInstanceRef.current.setView([currentLocation.lat, currentLocation.lng], isMobile ? 11 : 13, { animate: true });
+      }
     }
-  }, [currentLocation, sessionStatus, isMobile]);
+
+    // Update marker popup with status
+    if (currentMarkerRef.current && currentStatus) {
+      const statusText = currentStatus.status === "running" ? "🟢 Berjalan" : 
+                         currentStatus.status === "stopped" ? "🟡 Berhenti" : "⏳ Idle";
+      currentMarkerRef.current.setPopupContent(`
+        📍 Lokasi Saat Ini<br>
+        Status: ${statusText}<br>
+        ${currentStatus.location_name || ""}
+      `);
+    }
+
+  }, [currentLocation, sessionStatus, isMobile, currentStatus, isComplete]);
+
+  // Invalidate map on resize
+  useEffect(() => {
+    if (mapInstanceRef.current) {
+      setTimeout(() => {
+        mapInstanceRef.current.invalidateSize();
+      }, 300);
+    }
+  }, [isMobile]);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      <style>{`@keyframes ping{0%{transform:scale(1);opacity:1}100%{transform:scale(2.5);opacity:0}}`}</style>
+      <style>{`
+        @keyframes ping {
+          0% { transform: scale(1); opacity: 1; }
+          100% { transform: scale(2.5); opacity: 0; }
+        }
+      `}</style>
       <div ref={mapRef} style={{ width: "100%", height: "100%", borderRadius: "12px" }} />
     </div>
   );
