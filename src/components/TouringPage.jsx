@@ -1,5 +1,5 @@
 // TouringPage.jsx
-// Halaman Utama Touring Tracker - Dengan Semua Fitur Real-Time
+// Halaman Utama Touring Tracker - Manual Start Only
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "../supabaseClient";
 import {
@@ -84,7 +84,6 @@ function getTransportLabel(type) {
 }
 
 function getStopReason(lat, lng) {
-  // Daftar lokasi SPBU (aproximasi)
   const spbuLocations = [
     { lat: -7.7956, lng: 110.3695, name: "SPBU Yogyakarta" },
     { lat: -7.7200, lng: 109.9084, name: "SPBU Kutoarjo" },
@@ -241,7 +240,6 @@ export default function TouringPage() {
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const [session, setSession] = useState(null);
   const [checkpoints, setCheckpoints] = useState([]);
-  const [originalCheckpoints, setOriginalCheckpoints] = useState([]);
   const [transport, setTransport] = useState({ 
     transport_type: "motor", 
     plate_number: "", 
@@ -275,23 +273,19 @@ export default function TouringPage() {
   const [isStopped, setIsStopped] = useState(false);
   const [stopStartTime, setStopStartTime] = useState(null);
   const [currentStopId, setCurrentStopId] = useState(null);
-  const [lastPosition, setLastPosition] = useState(null);
-  const [movementHistory, setMovementHistory] = useState([]);
   
   const watchIdRef = useRef(null);
   const notificationIdRef = useRef(0);
   const sessionIdRef = useRef(null);
   const isMounted = useRef(true);
-  const loadAttempted = useRef(false);
-  const autoStartIntervalRef = useRef(null);
   const backgroundIntervalRef = useRef(null);
   const movementCheckIntervalRef = useRef(null);
   const locationHistoryRef = useRef([]);
   const totalDistanceRef = useRef(0);
   const isTrackingRef = useRef(false);
   const lastLocationRef = useRef(null);
-  const stopCheckTimerRef = useRef(null);
   const isSessionCompletedRef = useRef(false);
+  const checkpointsSavedRef = useRef(false);
 
   // ─── RESPONSIVE ─────────────────────────────────────────────────────────────
 
@@ -300,6 +294,14 @@ export default function TouringPage() {
       setIsMobile(window.innerWidth < 768);
     };
     window.addEventListener('resize', handleResize);
+    
+    // Force map to show on mobile
+    setTimeout(() => {
+      if (window.L && mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      }
+    }, 1000);
+    
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
@@ -353,7 +355,6 @@ export default function TouringPage() {
     try {
       setIsLoading(true);
       
-      // Load session
       const { data, error } = await supabase
         .from("touring_sessions")
         .select("*, touring_checkpoints(*)")
@@ -379,24 +380,29 @@ export default function TouringPage() {
       });
       
       // Load checkpoints dari database
+      let cpData = [];
       if (data.touring_checkpoints && data.touring_checkpoints.length > 0) {
-        const sorted = data.touring_checkpoints.sort((a, b) => a.order_index - b.order_index);
-        setCheckpoints(sorted);
-        setOriginalCheckpoints(JSON.parse(JSON.stringify(sorted)));
-      } else {
-        // Jika tidak ada checkpoint, buat default
+        cpData = data.touring_checkpoints
+          .filter(cp => !cp.is_deleted)
+          .sort((a, b) => a.order_index - b.order_index);
+      }
+      
+      // Jika tidak ada checkpoint, buat default
+      if (cpData.length === 0) {
         const today = new Date().toISOString().split('T')[0];
-        const defaultCps = DEFAULT_CHECKPOINTS.map((cp, i) => ({
+        cpData = DEFAULT_CHECKPOINTS.map((cp, i) => ({
           ...cp,
           id: null,
           session_id: data.id,
           order_index: i,
           scheduled_date: cp.scheduled_date || today,
-          status: "pending"
+          status: "pending",
+          is_deleted: false
         }));
-        setCheckpoints(defaultCps);
-        setOriginalCheckpoints(JSON.parse(JSON.stringify(defaultCps)));
       }
+      
+      setCheckpoints(cpData);
+      checkpointsSavedRef.current = true;
       
       sessionIdRef.current = data.id;
       setSelectedSessionId(data.id);
@@ -481,11 +487,6 @@ export default function TouringPage() {
         }
       }
 
-      // Start auto-start checker hanya jika status pending
-      if (data.status === "pending") {
-        startAutoStartChecker(data.id);
-      }
-
     } catch (error) {
       console.error("Error loading session data:", error);
       setError("Gagal memuat data perjalanan");
@@ -512,7 +513,8 @@ export default function TouringPage() {
           transport_type: "motor",
           status: "pending",
           late_departure: false,
-          total_distance_km: 0
+          total_distance_km: 0,
+          manual_start_only: true
         })
         .select()
         .single();
@@ -530,7 +532,8 @@ export default function TouringPage() {
         scheduled_time: cp.scheduled_time,
         scheduled_datetime: new Date(`${cp.scheduled_date || today}T${cp.scheduled_time}:00`).toISOString(),
         status: "pending",
-        is_final_destination: cp.is_final_destination || false
+        is_final_destination: cp.is_final_destination || false,
+        is_deleted: false
       }));
 
       const { error: cpError } = await supabase
@@ -595,11 +598,75 @@ export default function TouringPage() {
     }
   }, [selectedSessionId, sessions, loadSessionData, createNewSession]);
 
-  // Simpan perubahan ke database
-  const saveToDatabase = useCallback(async () => {
+  // ─── SAVE CHECKPOINTS ──────────────────────────────────────────────────
+
+  const saveCheckpointsToDatabase = useCallback(async () => {
+    if (!sessionIdRef.current || !checkpointsSavedRef.current) return;
+
+    try {
+      // Hapus semua checkpoint lama (soft delete)
+      await supabase
+        .from("touring_checkpoints")
+        .update({ is_deleted: true })
+        .eq("session_id", sessionIdRef.current);
+
+      // Insert checkpoint baru
+      for (const cp of checkpoints) {
+        const scheduledDatetime = cp.scheduled_date && cp.scheduled_time 
+          ? new Date(`${cp.scheduled_date}T${cp.scheduled_time}:00`).toISOString()
+          : null;
+        
+        await supabase
+          .from("touring_checkpoints")
+          .insert({
+            session_id: sessionIdRef.current,
+            order_index: checkpoints.indexOf(cp),
+            city_name: cp.city_name,
+            latitude: cp.latitude,
+            longitude: cp.longitude,
+            scheduled_date: cp.scheduled_date,
+            scheduled_time: cp.scheduled_time,
+            scheduled_datetime: scheduledDatetime,
+            status: cp.status || "pending",
+            is_final_destination: cp.is_final_destination || false,
+            is_deleted: false,
+            delay_minutes: cp.delay_minutes || 0
+          });
+      }
+
+      // Update session dengan data checkpoints
+      await supabase
+        .from("touring_sessions")
+        .update({
+          checkpoints_data: checkpoints,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", sessionIdRef.current);
+
+      // Refresh session list
+      const { data: sessionsData } = await supabase
+        .from("touring_sessions")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (sessionsData) {
+        setSessions(sessionsData);
+      }
+
+      checkpointsSavedRef.current = true;
+      
+    } catch (error) {
+      console.error("Error saving checkpoints:", error);
+      alert("Gagal menyimpan perubahan rute. Silakan coba lagi.");
+    }
+  }, [checkpoints]);
+
+  // Simpan semua data ke database
+  const saveAllToDatabase = useCallback(async () => {
     if (!sessionIdRef.current) return;
 
     try {
+      // Save transport data
       await supabase
         .from("touring_sessions")
         .update({
@@ -614,57 +681,8 @@ export default function TouringPage() {
         })
         .eq("id", sessionIdRef.current);
 
-      // Save checkpoints yang memiliki id (sudah ada di database)
-      for (const cp of checkpoints) {
-        if (cp.id) {
-          const scheduledDatetime = cp.scheduled_date && cp.scheduled_time 
-            ? new Date(`${cp.scheduled_date}T${cp.scheduled_time}:00`).toISOString()
-            : null;
-          
-          await supabase
-            .from("touring_checkpoints")
-            .update({
-              city_name: cp.city_name,
-              latitude: cp.latitude,
-              longitude: cp.longitude,
-              scheduled_date: cp.scheduled_date,
-              scheduled_time: cp.scheduled_time,
-              scheduled_datetime: scheduledDatetime,
-              order_index: checkpoints.indexOf(cp),
-              status: cp.status || "pending",
-              delay_minutes: cp.delay_minutes || 0,
-              is_final_destination: cp.is_final_destination || false
-            })
-            .eq("id", cp.id)
-            .eq("session_id", sessionIdRef.current);
-        } else {
-          // Insert checkpoint baru
-          const scheduledDatetime = cp.scheduled_date && cp.scheduled_time 
-            ? new Date(`${cp.scheduled_date}T${cp.scheduled_time}:00`).toISOString()
-            : null;
-          
-          const { data: newCp } = await supabase
-            .from("touring_checkpoints")
-            .insert({
-              session_id: sessionIdRef.current,
-              order_index: checkpoints.indexOf(cp),
-              city_name: cp.city_name,
-              latitude: cp.latitude,
-              longitude: cp.longitude,
-              scheduled_date: cp.scheduled_date,
-              scheduled_time: cp.scheduled_time,
-              scheduled_datetime: scheduledDatetime,
-              status: cp.status || "pending",
-              is_final_destination: cp.is_final_destination || false
-            })
-            .select()
-            .single();
-          
-          if (newCp) {
-            cp.id = newCp.id;
-          }
-        }
-      }
+      // Save checkpoints
+      await saveCheckpointsToDatabase();
 
       const { data: sessionsData } = await supabase
         .from("touring_sessions")
@@ -676,9 +694,10 @@ export default function TouringPage() {
       }
 
     } catch (error) {
-      console.error("Error saving to database:", error);
+      console.error("Error saving all data:", error);
+      alert("Gagal menyimpan data. Silakan coba lagi.");
     }
-  }, [checkpoints, transport, sessionStatus, lateDeparture]);
+  }, [transport, sessionStatus, lateDeparture, saveCheckpointsToDatabase]);
 
   // ─── UPDATE STATUS MESSAGE ──────────────────────────────────────────────
 
@@ -908,90 +927,9 @@ export default function TouringPage() {
     isTrackingRef.current = false;
   }, []);
 
-  // ─── AUTO START CHECKER ──────────────────────────────────────────────────
-
-  const startAutoStartChecker = useCallback((sessionId) => {
-    if (autoStartIntervalRef.current) {
-      clearInterval(autoStartIntervalRef.current);
-    }
-
-    autoStartIntervalRef.current = setInterval(async () => {
-      // Cek apakah session sudah selesai atau aktif
-      if (!sessionId || isSessionCompletedRef.current || sessionStatus === "completed") {
-        clearInterval(autoStartIntervalRef.current);
-        return;
-      }
-      
-      if (lateDeparture || sessionStatus === "active" || sessionStatus === "completed") return;
-
-      try {
-        const { data: cpData } = await supabase
-          .from("touring_checkpoints")
-          .select("*")
-          .eq("session_id", sessionId)
-          .eq("order_index", 0)
-          .single();
-
-        if (!cpData || !cpData.scheduled_date || !cpData.scheduled_time) return;
-
-        const scheduledDateTime = new Date(`${cpData.scheduled_date}T${cpData.scheduled_time}:00`);
-        const now = new Date();
-        
-        if (now >= scheduledDateTime) {
-          // Cek apakah sudah mencapai final destination
-          const { data: finalCp } = await supabase
-            .from("touring_checkpoints")
-            .select("*")
-            .eq("session_id", sessionId)
-            .eq("is_final_destination", true)
-            .single();
-
-          if (finalCp && finalCp.status === "reached") {
-            await supabase
-              .from("touring_sessions")
-              .update({ 
-                status: "completed",
-                completed_at: new Date().toISOString()
-              })
-              .eq("id", sessionId);
-            setSessionStatus("completed");
-            isSessionCompletedRef.current = true;
-            stopTracking();
-            return;
-          }
-
-          // Auto start
-          const { data: sessionData } = await supabase
-            .from("touring_sessions")
-            .update({ 
-              status: "active",
-              auto_started: true
-            })
-            .eq("id", sessionId)
-            .select()
-            .single();
-
-          if (sessionData) {
-            setSessionStatus("active");
-            setIsTracking(true);
-            isTrackingRef.current = true;
-            isSessionCompletedRef.current = false;
-            startBackgroundTracking(sessionId);
-            startMovementDetection();
-            addNotification("info", "🚀 Perjalanan dimulai otomatis sesuai jadwal", 0);
-            updateStatusMessage("active");
-          }
-        }
-      } catch (error) {
-        console.error("Auto-start checker error:", error);
-      }
-    }, 30000);
-  }, [lateDeparture, sessionStatus, startBackgroundTracking, updateStatusMessage]);
-
   // ─── TRACKING FUNCTIONS ──────────────────────────────────────────────────
 
   const startTracking = useCallback(() => {
-    // Cek jika session sudah selesai
     if (isSessionCompletedRef.current || sessionStatus === "completed") {
       alert("Perjalanan ini sudah selesai. Tidak dapat memulai ulang.");
       return;
@@ -1028,7 +966,7 @@ export default function TouringPage() {
         total_distance_km: 0
       })
       .eq("id", sessionIdRef.current)
-      .then(() => saveToDatabase());
+      .then(() => saveAllToDatabase());
 
     startBackgroundTracking(sessionIdRef.current);
     startMovementDetection();
@@ -1096,7 +1034,7 @@ export default function TouringPage() {
     );
 
     addNotification("info", "🚀 Perjalanan dimulai!", 0);
-  }, [saveToDatabase, startBackgroundTracking, updateStatusMessage, sessionStatus]);
+  }, [saveAllToDatabase, startBackgroundTracking, updateStatusMessage, sessionStatus]);
 
   const stopTracking = useCallback(async () => {
     if (watchIdRef.current) {
@@ -1123,13 +1061,12 @@ export default function TouringPage() {
       })
       .eq("id", sessionIdRef.current);
 
-    saveToDatabase();
+    saveAllToDatabase();
     updateStatusMessage("completed");
     addNotification("info", `✅ Perjalanan selesai! Total jarak: ${totalDistanceRef.current.toFixed(1)} km`, 0);
     
-    // Auto generate report
     await generateReport();
-  }, [saveToDatabase, stopBackgroundTracking, updateStatusMessage, currentStopId, resumeFromStop]);
+  }, [saveAllToDatabase, stopBackgroundTracking, updateStatusMessage, currentStopId, resumeFromStop]);
 
   // ─── CHECK CHECKPOINT ──────────────────────────────────────────────────
 
@@ -1167,7 +1104,7 @@ export default function TouringPage() {
           }
         }
 
-        saveToDatabase();
+        saveAllToDatabase();
 
         if (cp.is_final_destination) {
           stopTracking();
@@ -1175,7 +1112,7 @@ export default function TouringPage() {
         }
       }
     });
-  }, [checkpoints, saveToDatabase, stopTracking]);
+  }, [checkpoints, saveAllToDatabase, stopTracking]);
 
   // ─── NOTIFICATIONS ─────────────────────────────────────────────────────
 
@@ -1222,8 +1159,8 @@ export default function TouringPage() {
       ? `⏰ Telat ${minutes} menit di ${cp.city_name} (manual)` 
       : `⏰ Lebih awal ${minutes} menit di ${cp.city_name} (manual)`;
     addNotification(type, message, minutes);
-    saveToDatabase();
-  }, [checkpoints, addNotification, saveToDatabase]);
+    saveAllToDatabase();
+  }, [checkpoints, addNotification, saveAllToDatabase]);
 
   // ─── LATE DEPARTURE ──────────────────────────────────────────────────
 
@@ -1236,7 +1173,7 @@ export default function TouringPage() {
       .update({ late_departure: true })
       .eq("id", sessionIdRef.current)
       .then(() => {
-        addNotification("info", "⚠️ Berangkat telat, auto-start dinonaktifkan", 0);
+        addNotification("info", "⚠️ Berangkat telat, silakan klik Mulai Perjalanan secara manual", 0);
       });
   }, [addNotification]);
 
@@ -1253,8 +1190,8 @@ export default function TouringPage() {
     setCheckpoints(updated);
     setEditingCheckpoint(null);
     setEditForm({});
-    saveToDatabase();
-  }, [editingCheckpoint, editForm, checkpoints, saveToDatabase]);
+    saveAllToDatabase();
+  }, [editingCheckpoint, editForm, checkpoints, saveAllToDatabase]);
 
   // ─── CHECKPOINT CRUD ──────────────────────────────────────────────────
 
@@ -1276,8 +1213,9 @@ export default function TouringPage() {
     };
     const newCheckpoints = [...checkpoints, newCp];
     setCheckpoints(newCheckpoints);
-    saveToDatabase();
-  }, [checkpoints, saveToDatabase]);
+    checkpointsSavedRef.current = false;
+    saveAllToDatabase();
+  }, [checkpoints, saveAllToDatabase]);
 
   const removeCheckpoint = useCallback((index) => {
     if (isSessionCompletedRef.current) {
@@ -1290,8 +1228,9 @@ export default function TouringPage() {
     }
     const newCheckpoints = checkpoints.filter((_, i) => i !== index);
     setCheckpoints(newCheckpoints);
-    saveToDatabase();
-  }, [checkpoints, saveToDatabase]);
+    checkpointsSavedRef.current = false;
+    saveAllToDatabase();
+  }, [checkpoints, saveAllToDatabase]);
 
   const moveCheckpoint = useCallback((index, direction) => {
     if (isSessionCompletedRef.current) return;
@@ -1301,8 +1240,9 @@ export default function TouringPage() {
     if (swap < 0 || swap >= arr.length) return;
     [arr[index], arr[swap]] = [arr[swap], arr[index]];
     setCheckpoints(arr);
-    saveToDatabase();
-  }, [checkpoints, saveToDatabase]);
+    checkpointsSavedRef.current = false;
+    saveAllToDatabase();
+  }, [checkpoints, saveAllToDatabase]);
 
   // ─── SHARE ────────────────────────────────────────────────────────────
 
@@ -1335,6 +1275,7 @@ export default function TouringPage() {
         .from("touring_checkpoints")
         .select("*")
         .eq("session_id", sessionIdRef.current)
+        .eq("is_deleted", false)
         .order("order_index");
 
       const { data: notifData } = await supabase
@@ -1386,7 +1327,6 @@ export default function TouringPage() {
         }
       };
 
-      // Simpan atau update report
       const { data: existingReport } = await supabase
         .from("touring_reports")
         .select("*")
@@ -1446,12 +1386,6 @@ export default function TouringPage() {
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
       stopBackgroundTracking();
-      if (autoStartIntervalRef.current) {
-        clearInterval(autoStartIntervalRef.current);
-      }
-      if (movementCheckIntervalRef.current) {
-        clearInterval(movementCheckIntervalRef.current);
-      }
     };
   }, [loadAllSessions, stopBackgroundTracking]);
 
@@ -1474,7 +1408,6 @@ export default function TouringPage() {
         <p style={{ color: "#94A3B8", maxWidth: "400px", textAlign: "center" }}>{error}</p>
         <button 
           onClick={() => {
-            loadAttempted.current = false;
             loadAllSessions();
           }} 
           style={{ ...btnPrimary, marginTop: "16px" }}
@@ -1488,7 +1421,6 @@ export default function TouringPage() {
   const isSessionComplete = sessionStatus === "completed" || 
     checkpoints.some(cp => cp.is_final_destination && cp.status === "reached");
 
-  // Update ref jika session complete
   if (isSessionComplete && !isSessionCompletedRef.current) {
     isSessionCompletedRef.current = true;
   }
@@ -1797,7 +1729,7 @@ export default function TouringPage() {
                   style={inputStyle}
                   placeholder="Nama Pengemudi/Penumpang"
                 />
-                <button onClick={saveToDatabase} style={{ ...btnPrimary, width: "100%", justifyContent: "center" }}>
+                <button onClick={saveAllToDatabase} style={{ ...btnPrimary, width: "100%", justifyContent: "center" }}>
                   <FiSave size={14} /> Simpan Data
                 </button>
               </div>
@@ -1896,6 +1828,9 @@ export default function TouringPage() {
                 <button onClick={addCheckpoint} style={{ ...btnSecondary, width: "100%", justifyContent: "center" }}>
                   <FiPlus size={14} /> Tambah Kota
                 </button>
+                <div style={{ fontSize: "11px", color: "#64748B", marginTop: "8px", textAlign: "center" }}>
+                  ⚠️ Perubahan rute harus disimpan dengan klik tombol "Simpan Data" di atas
+                </div>
               </div>
 
               {/* Control Buttons */}
@@ -1908,7 +1843,7 @@ export default function TouringPage() {
                         style={{ ...btnPrimary, width: "100%", justifyContent: "center", background: "#10B981" }}
                         disabled={isSessionComplete}
                       >
-                        <FiPlay size={14} /> Mulai Perjalanan
+                        <FiPlay size={14} /> Mulai Perjalanan (Manual)
                       </button>
                       <button 
                         onClick={handleLateDeparture} 
@@ -1919,9 +1854,12 @@ export default function TouringPage() {
                       </button>
                       {lateDeparture && (
                         <div style={{ color: "#F59E0B", fontSize: "12px", textAlign: "center", marginTop: "8px" }}>
-                          ⚠️ Auto-start dinonaktifkan karena berangkat telat
+                          ⚠️ Silakan klik "Mulai Perjalanan (Manual)" untuk memulai
                         </div>
                       )}
+                      <div style={{ fontSize: "11px", color: "#64748B", textAlign: "center", marginTop: "8px" }}>
+                        ℹ️ Perjalanan hanya dapat dimulai secara manual
+                      </div>
                     </>
                   ) : (
                     <>
@@ -1951,7 +1889,7 @@ export default function TouringPage() {
           </aside>
         )}
 
-        {/* Map Area */}
+        {/* Map Area - PASTI MUNCUL */}
         <div style={{ ...styles.mapContainer, ...(isMobile ? styles.mapContainerMobile : {}) }}>
           <TouringMap
             checkpoints={checkpoints}
@@ -1969,7 +1907,7 @@ export default function TouringPage() {
                 return c;
               });
               setCheckpoints(updated);
-              saveToDatabase();
+              saveAllToDatabase();
             }}
             isTracking={isTracking}
             isMobile={isMobile}
@@ -2050,11 +1988,10 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
   const currentMarkerRef = useRef(null);
   const initializedRef = useRef(false);
 
-  // Inisialisasi map
+  // Inisialisasi map - PASTI MUNCUL
   useEffect(() => {
     if (initializedRef.current || mapInstanceRef.current) return;
     
-    // Load Leaflet dari CDN
     const loadLeaflet = () => {
       if (window.L) {
         initMap();
@@ -2069,7 +2006,22 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
         link.rel = 'stylesheet';
         link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
         document.head.appendChild(link);
-        initMap();
+        setTimeout(initMap, 500);
+      };
+      script.onerror = () => {
+        console.error('Failed to load Leaflet');
+        // Fallback: tampilkan pesan
+        if (mapRef.current) {
+          mapRef.current.innerHTML = `
+            <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#64748B;font-size:14px;background:#1E293B;border-radius:10px;">
+              <div style="text-align:center;">
+                <FiMapPin size={40} color="#3B82F6" />
+                <p>Gagal memuat peta</p>
+                <p style="font-size:12px;color:#475569;">Silakan refresh halaman</p>
+              </div>
+            </div>
+          `;
+        }
       };
       document.head.appendChild(script);
     };
@@ -2087,14 +2039,19 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
 
   const initMap = () => {
     const L = window.L;
-    if (!L) return;
+    if (!L) {
+      console.error('Leaflet not loaded');
+      return;
+    }
 
     const startLat = currentLocation?.lat || checkpoints[0]?.latitude || -7.7200;
     const startLng = currentLocation?.lng || checkpoints[0]?.longitude || 109.9084;
 
     const map = L.map(mapRef.current, { 
       zoomControl: true,
-      attributionControl: true 
+      attributionControl: true,
+      fadeAnimation: true,
+      zoomAnimation: true
     });
     mapInstanceRef.current = map;
 
@@ -2105,6 +2062,12 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
 
     map.setView([startLat, startLng], isMobile ? 8 : 9);
     initializedRef.current = true;
+    
+    // Force refresh setelah render
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 100);
+    
     renderMarkers(L, map);
   };
 
@@ -2117,7 +2080,6 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
       const color = cp.status === "reached" ? "#10B981" : cp.status === "active" ? "#3B82F6" : "#6B7280";
       const size = isMobile ? 28 : 34;
       
-      // Buat popup dengan nama kota
       const popupContent = `
         <div style="font-family: Arial, sans-serif; padding: 4px;">
           <b style="font-size: ${isMobile ? '12px' : '14px'};">${i + 1}. ${cp.city_name}</b><br>
@@ -2201,10 +2163,31 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
     if (isTracking && sessionStatus === "active") {
       mapInstanceRef.current.setView([currentLocation.lat, currentLocation.lng], isMobile ? 11 : 13, { animate: true });
     }
+    
+    // Force refresh map
+    setTimeout(() => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      }
+    }, 200);
   }, [currentLocation, isTracking, isMobile, statusMessage, totalDistance, stops, sessionStatus]);
 
+  // Force invalidate size on resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (mapInstanceRef.current) {
+        setTimeout(() => {
+          mapInstanceRef.current.invalidateSize();
+        }, 300);
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%" }}>
+    <div style={{ position: "relative", width: "100%", height: "100%", minHeight: "250px" }}>
       <style>{`
         @keyframes ping {
           0% { transform: scale(1); opacity: 1; }
@@ -2216,13 +2199,18 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
         .leaflet-popup-content {
           margin: 8px 10px !important;
         }
+        .leaflet-container {
+          width: 100% !important;
+          height: 100% !important;
+          min-height: 250px !important;
+        }
         @media (max-width: 768px) {
           .leaflet-control-zoom {
-            display: none !important;
+            display: flex !important;
           }
         }
       `}</style>
-      <div ref={mapRef} style={{ width: "100%", height: "100%", borderRadius: "10px" }} />
+      <div ref={mapRef} style={{ width: "100%", height: "100%", minHeight: "250px", borderRadius: "10px" }} />
     </div>
   );
 }
@@ -3322,7 +3310,7 @@ styleSheet.textContent = `
   }
   @media (max-width: 768px) {
     .leaflet-control-zoom {
-      display: none !important;
+      display: flex !important;
     }
   }
   @media print {
@@ -3341,3 +3329,7 @@ styleSheet.textContent = `
   }
 `;
 document.head.appendChild(styleSheet);
+
+// Export mapInstance for resize
+const mapInstanceRef = { current: null };
+export { mapInstanceRef };
