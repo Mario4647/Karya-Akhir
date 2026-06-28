@@ -1,4 +1,4 @@
-// TouringView.jsx - Halaman View dengan Status Real-Time
+// TouringView.jsx - Halaman View dengan Nama Kota di Maps
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabaseClient";
 import {
@@ -151,8 +151,8 @@ const styles = {
   },
   mapContainerMobile: {
     padding: "6px",
-    minHeight: "200px",
-    height: "40vh"
+    minHeight: "250px",
+    height: "50vh"
   },
   sidebar: {
     width: "320px",
@@ -315,11 +315,9 @@ export default function TouringView() {
   const [statusMessage, setStatusMessage] = useState({ text: "Menunggu", location: "", isMoving: false });
   const [totalDistance, setTotalDistance] = useState(0);
   const [stops, setStops] = useState([]);
-  const [isCompleted, setIsCompleted] = useState(false);
 
   const sessionCodeRef = useRef(null);
   const subscriptionRef = useRef(null);
-  const isMounted = useRef(true);
 
   // Responsive
   useEffect(() => {
@@ -333,7 +331,6 @@ export default function TouringView() {
   // ─── LOAD SESSION ──────────────────────────────────────────────────────────
 
   useEffect(() => {
-    isMounted.current = true;
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     if (!code) {
@@ -345,7 +342,6 @@ export default function TouringView() {
     loadSession(code);
 
     return () => {
-      isMounted.current = false;
       if (subscriptionRef.current) {
         supabase.removeChannel(subscriptionRef.current);
       }
@@ -366,12 +362,8 @@ export default function TouringView() {
         return;
       }
 
-      const isCompleted = sessionData.status === "completed" || 
-        sessionData.touring_checkpoints?.some(cp => cp.is_final_destination && cp.status === "reached");
-
       setSession(sessionData);
       setTotalDistance(sessionData.total_distance_km || 0);
-      setIsCompleted(isCompleted);
 
       const { data: cpData, error: cpError } = await supabase
         .from("touring_checkpoints")
@@ -422,7 +414,7 @@ export default function TouringView() {
       }
 
       // Update status message
-      updateStatusMessage(sessionData.status, isCompleted);
+      updateStatusMessage(sessionData.status);
 
       subscribeToRealtime(sessionData.id);
       setLoading(false);
@@ -435,17 +427,17 @@ export default function TouringView() {
 
   // ─── UPDATE STATUS ───────────────────────────────────────────────────────
 
-  const updateStatusMessage = (status, isCompleted = false, location = null) => {
+  const updateStatusMessage = (status, location = null) => {
     let text = "";
     let loc = location || "";
     let moving = false;
 
-    if (isCompleted || status === "completed") {
-      text = "✅ Perjalanan Selesai";
-      moving = false;
-    } else if (status === "active") {
+    if (status === "active") {
       text = "🟢 Sedang Berjalan";
       moving = true;
+    } else if (status === "completed") {
+      text = "✅ Perjalanan Selesai";
+      moving = false;
     } else {
       text = "⏳ Menunggu";
       moving = false;
@@ -472,12 +464,11 @@ export default function TouringView() {
           filter: `session_id=eq.${sessionId}`
         },
         (payload) => {
-          if (!isMounted.current) return;
           const { latitude, longitude, speed, heading, recorded_at } = payload.new;
           setCurrentLocation({ lat: latitude, lng: longitude, speed, heading, recorded_at });
           setLastUpdate(new Date());
           
-          if (session?.status === "active" && !isCompleted) {
+          if (session?.status === "active") {
             const isMoving = speed > 0.5 || (Date.now() - new Date(recorded_at).getTime()) < 10000;
             const text = isMoving ? "🟢 Sedang Berjalan" : "🔴 Sedang Berhenti";
             setStatusMessage(prev => ({ ...prev, text, isMoving }));
@@ -493,7 +484,6 @@ export default function TouringView() {
           filter: `session_id=eq.${sessionId}`
         },
         (payload) => {
-          if (!isMounted.current) return;
           setCheckpoints(prev => {
             const idx = prev.findIndex(c => c.id === payload.new.id);
             if (idx === -1) return prev;
@@ -512,7 +502,6 @@ export default function TouringView() {
           filter: `session_id=eq.${sessionId}`
         },
         (payload) => {
-          if (!isMounted.current) return;
           setNotifications(prev => [payload.new, ...prev].slice(0, 30));
         }
       )
@@ -525,14 +514,11 @@ export default function TouringView() {
           filter: `id=eq.${sessionId}`
         },
         (payload) => {
-          if (!isMounted.current) return;
           if (payload.new.total_distance_km !== undefined) {
             setTotalDistance(payload.new.total_distance_km);
           }
           if (payload.new.status !== undefined) {
-            const completed = payload.new.status === "completed";
-            setIsCompleted(completed);
-            updateStatusMessage(payload.new.status, completed);
+            updateStatusMessage(payload.new.status);
           }
         }
       )
@@ -580,11 +566,11 @@ export default function TouringView() {
   const transportLabel = session ? getTransportLabel(session.transport_type) : "";
   const reachedCount = checkpoints.filter(c => c.status === "reached").length;
   const totalCheckpoints = checkpoints.length;
-  const isComplete = isCompleted || checkpoints.some(cp => cp.is_final_destination && cp.status === "reached");
+  const isComplete = checkpoints.some(cp => cp.is_final_destination && cp.status === "reached");
 
   let nextCheckpoint = null;
   let distanceToNext = null;
-  if (currentLocation && !isComplete) {
+  if (currentLocation) {
     const next = checkpoints.find(c => c.status !== "reached");
     if (next) {
       nextCheckpoint = next;
@@ -660,9 +646,8 @@ export default function TouringView() {
             statusMessage={statusMessage}
             totalDistance={totalDistance}
             stops={stops}
-            isComplete={isComplete}
           />
-          {session?.status === "active" && currentLocation && !isComplete && (
+          {session?.status === "active" && currentLocation && (
             <div style={{
               position: "absolute",
               bottom: "16px",
@@ -679,22 +664,6 @@ export default function TouringView() {
                   {totalDistance.toFixed(1)} km
                 </span>
               )}
-            </div>
-          )}
-          {isComplete && (
-            <div style={{
-              position: "absolute",
-              bottom: "16px",
-              left: "50%",
-              transform: "translateX(-50%)",
-              ...styles.liveIndicator,
-              background: "rgba(16, 185, 129, 0.15)",
-              borderColor: "rgba(16, 185, 129, 0.3)"
-            }}>
-              <FiCheckCircle size={14} color="#10B981" />
-              <span style={{ color: "#6EE7B7", fontSize: "12px", fontWeight: "600" }}>
-                ✅ Perjalanan Selesai
-              </span>
             </div>
           )}
         </div>
@@ -745,7 +714,7 @@ export default function TouringView() {
                 <span style={styles.infoValue}>{stops.length} kali</span>
               </div>
             )}
-            {distanceToNext !== null && nextCheckpoint && !isComplete && (
+            {distanceToNext !== null && nextCheckpoint && (
               <div style={styles.infoRow}>
                 <span style={styles.infoLabel}><FiNavigation size={11} /> Ke {nextCheckpoint.city_name}</span>
                 <span style={styles.infoValue}>
@@ -877,7 +846,7 @@ export default function TouringView() {
 
 // ─── VIEW MAP ────────────────────────────────────────────────────────────────
 
-function ViewMap({ checkpoints, currentLocation, sessionStatus, nextCheckpoint, isMobile, statusMessage, totalDistance, stops, isComplete }) {
+function ViewMap({ checkpoints, currentLocation, sessionStatus, nextCheckpoint, isMobile, statusMessage, totalDistance, stops }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
@@ -888,32 +857,6 @@ function ViewMap({ checkpoints, currentLocation, sessionStatus, nextCheckpoint, 
   useEffect(() => {
     if (initializedRef.current || mapInstanceRef.current) return;
     
-    const initMap = () => {
-      const L = window.L;
-      if (!L) {
-        console.warn("Leaflet not loaded");
-        return;
-      }
-
-      const startLat = currentLocation?.lat || checkpoints[0]?.latitude || -7.7200;
-      const startLng = currentLocation?.lng || checkpoints[0]?.longitude || 109.9084;
-
-      const map = L.map(mapRef.current, { 
-        zoomControl: !isMobile,
-        attributionControl: true 
-      });
-      mapInstanceRef.current = map;
-
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        maxZoom: 19,
-      }).addTo(map);
-
-      map.setView([startLat, startLng], isMobile ? 8 : 9);
-      initializedRef.current = true;
-      renderMarkers(L, map);
-    };
-
     if (!window.L) {
       const script = document.createElement('script');
       script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
@@ -926,9 +869,10 @@ function ViewMap({ checkpoints, currentLocation, sessionStatus, nextCheckpoint, 
         initMap();
       };
       document.head.appendChild(script);
-    } else {
-      initMap();
+      return;
     }
+
+    initMap();
 
     return () => {
       if (mapInstanceRef.current) {
@@ -937,7 +881,30 @@ function ViewMap({ checkpoints, currentLocation, sessionStatus, nextCheckpoint, 
         initializedRef.current = false;
       }
     };
-  }, [isMobile]);
+  }, []);
+
+  const initMap = () => {
+    const L = window.L;
+    if (!L) return;
+
+    const startLat = currentLocation?.lat || checkpoints[0]?.latitude || -7.7200;
+    const startLng = currentLocation?.lng || checkpoints[0]?.longitude || 109.9084;
+
+    const map = L.map(mapRef.current, { 
+      zoomControl: true,
+      attributionControl: true 
+    });
+    mapInstanceRef.current = map;
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19,
+    }).addTo(map);
+
+    map.setView([startLat, startLng], isMobile ? 8 : 9);
+    initializedRef.current = true;
+    renderMarkers(L, map);
+  };
 
   const renderMarkers = (L, map) => {
     if (!map) return;
@@ -950,21 +917,29 @@ function ViewMap({ checkpoints, currentLocation, sessionStatus, nextCheckpoint, 
       
       const color = isReached ? "#10B981" : isNext ? "#3B82F6" : "#6B7280";
       const size = isMobile ? 26 : 32;
+      
+      const popupContent = `
+        <div style="font-family: Arial, sans-serif; padding: 4px;">
+          <b style="font-size: ${isMobile ? '12px' : '14px'};">${i + 1}. ${cp.city_name}</b><br>
+          <span style="font-size: ${isMobile ? '10px' : '12px'}; color: #666;">
+            📅 ${cp.scheduled_date || "--"}<br>
+            ⏰ ${cp.scheduled_time || "--:--"}<br>
+            Status: ${isReached ? "✅ Tiba" : isNext ? "📍 Selanjutnya" : "⏳ Menunggu"}<br>
+            ${cp.delay_minutes ? `⏱️ Delay: ${cp.delay_minutes} menit` : ""}
+            ${cp.is_final_destination ? "<br>🏁 Tujuan Akhir" : ""}
+          </span>
+        </div>
+      `;
+      
       const icon = L.divIcon({
         html: `<div style="background:${color};color:white;border-radius:50%;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:${isMobile ? 9 : 12}px;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)">${i + 1}</div>`,
         className: "",
         iconSize: [size, size],
         iconAnchor: [size/2, size/2],
       });
+      
       const marker = L.marker([cp.latitude, cp.longitude], { icon })
-        .bindPopup(`
-          <b style="font-size:14px">${cp.city_name}</b><br>
-          📅 ${cp.scheduled_date || "--"}<br>
-          ⏰ ${cp.scheduled_time || "--:--"}<br>
-          ${isReached ? "✅ Tiba" : isNext ? "📍 Selanjutnya" : "⏳ Menunggu"}<br>
-          ${cp.delay_minutes ? `⏱ Delay: ${cp.delay_minutes} menit` : ""}
-          ${cp.is_final_destination ? "<br>🏁 Tujuan Akhir" : ""}
-        `)
+        .bindPopup(popupContent)
         .addTo(map);
       markersRef.current.push(marker);
     });
@@ -1005,15 +980,27 @@ function ViewMap({ checkpoints, currentLocation, sessionStatus, nextCheckpoint, 
     if (currentMarkerRef.current) currentMarkerRef.current.remove();
 
     const size = isMobile ? 28 : 36;
-    const isMoving = statusMessage?.isMoving !== false && !isComplete;
-    const color = isComplete ? "#10B981" : isMoving ? "#3B82F6" : "#EF4444";
+    const isMoving = statusMessage?.isMoving !== false && sessionStatus !== "completed";
+    const color = isMoving ? "#3B82F6" : sessionStatus === "completed" ? "#10B981" : "#EF4444";
+    
+    const popupContent = `
+      <div style="font-family: Arial, sans-serif; padding: 4px;">
+        <b style="font-size: ${isMobile ? '12px' : '14px'};">📍 Lokasi Saat Ini</b><br>
+        <span style="font-size: ${isMobile ? '10px' : '12px'}; color: #666;">
+          Status: ${statusMessage?.text || 'Sedang Berjalan'}<br>
+          Lokasi: ${statusMessage?.location || '-'}<br>
+          Total Jarak: ${totalDistance?.toFixed(1) || 0} km
+          ${stops?.length > 0 ? `<br>Berhenti: ${stops.length} kali` : ''}
+        </span>
+      </div>
+    `;
     
     const pulseIcon = L.divIcon({
       html: `<div style="position:relative;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center">
         <div style="position:absolute;width:${size}px;height:${size}px;background:${color}33;border-radius:50%;animation:ping 1.5s infinite"></div>
         <div style="width:${isMobile ? 12 : 18}px;height:${isMobile ? 12 : 18}px;background:${color};border-radius:50%;border:2px solid white;box-shadow:0 0 12px ${color}99;position:relative;z-index:1;transition:background 0.5s"></div>
-        ${!isMoving && !isComplete ? `<div style="position:absolute;top:-6px;right:-6px;background:#EF4444;border-radius:50%;width:12px;height:12px;display:flex;align-items:center;justify-content:center;font-size:7px;color:white;border:2px solid white;">⏸</div>` : ''}
-        ${isComplete ? `<div style="position:absolute;top:-6px;right:-6px;background:#10B981;border-radius:50%;width:12px;height:12px;display:flex;align-items:center;justify-content:center;font-size:7px;color:white;border:2px solid white;">✓</div>` : ''}
+        ${!isMoving && sessionStatus === "active" ? `<div style="position:absolute;top:-6px;right:-6px;background:#EF4444;border-radius:50%;width:12px;height:12px;display:flex;align-items:center;justify-content:center;font-size:7px;color:white;border:2px solid white;">⏸</div>` : ''}
+        ${sessionStatus === "completed" ? `<div style="position:absolute;top:-6px;right:-6px;background:#10B981;border-radius:50%;width:12px;height:12px;display:flex;align-items:center;justify-content:center;font-size:7px;color:white;border:2px solid white;">✓</div>` : ''}
       </div>`,
       className: "",
       iconSize: [size, size],
@@ -1021,23 +1008,33 @@ function ViewMap({ checkpoints, currentLocation, sessionStatus, nextCheckpoint, 
     });
 
     currentMarkerRef.current = L.marker([currentLocation.lat, currentLocation.lng], { icon: pulseIcon })
-      .bindPopup(`
-        <b>📍 Lokasi Saat Ini</b><br>
-        Status: ${statusMessage?.text || 'Sedang Berjalan'}<br>
-        Lokasi: ${statusMessage?.location || '-'}<br>
-        Total Jarak: ${totalDistance?.toFixed(1) || 0} km
-        ${stops?.length > 0 ? `<br>Berhenti: ${stops.length} kali` : ''}
-        ${isComplete ? '<br>✅ Perjalanan Selesai' : ''}
-      `)
+      .bindPopup(popupContent)
       .addTo(mapInstanceRef.current);
 
-    if (sessionStatus === "active" && !isComplete) {
+    if (sessionStatus === "active") {
       mapInstanceRef.current.setView([currentLocation.lat, currentLocation.lng], isMobile ? 11 : 13, { animate: true });
     }
-  }, [currentLocation, sessionStatus, isMobile, statusMessage, totalDistance, stops, isComplete]);
+  }, [currentLocation, sessionStatus, isMobile, statusMessage, totalDistance, stops]);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
+      <style>{`
+        @keyframes ping {
+          0% { transform: scale(1); opacity: 1; }
+          100% { transform: scale(2.5); opacity: 0; }
+        }
+        .leaflet-popup-content-wrapper {
+          border-radius: 8px !important;
+        }
+        .leaflet-popup-content {
+          margin: 8px 10px !important;
+        }
+        @media (max-width: 768px) {
+          .leaflet-control-zoom {
+            display: none !important;
+          }
+        }
+      `}</style>
       <div ref={mapRef} style={{ width: "100%", height: "100%", borderRadius: "10px" }} />
     </div>
   );
