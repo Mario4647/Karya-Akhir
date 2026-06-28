@@ -10,8 +10,7 @@ import {
   FiZap, FiMenu, FiMap, FiBell, FiList, FiPlay, FiSquare,
   FiHash, FiGlobe, FiMinus, FiInfo, FiLink, FiEyeOff,
   FiCalendar, FiClock as FiClockIcon, FiUsers, FiMoreVertical,
-  FiPower, FiAlertTriangle, FiFileText, FiDownload, FiPrinter,
-  FiHome, FiTrendingUp
+  FiPower, FiAlertTriangle, FiFileText, FiDownload, FiPrinter
 } from "react-icons/fi";
 import { MdTwoWheeler, MdDirectionsCar, MdDirectionsWalk, MdTrain } from "react-icons/md";
 
@@ -242,6 +241,7 @@ export default function TouringPage() {
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const [session, setSession] = useState(null);
   const [checkpoints, setCheckpoints] = useState([]);
+  const [originalCheckpoints, setOriginalCheckpoints] = useState([]);
   const [transport, setTransport] = useState({ 
     transport_type: "motor", 
     plate_number: "", 
@@ -277,8 +277,6 @@ export default function TouringPage() {
   const [currentStopId, setCurrentStopId] = useState(null);
   const [lastPosition, setLastPosition] = useState(null);
   const [movementHistory, setMovementHistory] = useState([]);
-  const [hasReport, setHasReport] = useState(false);
-  const [isCompleted, setIsCompleted] = useState(false);
   
   const watchIdRef = useRef(null);
   const notificationIdRef = useRef(0);
@@ -293,7 +291,7 @@ export default function TouringPage() {
   const isTrackingRef = useRef(false);
   const lastLocationRef = useRef(null);
   const stopCheckTimerRef = useRef(null);
-  const isCompletedRef = useRef(false);
+  const isSessionCompletedRef = useRef(false);
 
   // ─── RESPONSIVE ─────────────────────────────────────────────────────────────
 
@@ -327,7 +325,7 @@ export default function TouringPage() {
             const existing = data?.find(s => s.id === parsed.id);
             if (existing) {
               setSelectedSessionId(existing.id);
-              await loadSessionData(existing.id);
+              loadSessionData(existing.id);
               return;
             }
           } catch (e) {}
@@ -335,9 +333,9 @@ export default function TouringPage() {
         
         if (data && data.length > 0) {
           setSelectedSessionId(data[0].id);
-          await loadSessionData(data[0].id);
+          loadSessionData(data[0].id);
         } else {
-          await createNewSession();
+          createNewSession();
         }
       }
     } catch (error) {
@@ -350,7 +348,7 @@ export default function TouringPage() {
     }
   }, []);
 
-  // Load data session tertentu dengan semua data terkait
+  // Load data session tertentu
   const loadSessionData = useCallback(async (sessionId) => {
     try {
       setIsLoading(true);
@@ -366,20 +364,12 @@ export default function TouringPage() {
 
       if (!isMounted.current) return;
 
-      // Cek apakah session sudah selesai
-      const isCompleted = data.status === "completed" || 
-        data.touring_checkpoints?.some(cp => cp.is_final_destination && cp.status === "reached");
-      
-      setIsCompleted(isCompleted);
-      isCompletedRef.current = isCompleted;
-
       setSession(data);
       setSessionCode(data.session_code);
       setSessionStatus(data.status || "pending");
       setLateDeparture(data.late_departure || false);
       setTotalDistance(data.total_distance_km || 0);
       totalDistanceRef.current = data.total_distance_km || 0;
-      setHasReport(data.report_generated || false);
       
       setTransport({
         transport_type: data.transport_type || "motor",
@@ -388,29 +378,52 @@ export default function TouringPage() {
         fuel_liters: data.fuel_liters || 5
       });
       
-      // Load checkpoints dari database, bukan default
+      // Load checkpoints dari database
       if (data.touring_checkpoints && data.touring_checkpoints.length > 0) {
         const sorted = data.touring_checkpoints.sort((a, b) => a.order_index - b.order_index);
         setCheckpoints(sorted);
+        setOriginalCheckpoints(JSON.parse(JSON.stringify(sorted)));
       } else {
-        // Jika tidak ada checkpoints, buat default
+        // Jika tidak ada checkpoint, buat default
         const today = new Date().toISOString().split('T')[0];
         const defaultCps = DEFAULT_CHECKPOINTS.map((cp, i) => ({
           ...cp,
-          id: undefined,
-          session_id: sessionId,
+          id: null,
+          session_id: data.id,
           order_index: i,
           scheduled_date: cp.scheduled_date || today,
           status: "pending"
         }));
         setCheckpoints(defaultCps);
-        // Simpan ke database
-        await saveCheckpointsToDb(sessionId, defaultCps);
+        setOriginalCheckpoints(JSON.parse(JSON.stringify(defaultCps)));
       }
       
       sessionIdRef.current = data.id;
       setSelectedSessionId(data.id);
       localStorage.setItem("touring_session", JSON.stringify({ id: data.id, code: data.session_code }));
+
+      // Check if session is completed
+      const isCompleted = data.status === "completed";
+      isSessionCompletedRef.current = isCompleted;
+      
+      if (isCompleted) {
+        setIsTracking(false);
+        isTrackingRef.current = false;
+        if (watchIdRef.current) {
+          navigator.geolocation.clearWatch(watchIdRef.current);
+          watchIdRef.current = null;
+        }
+        stopBackgroundTracking();
+        setStatusMessage({ text: "✅ Perjalanan Selesai", location: "", isMoving: false });
+      } else if (data.status === "active") {
+        setIsTracking(true);
+        isTrackingRef.current = true;
+        startBackgroundTracking(data.id);
+        startMovementDetection();
+        setStatusMessage({ text: "🟢 Sedang Berjalan", location: "", isMoving: true });
+      } else {
+        setStatusMessage({ text: "⏳ Belum Mulai", location: "", isMoving: false });
+      }
 
       // Load notifications
       const { data: notifData } = await supabase
@@ -454,24 +467,24 @@ export default function TouringPage() {
         };
       }
 
-      // Jangan auto-start jika sudah completed
-      if (data.status === "active" && !isCompleted) {
-        setIsTracking(true);
-        isTrackingRef.current = true;
-        startBackgroundTracking(data.id);
-        startMovementDetection();
-      } else if (isCompleted) {
-        // Jika sudah selesai, pastikan tracking mati
-        stopTracking();
+      // Load report jika ada
+      if (data.report_generated) {
+        const { data: reportData } = await supabase
+          .from("touring_reports")
+          .select("*")
+          .eq("session_id", data.id)
+          .order("generated_at", { ascending: false })
+          .limit(1);
+        
+        if (reportData && reportData.length > 0) {
+          setReportData(reportData[0].report_data);
+        }
       }
 
-      // Start auto-start checker hanya jika belum selesai
-      if (!isCompleted) {
+      // Start auto-start checker hanya jika status pending
+      if (data.status === "pending") {
         startAutoStartChecker(data.id);
       }
-
-      // Update status message
-      updateStatusMessage(data.status);
 
     } catch (error) {
       console.error("Error loading session data:", error);
@@ -480,35 +493,6 @@ export default function TouringPage() {
       if (isMounted.current) {
         setIsLoading(false);
       }
-    }
-  }, []);
-
-  // Simpan checkpoints ke database
-  const saveCheckpointsToDb = useCallback(async (sessionId, cps) => {
-    try {
-      const checkpointsData = cps.map((cp, i) => ({
-        session_id: sessionId,
-        order_index: i,
-        city_name: cp.city_name,
-        latitude: cp.latitude,
-        longitude: cp.longitude,
-        scheduled_date: cp.scheduled_date || new Date().toISOString().split('T')[0],
-        scheduled_time: cp.scheduled_time || "12:00",
-        scheduled_datetime: cp.scheduled_date && cp.scheduled_time 
-          ? new Date(`${cp.scheduled_date}T${cp.scheduled_time}:00`).toISOString()
-          : null,
-        status: cp.status || "pending",
-        is_final_destination: cp.is_final_destination || false,
-        delay_minutes: cp.delay_minutes || 0
-      }));
-
-      const { error } = await supabase
-        .from("touring_checkpoints")
-        .insert(checkpointsData);
-
-      if (error) throw error;
-    } catch (error) {
-      console.error("Error saving checkpoints:", error);
     }
   }, []);
 
@@ -528,8 +512,7 @@ export default function TouringPage() {
           transport_type: "motor",
           status: "pending",
           late_departure: false,
-          total_distance_km: 0,
-          report_generated: false
+          total_distance_km: 0
         })
         .select()
         .single();
@@ -601,9 +584,9 @@ export default function TouringPage() {
         const remaining = sessions.filter(s => s.id !== sessionId);
         if (remaining.length > 0) {
           setSelectedSessionId(remaining[0].id);
-          await loadSessionData(remaining[0].id);
+          loadSessionData(remaining[0].id);
         } else {
-          await createNewSession();
+          createNewSession();
         }
       }
     } catch (error) {
@@ -631,6 +614,7 @@ export default function TouringPage() {
         })
         .eq("id", sessionIdRef.current);
 
+      // Save checkpoints yang memiliki id (sudah ada di database)
       for (const cp of checkpoints) {
         if (cp.id) {
           const scheduledDatetime = cp.scheduled_date && cp.scheduled_time 
@@ -653,6 +637,32 @@ export default function TouringPage() {
             })
             .eq("id", cp.id)
             .eq("session_id", sessionIdRef.current);
+        } else {
+          // Insert checkpoint baru
+          const scheduledDatetime = cp.scheduled_date && cp.scheduled_time 
+            ? new Date(`${cp.scheduled_date}T${cp.scheduled_time}:00`).toISOString()
+            : null;
+          
+          const { data: newCp } = await supabase
+            .from("touring_checkpoints")
+            .insert({
+              session_id: sessionIdRef.current,
+              order_index: checkpoints.indexOf(cp),
+              city_name: cp.city_name,
+              latitude: cp.latitude,
+              longitude: cp.longitude,
+              scheduled_date: cp.scheduled_date,
+              scheduled_time: cp.scheduled_time,
+              scheduled_datetime: scheduledDatetime,
+              status: cp.status || "pending",
+              is_final_destination: cp.is_final_destination || false
+            })
+            .select()
+            .single();
+          
+          if (newCp) {
+            cp.id = newCp.id;
+          }
         }
       }
 
@@ -677,7 +687,7 @@ export default function TouringPage() {
     let loc = location || "";
     let moving = false;
 
-    if (status === "active" && !isCompletedRef.current) {
+    if (status === "active") {
       if (isMoving !== null) {
         moving = isMoving;
         text = isMoving ? "🟢 Sedang Berjalan" : "🔴 Sedang Berhenti";
@@ -693,7 +703,7 @@ export default function TouringPage() {
           moving = true;
         }
       }
-    } else if (status === "completed" || isCompletedRef.current) {
+    } else if (status === "completed") {
       text = "✅ Perjalanan Selesai";
       moving = false;
     } else {
@@ -701,9 +711,7 @@ export default function TouringPage() {
       moving = false;
     }
 
-    if (location) {
-      loc = location;
-    } else if (currentLocation && !isCompletedRef.current) {
+    if (!loc && currentLocation) {
       let nearest = "";
       let minDist = Infinity;
       for (const cp of checkpoints) {
@@ -717,7 +725,7 @@ export default function TouringPage() {
     }
 
     setStatusMessage({ text, location: loc, isMoving: moving });
-    setIsStopped(!moving && status === "active" && !isCompletedRef.current);
+    setIsStopped(!moving && status === "active");
   }, [currentLocation, checkpoints]);
 
   // ─── MOVEMENT DETECTION ──────────────────────────────────────────────────
@@ -728,7 +736,7 @@ export default function TouringPage() {
     }
 
     movementCheckIntervalRef.current = setInterval(() => {
-      if (!isTrackingRef.current || !sessionIdRef.current || isCompletedRef.current) return;
+      if (!isTrackingRef.current || !sessionIdRef.current || isSessionCompletedRef.current) return;
 
       const lastTrack = locationHistoryRef.current[locationHistoryRef.current.length - 1];
       if (!lastTrack) return;
@@ -738,7 +746,7 @@ export default function TouringPage() {
       const isMoving = timeDiff < 15;
 
       const currentMoving = statusMessage.isMoving;
-      if (isMoving !== currentMoving && sessionStatus === "active" && !isCompletedRef.current) {
+      if (isMoving !== currentMoving && sessionStatus === "active") {
         updateStatusMessage("active", null, isMoving);
         
         if (!isMoving) {
@@ -756,7 +764,7 @@ export default function TouringPage() {
   // ─── RECORD STOP ─────────────────────────────────────────────────────────
 
   const recordStop = useCallback(async (lat, lng) => {
-    if (currentStopId || isCompletedRef.current) return;
+    if (currentStopId || isSessionCompletedRef.current) return;
 
     try {
       const stopInfo = getStopReason(lat, lng);
@@ -790,7 +798,7 @@ export default function TouringPage() {
   // ─── RESUME FROM STOP ────────────────────────────────────────────────────
 
   const resumeFromStop = useCallback(async () => {
-    if (!currentStopId || isCompletedRef.current) return;
+    if (!currentStopId || isSessionCompletedRef.current) return;
 
     try {
       const now = new Date();
@@ -813,7 +821,9 @@ export default function TouringPage() {
           : s
       ));
 
-      addNotification("info", `🚀 Melanjutkan perjalanan setelah ${duration} menit`, 0);
+      if (duration > 0) {
+        addNotification("info", `🚀 Melanjutkan perjalanan setelah ${duration} menit`, 0);
+      }
     } catch (error) {
       console.error("Error resuming from stop:", error);
     }
@@ -827,7 +837,7 @@ export default function TouringPage() {
     }
 
     backgroundIntervalRef.current = setInterval(() => {
-      if (!sessionId || !isTrackingRef.current || isCompletedRef.current) return;
+      if (!sessionId || !isTrackingRef.current || isSessionCompletedRef.current) return;
       
       navigator.geolocation.getCurrentPosition(
         async (position) => {
@@ -874,14 +884,9 @@ export default function TouringPage() {
             .update({ total_distance_km: totalDistanceRef.current })
             .eq("id", sessionId);
 
-          if (!isCompletedRef.current) {
-            checkForCheckpoint(latitude, longitude);
-            updateStatusMessage("active", null, true);
-          }
-          
-          if (isMounted.current) {
-            setTotalDistance(totalDistanceRef.current);
-          }
+          checkForCheckpoint(latitude, longitude);
+          updateStatusMessage("active", null, true);
+          setTotalDistance(totalDistanceRef.current);
         },
         (error) => {
           console.error("Background geolocation error:", error);
@@ -911,9 +916,13 @@ export default function TouringPage() {
     }
 
     autoStartIntervalRef.current = setInterval(async () => {
-      // Jangan auto-start jika sudah selesai
-      if (!sessionId || lateDeparture || sessionStatus === "active" || 
-          sessionStatus === "completed" || isCompletedRef.current) return;
+      // Cek apakah session sudah selesai atau aktif
+      if (!sessionId || isSessionCompletedRef.current || sessionStatus === "completed") {
+        clearInterval(autoStartIntervalRef.current);
+        return;
+      }
+      
+      if (lateDeparture || sessionStatus === "active" || sessionStatus === "completed") return;
 
       try {
         const { data: cpData } = await supabase
@@ -946,8 +955,7 @@ export default function TouringPage() {
               })
               .eq("id", sessionId);
             setSessionStatus("completed");
-            isCompletedRef.current = true;
-            setIsCompleted(true);
+            isSessionCompletedRef.current = true;
             stopTracking();
             return;
           }
@@ -967,6 +975,7 @@ export default function TouringPage() {
             setSessionStatus("active");
             setIsTracking(true);
             isTrackingRef.current = true;
+            isSessionCompletedRef.current = false;
             startBackgroundTracking(sessionId);
             startMovementDetection();
             addNotification("info", "🚀 Perjalanan dimulai otomatis sesuai jadwal", 0);
@@ -982,8 +991,8 @@ export default function TouringPage() {
   // ─── TRACKING FUNCTIONS ──────────────────────────────────────────────────
 
   const startTracking = useCallback(() => {
-    // Cegah jika sudah selesai
-    if (isCompletedRef.current) {
+    // Cek jika session sudah selesai
+    if (isSessionCompletedRef.current || sessionStatus === "completed") {
       alert("Perjalanan ini sudah selesai. Tidak dapat memulai ulang.");
       return;
     }
@@ -1008,8 +1017,7 @@ export default function TouringPage() {
     totalDistanceRef.current = 0;
     setTotalDistance(0);
     locationHistoryRef.current = [];
-    isCompletedRef.current = false;
-    setIsCompleted(false);
+    isSessionCompletedRef.current = false;
 
     supabase
       .from("touring_sessions")
@@ -1032,10 +1040,10 @@ export default function TouringPage() {
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       async (position) => {
+        if (isSessionCompletedRef.current) return;
+        
         const { latitude, longitude, speed, heading } = position.coords;
         const now = Date.now();
-        
-        if (isCompletedRef.current) return;
         
         setCurrentLocation({ lat: latitude, lng: longitude });
         
@@ -1077,10 +1085,8 @@ export default function TouringPage() {
           .update({ total_distance_km: totalDistanceRef.current })
           .eq("id", sessionIdRef.current);
 
-        if (!isCompletedRef.current) {
-          checkForCheckpoint(latitude, longitude);
-          updateStatusMessage("active", null, true);
-        }
+        checkForCheckpoint(latitude, longitude);
+        updateStatusMessage("active", null, true);
         setTotalDistance(totalDistanceRef.current);
       },
       (error) => {
@@ -1090,7 +1096,7 @@ export default function TouringPage() {
     );
 
     addNotification("info", "🚀 Perjalanan dimulai!", 0);
-  }, [saveToDatabase, startBackgroundTracking, updateStatusMessage]);
+  }, [saveToDatabase, startBackgroundTracking, updateStatusMessage, sessionStatus]);
 
   const stopTracking = useCallback(async () => {
     if (watchIdRef.current) {
@@ -1106,8 +1112,7 @@ export default function TouringPage() {
     setIsTracking(false);
     isTrackingRef.current = false;
     setSessionStatus("completed");
-    isCompletedRef.current = true;
-    setIsCompleted(true);
+    isSessionCompletedRef.current = true;
 
     await supabase
       .from("touring_sessions")
@@ -1122,14 +1127,14 @@ export default function TouringPage() {
     updateStatusMessage("completed");
     addNotification("info", `✅ Perjalanan selesai! Total jarak: ${totalDistanceRef.current.toFixed(1)} km`, 0);
     
-    // Generate report otomatis
+    // Auto generate report
     await generateReport();
   }, [saveToDatabase, stopBackgroundTracking, updateStatusMessage, currentStopId, resumeFromStop]);
 
   // ─── CHECK CHECKPOINT ──────────────────────────────────────────────────
 
   const checkForCheckpoint = useCallback((lat, lng) => {
-    if (isCompletedRef.current) return;
+    if (isSessionCompletedRef.current) return;
     
     const threshold = 0.5;
     const now = new Date();
@@ -1223,10 +1228,8 @@ export default function TouringPage() {
   // ─── LATE DEPARTURE ──────────────────────────────────────────────────
 
   const handleLateDeparture = useCallback(() => {
-    if (isCompletedRef.current) {
-      alert("Perjalanan sudah selesai.");
-      return;
-    }
+    if (isSessionCompletedRef.current) return;
+    
     setLateDeparture(true);
     supabase
       .from("touring_sessions")
@@ -1256,6 +1259,11 @@ export default function TouringPage() {
   // ─── CHECKPOINT CRUD ──────────────────────────────────────────────────
 
   const addCheckpoint = useCallback(() => {
+    if (isSessionCompletedRef.current) {
+      alert("Perjalanan sudah selesai. Tidak dapat menambah kota.");
+      return;
+    }
+    
     const today = new Date().toISOString().split('T')[0];
     const newCp = { 
       city_name: "Kota Baru", 
@@ -1266,22 +1274,28 @@ export default function TouringPage() {
       status: "pending",
       is_final_destination: false
     };
-    const updated = [...checkpoints, newCp];
-    setCheckpoints(updated);
-    // Langsung simpan ke database dengan id baru
+    const newCheckpoints = [...checkpoints, newCp];
+    setCheckpoints(newCheckpoints);
     saveToDatabase();
   }, [checkpoints, saveToDatabase]);
 
   const removeCheckpoint = useCallback((index) => {
+    if (isSessionCompletedRef.current) {
+      alert("Perjalanan sudah selesai. Tidak dapat menghapus kota.");
+      return;
+    }
+    
     if (checkpoints[index].status === "reached") {
       if (!window.confirm("Kota ini sudah dicapai. Yakin ingin menghapus?")) return;
     }
-    const updated = checkpoints.filter((_, i) => i !== index);
-    setCheckpoints(updated);
+    const newCheckpoints = checkpoints.filter((_, i) => i !== index);
+    setCheckpoints(newCheckpoints);
     saveToDatabase();
   }, [checkpoints, saveToDatabase]);
 
   const moveCheckpoint = useCallback((index, direction) => {
+    if (isSessionCompletedRef.current) return;
+    
     const arr = [...checkpoints];
     const swap = index + direction;
     if (swap < 0 || swap >= arr.length) return;
@@ -1368,25 +1382,41 @@ export default function TouringPage() {
           fuelLiters: sessionData?.fuel_liters,
           status: sessionData?.status,
           startedAt: sessionData?.created_at,
-          completedAt: sessionData?.completed_at,
-          sessionCode: sessionData?.session_code
+          completedAt: sessionData?.completed_at
         }
       };
 
-      await supabase
+      // Simpan atau update report
+      const { data: existingReport } = await supabase
         .from("touring_reports")
-        .insert({
-          session_id: sessionIdRef.current,
-          report_data: report,
-          generated_at: new Date().toISOString()
-        });
+        .select("*")
+        .eq("session_id", sessionIdRef.current)
+        .order("generated_at", { ascending: false })
+        .limit(1);
+
+      if (existingReport && existingReport.length > 0) {
+        await supabase
+          .from("touring_reports")
+          .update({
+            report_data: report,
+            generated_at: new Date().toISOString()
+          })
+          .eq("id", existingReport[0].id);
+      } else {
+        await supabase
+          .from("touring_reports")
+          .insert({
+            session_id: sessionIdRef.current,
+            report_data: report,
+            generated_at: new Date().toISOString()
+          });
+      }
 
       await supabase
         .from("touring_sessions")
         .update({ report_generated: true })
         .eq("id", sessionIdRef.current);
 
-      setHasReport(true);
       setReportData(report);
       setShowReportModal(true);
       
@@ -1395,32 +1425,6 @@ export default function TouringPage() {
       alert("Gagal membuat laporan perjalanan");
     } finally {
       setIsGeneratingReport(false);
-    }
-  }, []);
-
-  // ─── LOAD REPORT ─────────────────────────────────────────────────────
-
-  const loadReport = useCallback(async () => {
-    if (!sessionIdRef.current) return;
-    
-    try {
-      const { data } = await supabase
-        .from("touring_reports")
-        .select("*")
-        .eq("session_id", sessionIdRef.current)
-        .order("generated_at", { ascending: false })
-        .limit(1)
-        .single();
-
-      if (data) {
-        setReportData(data.report_data);
-        setShowReportModal(true);
-      } else {
-        alert("Belum ada laporan untuk perjalanan ini.");
-      }
-    } catch (error) {
-      console.error("Error loading report:", error);
-      alert("Gagal memuat laporan");
     }
   }, []);
 
@@ -1481,26 +1485,549 @@ export default function TouringPage() {
     );
   }
 
-  const isSessionComplete = isCompleted || sessionStatus === "completed" || 
+  const isSessionComplete = sessionStatus === "completed" || 
     checkpoints.some(cp => cp.is_final_destination && cp.status === "reached");
+
+  // Update ref jika session complete
+  if (isSessionComplete && !isSessionCompletedRef.current) {
+    isSessionCompletedRef.current = true;
+  }
 
   return (
     <div style={{ ...styles.container, ...(isMobile ? styles.containerMobile : {}) }}>
-      {/* Header - sama seperti sebelumnya, lanjutkan... */}
-      {/* ... kode header sama seperti sebelumnya ... */}
-      
-      {/* Main Content - sama seperti sebelumnya */}
-      {/* ... kode main content sama seperti sebelumnya ... */}
-      
+      {/* Header */}
+      <header style={{ ...styles.header, ...(isMobile ? styles.headerMobile : {}) }}>
+        <div style={styles.headerLeft}>
+          <FiMapPin size={isMobile ? 20 : 24} color="#3B82F6" />
+          <h1 style={{ ...styles.headerTitle, ...(isMobile ? styles.headerTitleMobile : {}) }}>
+            Touring Tracker
+          </h1>
+          {!isMobile && (
+            <button 
+              onClick={() => setShowSessionList(!showSessionList)} 
+              style={{ ...iconBtn, padding: "4px 10px", background: showSessionList ? "#1D4ED8" : "#1E293B", color: showSessionList ? "#93C5FD" : "#94A3B8" }}
+            >
+              <FiList size={14} />
+            </button>
+          )}
+        </div>
+        <div style={{ ...styles.headerRight, ...(isMobile ? styles.headerRightMobile : {}) }}>
+          <div style={styles.statusContainer}>
+            <span style={styles.statusText}>{statusMessage.text}</span>
+            {statusMessage.location && (
+              <span style={styles.statusLocation}>
+                <FiMapPin size={10} /> {statusMessage.location}
+              </span>
+            )}
+            {sessionStatus === "active" && !isSessionComplete && (
+              <button 
+                onClick={() => {
+                  const detailMsg = `
+📍 Status: ${statusMessage.isMoving ? 'Sedang Berjalan' : 'Sedang Berhenti'}
+📍 Lokasi: ${statusMessage.location}
+📏 Total Jarak: ${totalDistance.toFixed(1)} km
+🛑 Jumlah Berhenti: ${stops.length}
+⏱️ Waktu: ${new Date().toLocaleTimeString('id-ID')}
+                  `;
+                  alert(detailMsg);
+                }}
+                style={styles.detailBtn}
+              >
+                <FiInfo size={12} /> Detail
+              </button>
+            )}
+          </div>
+          
+          <span style={{ 
+            ...styles.statusBadge, 
+            ...(isMobile ? styles.statusBadgeMobile : {}),
+            background: isSessionComplete ? "#1E293B" : sessionStatus === "active" ? "#065F46" : "#1E293B", 
+            color: isSessionComplete ? "#94A3B8" : sessionStatus === "active" ? "#6EE7B7" : "#94A3B8" 
+          }}>
+            {isSessionComplete ? <FiCheckCircle size={12} /> : sessionStatus === "active" ? <FiZap size={12} /> : <FiClock size={12} />}
+            {isSessionComplete ? "Selesai" : sessionStatus === "active" ? "Berjalan" : "Belum Mulai"}
+          </span>
+          
+          {!isMobile && (
+            <>
+              <button onClick={() => setShowSharePanel(true)} style={btnPrimary}>
+                <FiShare2 size={14} /> Bagikan
+              </button>
+              <button onClick={() => setShowSettings(!showSettings)} style={{ ...iconBtn, padding: "8px 12px" }}>
+                <FiSettings size={16} />
+              </button>
+            </>
+          )}
+          {isMobile && (
+            <button onClick={() => setShowMobileMenu(!showMobileMenu)} style={{ ...iconBtn, padding: "8px 12px" }}>
+              <FiMenu size={20} />
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* Mobile Menu */}
+      {isMobile && showMobileMenu && (
+        <div style={styles.mobileMenu}>
+          <button onClick={() => { setShowMobileMenu(false); setShowSessionList(!showSessionList); }} style={styles.mobileMenuItem}>
+            <FiList size={16} /> Daftar Perjalanan
+          </button>
+          <button onClick={() => { setShowMobileMenu(false); setShowSharePanel(true); }} style={styles.mobileMenuItem}>
+            <FiShare2 size={16} /> Bagikan
+          </button>
+          <button onClick={() => { setShowMobileMenu(false); setShowSettings(!showSettings); }} style={styles.mobileMenuItem}>
+            <FiSettings size={16} /> Pengaturan
+          </button>
+        </div>
+      )}
+
+      {/* Main Content */}
+      <div style={{ ...styles.mainContent, ...(isMobile ? styles.mainContentMobile : {}) }}>
+        {/* Session List Sidebar */}
+        {showSessionList && !isMobile && (
+          <aside style={styles.sessionSidebar}>
+            <div style={styles.sessionSidebarHeader}>
+              <h3 style={styles.sessionSidebarTitle}>
+                <FiList size={16} /> Daftar Perjalanan
+              </h3>
+              <button onClick={createNewSession} style={{ ...btnPrimary, padding: "6px 12px", fontSize: "12px" }}>
+                <FiPlus size={14} /> Baru
+              </button>
+            </div>
+            <div style={styles.sessionList}>
+              {sessions.map(s => (
+                <div
+                  key={s.id}
+                  onClick={() => {
+                    setSelectedSessionId(s.id);
+                    loadSessionData(s.id);
+                  }}
+                  style={{
+                    ...styles.sessionItem,
+                    background: selectedSessionId === s.id ? "#1D4ED8" : "#1E293B",
+                    borderColor: selectedSessionId === s.id ? "#3B82F6" : "#334155"
+                  }}
+                >
+                  <div style={styles.sessionItemLeft}>
+                    <div style={styles.sessionCode}>{s.session_code}</div>
+                    <div style={styles.sessionMeta}>
+                      <span style={styles.sessionMetaItem}>
+                        <FiCalendar size={10} /> {formatDate(s.created_at)}
+                      </span>
+                      <span style={styles.sessionMetaItem}>
+                        {getTransportIcon(s.transport_type)} {getTransportLabel(s.transport_type)}
+                      </span>
+                      {s.total_distance_km > 0 && (
+                        <span style={styles.sessionMetaItem}>
+                          <FiMapPin size={10} /> {s.total_distance_km.toFixed(1)} km
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div style={styles.sessionItemRight}>
+                    <span style={{
+                      ...styles.sessionStatusBadge,
+                      background: s.status === "active" ? "#065F46" : s.status === "completed" ? "#1E293B" : "#1E293B",
+                      color: s.status === "active" ? "#6EE7B7" : s.status === "completed" ? "#94A3B8" : "#94A3B8"
+                    }}>
+                      {s.status === "active" ? "Active" : s.status === "completed" ? "Selesai" : "Pending"}
+                    </span>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteSession(s.id);
+                      }}
+                      style={{ ...iconBtn, padding: "2px 6px", color: "#EF4444", border: "none" }}
+                    >
+                      <FiTrash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {sessions.length === 0 && (
+                <div style={styles.emptySession}>
+                  <p>Belum ada perjalanan</p>
+                  <button onClick={createNewSession} style={{ ...btnPrimary, marginTop: "8px" }}>
+                    <FiPlus size={14} /> Buat Perjalanan Baru
+                  </button>
+                </div>
+              )}
+            </div>
+          </aside>
+        )}
+
+        {/* Mobile Session List */}
+        {isMobile && showSessionList && (
+          <div style={styles.mobileSessionList}>
+            <div style={styles.mobileSessionHeader}>
+              <span style={{ color: "#94A3B8", fontSize: "14px", fontWeight: "600" }}>
+                <FiList size={14} style={{ marginRight: "8px" }} />
+                Daftar Perjalanan
+              </span>
+              <button onClick={createNewSession} style={{ ...btnPrimary, padding: "4px 12px", fontSize: "11px" }}>
+                <FiPlus size={12} /> Baru
+              </button>
+            </div>
+            <div style={styles.mobileSessionItems}>
+              {sessions.slice(0, 5).map(s => (
+                <div
+                  key={s.id}
+                  onClick={() => {
+                    setSelectedSessionId(s.id);
+                    loadSessionData(s.id);
+                    setShowSessionList(false);
+                  }}
+                  style={{
+                    ...styles.mobileSessionItem,
+                    background: selectedSessionId === s.id ? "#1D4ED8" : "#1E293B"
+                  }}
+                >
+                  <span style={styles.mobileSessionCode}>{s.session_code}</span>
+                  <span style={{
+                    ...styles.sessionStatusBadge,
+                    background: s.status === "active" ? "#065F46" : "#1E293B",
+                    color: s.status === "active" ? "#6EE7B7" : "#94A3B8"
+                  }}>
+                    {s.status === "active" ? "Active" : s.status === "completed" ? "Selesai" : "Pending"}
+                  </span>
+                </div>
+              ))}
+              {sessions.length > 5 && (
+                <div style={{ color: "#64748B", fontSize: "12px", textAlign: "center", padding: "8px" }}>
+                  +{sessions.length - 5} lainnya
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Settings Sidebar */}
+        {showSettings && (
+          <aside style={{ ...styles.sidebar, ...(isMobile ? styles.sidebarMobile : {}) }}>
+            <div style={styles.sidebarContent}>
+              {/* Session Info */}
+              <div style={styles.section}>
+                <h3 style={styles.sectionTitle}><FiInfo size={14} /> Informasi Sesi</h3>
+                <div style={styles.sessionInfo}>
+                  <div style={styles.sessionInfoRow}>
+                    <span style={styles.sessionInfoLabel}>Kode</span>
+                    <span style={styles.sessionInfoValue}>{sessionCode}</span>
+                  </div>
+                  <div style={styles.sessionInfoRow}>
+                    <span style={styles.sessionInfoLabel}>Dibuat</span>
+                    <span style={styles.sessionInfoValue}>{formatTimeAgo(session?.created_at)}</span>
+                  </div>
+                  <div style={styles.sessionInfoRow}>
+                    <span style={styles.sessionInfoLabel}>Status</span>
+                    <span style={{
+                      ...styles.sessionInfoValue,
+                      color: isSessionComplete ? "#94A3B8" : sessionStatus === "active" ? "#6EE7B7" : "#94A3B8"
+                    }}>
+                      {isSessionComplete ? "✅ Selesai" : sessionStatus === "active" ? "🟢 Berjalan" : "⏳ Belum Mulai"}
+                    </span>
+                  </div>
+                  <div style={styles.sessionInfoRow}>
+                    <span style={styles.sessionInfoLabel}><FiMapPin size={12} /> Total Jarak</span>
+                    <span style={styles.sessionInfoValue}>{totalDistance.toFixed(1)} km</span>
+                  </div>
+                  {lateDeparture && !isSessionComplete && (
+                    <div style={{ ...styles.sessionInfoRow, color: "#F59E0B" }}>
+                      <span style={styles.sessionInfoLabel}><FiAlertTriangle size={12} /> Status</span>
+                      <span style={{ color: "#F59E0B", fontSize: "12px" }}>⏰ Berangkat Telat</span>
+                    </div>
+                  )}
+                  {stops.length > 0 && (
+                    <div style={styles.sessionInfoRow}>
+                      <span style={styles.sessionInfoLabel}><FiClock size={12} /> Total Berhenti</span>
+                      <span style={styles.sessionInfoValue}>{stops.length} kali</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Transport Form */}
+              <div style={styles.section}>
+                <h3 style={styles.sectionTitle}><FiTruck size={14} /> Transportasi</h3>
+                <div style={{ ...styles.transportGrid, ...(isMobile ? styles.transportGridMobile : {}) }}>
+                  {TRANSPORT_OPTIONS.map(t => (
+                    <button
+                      key={t.value}
+                      onClick={() => setTransport({ ...transport, transport_type: t.value })}
+                      style={{
+                        ...styles.transportBtn,
+                        ...(isMobile ? styles.transportBtnMobile : {}),
+                        borderColor: transport.transport_type === t.value ? "#3B82F6" : "#334155",
+                        background: transport.transport_type === t.value ? "rgba(59,130,246,0.15)" : "#1E293B",
+                        color: transport.transport_type === t.value ? "#60A5FA" : "#64748B"
+                      }}
+                    >
+                      {t.icon} {t.label}
+                    </button>
+                  ))}
+                </div>
+                {transport.transport_type !== "jalan" && transport.transport_type !== "kereta" && (
+                  <>
+                    <input
+                      value={transport.plate_number}
+                      onChange={e => setTransport({ ...transport, plate_number: e.target.value })}
+                      style={inputStyle}
+                      placeholder="Nomor Plat"
+                    />
+                    <input
+                      type="number"
+                      step="0.5"
+                      value={transport.fuel_liters}
+                      onChange={e => setTransport({ ...transport, fuel_liters: parseFloat(e.target.value) || 0 })}
+                      style={inputStyle}
+                      placeholder="Jumlah Bensin (Liter)"
+                    />
+                  </>
+                )}
+                {transport.transport_type === "kereta" && (
+                  <input
+                    value={transport.plate_number || "Kereta"}
+                    disabled
+                    style={{ ...inputStyle, opacity: 0.5 }}
+                    placeholder="Kereta tidak memerlukan plat"
+                  />
+                )}
+                <input
+                  value={transport.driver_name}
+                  onChange={e => setTransport({ ...transport, driver_name: e.target.value })}
+                  style={inputStyle}
+                  placeholder="Nama Pengemudi/Penumpang"
+                />
+                <button onClick={saveToDatabase} style={{ ...btnPrimary, width: "100%", justifyContent: "center" }}>
+                  <FiSave size={14} /> Simpan Data
+                </button>
+              </div>
+
+              {/* Checkpoints Editor */}
+              <div style={styles.section}>
+                <h3 style={styles.sectionTitle}><FiMap size={14} /> Rute & Jadwal</h3>
+                <div style={{ ...styles.checkpointList, ...(isMobile ? styles.checkpointListMobile : {}) }}>
+                  {checkpoints.map((cp, i) => (
+                    <div key={i} style={styles.checkpointItem}>
+                      {editingCheckpoint === i ? (
+                        <div style={styles.editForm}>
+                          <input
+                            value={editForm.city_name || ""}
+                            onChange={e => setEditForm({ ...editForm, city_name: e.target.value })}
+                            style={inputStyle}
+                            placeholder="Nama Kota"
+                          />
+                          <input
+                            type="date"
+                            value={editForm.scheduled_date || ""}
+                            onChange={e => setEditForm({ ...editForm, scheduled_date: e.target.value })}
+                            style={inputStyle}
+                          />
+                          <input
+                            type="time"
+                            value={editForm.scheduled_time || ""}
+                            onChange={e => setEditForm({ ...editForm, scheduled_time: e.target.value })}
+                            style={inputStyle}
+                          />
+                          <input
+                            type="number"
+                            step="0.0001"
+                            value={editForm.latitude || ""}
+                            onChange={e => setEditForm({ ...editForm, latitude: parseFloat(e.target.value) || 0 })}
+                            style={inputStyle}
+                            placeholder="Latitude"
+                          />
+                          <input
+                            type="number"
+                            step="0.0001"
+                            value={editForm.longitude || ""}
+                            onChange={e => setEditForm({ ...editForm, longitude: parseFloat(e.target.value) || 0 })}
+                            style={inputStyle}
+                            placeholder="Longitude"
+                          />
+                          <label style={{ color: "#94A3B8", fontSize: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                            <input
+                              type="checkbox"
+                              checked={editForm.is_final_destination || false}
+                              onChange={e => setEditForm({ ...editForm, is_final_destination: e.target.checked })}
+                            />
+                            Tujuan Akhir
+                          </label>
+                          <div style={styles.editActions}>
+                            <button onClick={() => setEditingCheckpoint(null)} style={btnSecondary}>Batal</button>
+                            <button onClick={saveEditCheckpoint} style={btnPrimary}>Simpan</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={styles.checkpointRow}>
+                          <div style={{ ...styles.checkpointNumber, ...(isMobile ? styles.checkpointNumberMobile : {}) }}>
+                            {i + 1}
+                          </div>
+                          <div style={styles.checkpointInfo}>
+                            <div style={{ ...styles.checkpointName, ...(isMobile ? styles.checkpointNameMobile : {}) }}>
+                              {cp.city_name}
+                              {cp.is_final_destination && (
+                                <span style={{ color: "#F59E0B", fontSize: "10px", marginLeft: "6px" }}>🏁</span>
+                              )}
+                              {cp.status === "reached" && (
+                                <FiCheckCircle size={12} color="#10B981" style={{ marginLeft: "6px" }} />
+                              )}
+                            </div>
+                            <div style={{ ...styles.checkpointTime, ...(isMobile ? styles.checkpointTimeMobile : {}) }}>
+                              <FiCalendar size={10} /> {formatDate(cp.scheduled_date)} <FiClock size={10} /> {formatTime(cp.scheduled_time)}
+                              {cp.delay_minutes !== 0 && cp.delay_minutes != null && (
+                                <span style={{ color: cp.delay_minutes > 0 ? "#FCA5A5" : "#FDE68A", marginLeft: "8px" }}>
+                                  {cp.delay_minutes > 0 ? <FiArrowDown size={10} /> : <FiArrowUp size={10} />}
+                                  {Math.abs(cp.delay_minutes)}mnt
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div style={{ ...styles.checkpointActions, ...(isMobile ? styles.checkpointActionsMobile : {}) }}>
+                            <button onClick={() => moveCheckpoint(i, -1)} style={iconBtn}><FiChevronUp size={12} /></button>
+                            <button onClick={() => moveCheckpoint(i, 1)} style={iconBtn}><FiChevronDown size={12} /></button>
+                            <button onClick={() => startEditCheckpoint(cp, i)} style={iconBtn}><FiEdit2 size={12} /></button>
+                            <button onClick={() => removeCheckpoint(i)} style={{ ...iconBtn, color: "#EF4444" }}><FiTrash2 size={12} /></button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <button onClick={addCheckpoint} style={{ ...btnSecondary, width: "100%", justifyContent: "center" }}>
+                  <FiPlus size={14} /> Tambah Kota
+                </button>
+              </div>
+
+              {/* Control Buttons */}
+              <div style={styles.section}>
+                {!isSessionComplete ? (
+                  !isTracking ? (
+                    <>
+                      <button 
+                        onClick={startTracking} 
+                        style={{ ...btnPrimary, width: "100%", justifyContent: "center", background: "#10B981" }}
+                        disabled={isSessionComplete}
+                      >
+                        <FiPlay size={14} /> Mulai Perjalanan
+                      </button>
+                      <button 
+                        onClick={handleLateDeparture} 
+                        style={{ ...btnSecondary, width: "100%", justifyContent: "center", marginTop: "8px", borderColor: "#F59E0B", color: "#F59E0B" }}
+                        disabled={isSessionComplete}
+                      >
+                        <FiAlertTriangle size={14} /> Telat Berangkat
+                      </button>
+                      {lateDeparture && (
+                        <div style={{ color: "#F59E0B", fontSize: "12px", textAlign: "center", marginTop: "8px" }}>
+                          ⚠️ Auto-start dinonaktifkan karena berangkat telat
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={stopTracking} style={{ ...btnPrimary, width: "100%", justifyContent: "center", background: "#EF4444" }}>
+                        <FiSquare size={14} /> Selesaikan Perjalanan
+                      </button>
+                      <div style={{ textAlign: "center", color: "#6EE7B7", fontSize: "12px", marginTop: "8px" }}>
+                        <FiMapPin size={12} /> {totalDistance.toFixed(1)} km ditempuh
+                      </div>
+                    </>
+                  )
+                ) : (
+                  <div style={{ textAlign: "center", color: "#6EE7B7", padding: "12px" }}>
+                    <FiCheckCircle size={24} style={{ display: "block", margin: "0 auto 8px" }} />
+                    Perjalanan Selesai! 🎉
+                    <button 
+                      onClick={generateReport}
+                      style={{ ...btnPrimary, marginTop: "12px", background: "#8B5CF6" }}
+                      disabled={isGeneratingReport}
+                    >
+                      <FiFileText size={14} /> {isGeneratingReport ? "Membuat..." : "Laporan Perjalanan"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </aside>
+        )}
+
+        {/* Map Area */}
+        <div style={{ ...styles.mapContainer, ...(isMobile ? styles.mapContainerMobile : {}) }}>
+          <TouringMap
+            checkpoints={checkpoints}
+            currentLocation={currentLocation}
+            sessionStatus={sessionStatus}
+            onReportDelay={(cp) => {
+              setSelectedCheckpoint(cp);
+              setShowDelayModal(true);
+            }}
+            onMarkReached={(cp) => {
+              const updated = checkpoints.map(c => {
+                if (c.id === cp.id) {
+                  return { ...c, status: "reached", actual_arrival_time: new Date().toISOString() };
+                }
+                return c;
+              });
+              setCheckpoints(updated);
+              saveToDatabase();
+            }}
+            isTracking={isTracking}
+            isMobile={isMobile}
+            totalDistance={totalDistance}
+            statusMessage={statusMessage}
+            stops={stops}
+          />
+        </div>
+      </div>
+
       {/* Notification Panel */}
-      {/* ... kode notification panel sama seperti sebelumnya ... */}
-      
+      {notifications.length > 0 && (
+        <div style={{ ...styles.notificationPanel, ...(isMobile ? styles.notificationPanelMobile : {}) }}>
+          {notifications.slice(0, isMobile ? 3 : 5).map(n => (
+            <div key={n.id} style={{
+              ...styles.notificationItem,
+              ...(isMobile ? styles.notificationItemMobile : {}),
+              borderColor: n.type === "late" ? "#EF4444" : n.type === "early" ? "#F59E0B" : n.type === "info" ? "#3B82F6" : "#10B981"
+            }}>
+              {n.type === "late" ? <FiArrowDown color="#EF4444" /> :
+               n.type === "early" ? <FiArrowUp color="#F59E0B" /> :
+               n.type === "info" ? <FiInfo color="#3B82F6" /> :
+               <FiCheckCircle color="#10B981" />}
+              <span style={styles.notificationMessage}>{n.message}</span>
+              <button onClick={() => removeNotification(n.id)} style={styles.notificationClose}>
+                <FiX size={12} />
+              </button>
+            </div>
+          ))}
+          {notifications.length > (isMobile ? 3 : 5) && (
+            <div style={{ textAlign: "center", color: "#64748B", fontSize: "11px" }}>
+              +{notifications.length - (isMobile ? 3 : 5)} notifikasi lainnya
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Delay Modal */}
-      {/* ... kode delay modal sama seperti sebelumnya ... */}
-      
+      {showDelayModal && selectedCheckpoint && (
+        <DelayModal
+          checkpoint={selectedCheckpoint}
+          onClose={() => { setShowDelayModal(false); setSelectedCheckpoint(null); }}
+          onSubmit={(type, minutes) => handleManualDelay(selectedCheckpoint, type, minutes)}
+          isMobile={isMobile}
+        />
+      )}
+
       {/* Share Panel */}
-      {/* ... kode share panel sama seperti sebelumnya ... */}
-      
+      {showSharePanel && (
+        <SharePanel
+          sessionCode={sessionCode}
+          onClose={() => setShowSharePanel(false)}
+          onCopy={copyLink}
+          shareUrl={shareLink()}
+          isMobile={isMobile}
+        />
+      )}
+
       {/* Report Modal */}
       {showReportModal && reportData && (
         <ReportModal
@@ -1523,36 +2050,17 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
   const currentMarkerRef = useRef(null);
   const initializedRef = useRef(false);
 
+  // Inisialisasi map
   useEffect(() => {
     if (initializedRef.current || mapInstanceRef.current) return;
     
-    const initMap = () => {
-      const L = window.L;
-      if (!L) {
-        console.warn("Leaflet not loaded");
+    // Load Leaflet dari CDN
+    const loadLeaflet = () => {
+      if (window.L) {
+        initMap();
         return;
       }
-
-      const startLat = currentLocation?.lat || checkpoints[0]?.latitude || -7.7200;
-      const startLng = currentLocation?.lng || checkpoints[0]?.longitude || 109.9084;
-
-      const map = L.map(mapRef.current, { 
-        zoomControl: !isMobile,
-        attributionControl: true 
-      });
-      mapInstanceRef.current = map;
-
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        maxZoom: 19,
-      }).addTo(map);
-
-      map.setView([startLat, startLng], isMobile ? 8 : 9);
-      initializedRef.current = true;
-      renderMarkers(L, map);
-    };
-
-    if (!window.L) {
+      
       const script = document.createElement('script');
       script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
       script.async = true;
@@ -1564,9 +2072,9 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
         initMap();
       };
       document.head.appendChild(script);
-    } else {
-      initMap();
-    }
+    };
+
+    loadLeaflet();
 
     return () => {
       if (mapInstanceRef.current) {
@@ -1575,7 +2083,30 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
         initializedRef.current = false;
       }
     };
-  }, [isMobile]);
+  }, []);
+
+  const initMap = () => {
+    const L = window.L;
+    if (!L) return;
+
+    const startLat = currentLocation?.lat || checkpoints[0]?.latitude || -7.7200;
+    const startLng = currentLocation?.lng || checkpoints[0]?.longitude || 109.9084;
+
+    const map = L.map(mapRef.current, { 
+      zoomControl: true,
+      attributionControl: true 
+    });
+    mapInstanceRef.current = map;
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19,
+    }).addTo(map);
+
+    map.setView([startLat, startLng], isMobile ? 8 : 9);
+    initializedRef.current = true;
+    renderMarkers(L, map);
+  };
 
   const renderMarkers = (L, map) => {
     if (!map) return;
@@ -1585,21 +2116,30 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
     checkpoints.forEach((cp, i) => {
       const color = cp.status === "reached" ? "#10B981" : cp.status === "active" ? "#3B82F6" : "#6B7280";
       const size = isMobile ? 28 : 34;
+      
+      // Buat popup dengan nama kota
+      const popupContent = `
+        <div style="font-family: Arial, sans-serif; padding: 4px;">
+          <b style="font-size: ${isMobile ? '12px' : '14px'};">${i + 1}. ${cp.city_name}</b><br>
+          <span style="font-size: ${isMobile ? '10px' : '12px'}; color: #666;">
+            📅 ${cp.scheduled_date || "--"}<br>
+            ⏰ ${cp.scheduled_time || "--:--"}<br>
+            ${cp.status === "reached" ? "✅ Tiba" : "⏳ Menunggu"}<br>
+            ${cp.delay_minutes ? `⏱️ Delay: ${cp.delay_minutes} menit` : ""}
+            ${cp.is_final_destination ? "<br>🏁 Tujuan Akhir" : ""}
+          </span>
+        </div>
+      `;
+      
       const icon = L.divIcon({
-        html: `<div style="background:${color};color:white;border-radius:50%;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:${isMobile ? 10 : 13}px;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)">${i + 1}</div>`,
+        html: `<div style="background:${color};color:white;border-radius:50%;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:${isMobile ? 10 : 13}px;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)">${i + 1}</div>`,
         className: "",
         iconSize: [size, size],
         iconAnchor: [size/2, size/2],
       });
+      
       const marker = L.marker([cp.latitude, cp.longitude], { icon })
-        .bindPopup(`
-          <b>${cp.city_name}</b><br>
-          Tanggal: ${cp.scheduled_date || "--"}<br>
-          Jadwal: ${cp.scheduled_time || "--:--"}<br>
-          ${cp.status === "reached" ? "✅ Tiba" : "⏳ Menunggu"}<br>
-          ${cp.delay_minutes ? `Delay: ${cp.delay_minutes} menit` : ""}
-          ${cp.is_final_destination ? "<br>🏁 Tujuan Akhir" : ""}
-        `)
+        .bindPopup(popupContent)
         .addTo(map);
       markersRef.current.push(marker);
     });
@@ -1627,14 +2167,27 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
     if (currentMarkerRef.current) currentMarkerRef.current.remove();
 
     const size = isMobile ? 30 : 40;
-    const isMoving = statusMessage?.isMoving !== false;
-    const color = isMoving ? "#3B82F6" : "#EF4444";
+    const isMoving = statusMessage?.isMoving !== false && sessionStatus !== "completed";
+    const color = isMoving ? "#3B82F6" : sessionStatus === "completed" ? "#10B981" : "#EF4444";
+    
+    const popupContent = `
+      <div style="font-family: Arial, sans-serif; padding: 4px;">
+        <b style="font-size: ${isMobile ? '12px' : '14px'};">📍 Lokasi Saat Ini</b><br>
+        <span style="font-size: ${isMobile ? '10px' : '12px'}; color: #666;">
+          Status: ${statusMessage?.text || 'Sedang Berjalan'}<br>
+          Lokasi: ${statusMessage?.location || '-'}<br>
+          Total Jarak: ${totalDistance?.toFixed(1) || 0} km
+          ${stops?.length > 0 ? `<br>Berhenti: ${stops.length} kali` : ''}
+        </span>
+      </div>
+    `;
     
     const pulseIcon = L.divIcon({
       html: `<div style="position:relative;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center">
         <div style="position:absolute;width:${size}px;height:${size}px;background:${color}33;border-radius:50%;animation:ping 1.5s infinite"></div>
-        <div style="width:${isMobile ? 14 : 20}px;height:${isMobile ? 14 : 20}px;background:${color};border-radius:50%;border:3px solid white;box-shadow:0 0 12px ${color}99;position:relative;z-index:1;transition:background 0.5s"></div>
-        ${!isMoving ? `<div style="position:absolute;top:-8px;right:-8px;background:#EF4444;border-radius:50%;width:14px;height:14px;display:flex;align-items:center;justify-content:center;font-size:8px;color:white;border:2px solid white;">⏸</div>` : ''}
+        <div style="width:${isMobile ? 14 : 20}px;height:${isMobile ? 14 : 20}px;background:${color};border-radius:50%;border:2px solid white;box-shadow:0 0 12px ${color}99;position:relative;z-index:1;transition:background 0.5s"></div>
+        ${!isMoving && sessionStatus === "active" ? `<div style="position:absolute;top:-6px;right:-6px;background:#EF4444;border-radius:50%;width:12px;height:12px;display:flex;align-items:center;justify-content:center;font-size:7px;color:white;border:2px solid white;">⏸</div>` : ''}
+        ${sessionStatus === "completed" ? `<div style="position:absolute;top:-6px;right:-6px;background:#10B981;border-radius:50%;width:12px;height:12px;display:flex;align-items:center;justify-content:center;font-size:7px;color:white;border:2px solid white;">✓</div>` : ''}
       </div>`,
       className: "",
       iconSize: [size, size],
@@ -1642,24 +2195,34 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
     });
 
     currentMarkerRef.current = L.marker([currentLocation.lat, currentLocation.lng], { icon: pulseIcon })
-      .bindPopup(`
-        <b>📍 Lokasi Saat Ini</b><br>
-        Status: ${statusMessage?.text || 'Sedang Berjalan'}<br>
-        Lokasi: ${statusMessage?.location || '-'}<br>
-        Total Jarak: ${totalDistance?.toFixed(1) || 0} km
-        ${stops?.length > 0 ? `<br>Berhenti: ${stops.length} kali` : ''}
-      `)
+      .bindPopup(popupContent)
       .addTo(mapInstanceRef.current);
 
-    if (isTracking) {
+    if (isTracking && sessionStatus === "active") {
       mapInstanceRef.current.setView([currentLocation.lat, currentLocation.lng], isMobile ? 11 : 13, { animate: true });
     }
-  }, [currentLocation, isTracking, isMobile, statusMessage, totalDistance, stops]);
+  }, [currentLocation, isTracking, isMobile, statusMessage, totalDistance, stops, sessionStatus]);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      <style>{`@keyframes ping{0%{transform:scale(1);opacity:1}100%{transform:scale(2.5);opacity:0}}`}</style>
-      <div ref={mapRef} style={{ width: "100%", height: "100%", borderRadius: "12px" }} />
+      <style>{`
+        @keyframes ping {
+          0% { transform: scale(1); opacity: 1; }
+          100% { transform: scale(2.5); opacity: 0; }
+        }
+        .leaflet-popup-content-wrapper {
+          border-radius: 8px !important;
+        }
+        .leaflet-popup-content {
+          margin: 8px 10px !important;
+        }
+        @media (max-width: 768px) {
+          .leaflet-control-zoom {
+            display: none !important;
+          }
+        }
+      `}</style>
+      <div ref={mapRef} style={{ width: "100%", height: "100%", borderRadius: "10px" }} />
     </div>
   );
 }
@@ -1801,11 +2364,16 @@ function ReportModal({ report, onClose, isMobile }) {
           <div style={styles.reportHeader}>
             <h2 style={styles.reportTitle}>📋 Laporan Perjalanan</h2>
             <p style={styles.reportSubtitle}>
-              Kode Sesi: <strong>{summary.sessionCode || report?.session?.session_code}</strong>
+              Kode Sesi: <strong>{report?.session?.session_code}</strong>
             </p>
             <p style={styles.reportSubtitle}>
-              Tanggal: {formatDateTime(summary.startedAt || report?.session?.created_at)}
+              Tanggal: {formatDateTime(report?.session?.created_at)}
             </p>
+            {report?.session?.completed_at && (
+              <p style={styles.reportSubtitle}>
+                Selesai: {formatDateTime(report?.session?.completed_at)}
+              </p>
+            )}
           </div>
 
           <div style={styles.reportSection}>
@@ -2293,12 +2861,13 @@ const styles = {
     flex: 1,
     padding: "12px",
     background: "#0F172A",
-    minHeight: "300px"
+    minHeight: "300px",
+    position: "relative"
   },
   mapContainerMobile: {
     padding: "6px",
-    minHeight: "200px",
-    height: "40vh"
+    minHeight: "250px",
+    height: "50vh"
   },
   notificationPanel: {
     position: "fixed",
@@ -2568,6 +3137,7 @@ const styles = {
     fontWeight: "600",
     fontFamily: "monospace"
   },
+  // Report styles
   reportContent: {
     padding: "4px 0"
   },
