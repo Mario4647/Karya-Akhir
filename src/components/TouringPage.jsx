@@ -1,5 +1,5 @@
 // TouringPage.jsx
-// Halaman Utama Touring Tracker - Atur dan Jalankan Sistem
+// Halaman Utama Touring Tracker - Dengan Semua Fitur Real-Time
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "../supabaseClient";
 import {
@@ -9,9 +9,8 @@ import {
   FiRefreshCw, FiEye, FiX, FiChevronUp, FiChevronDown,
   FiZap, FiMenu, FiMap, FiBell, FiList, FiPlay, FiSquare,
   FiHash, FiGlobe, FiMinus, FiInfo, FiLink, FiEyeOff,
-  FiCalendar, FiUsers, FiMoreVertical,
-  FiPower, FiAlertTriangle, FiActivity, FiPause, FiTarget,
-  FiCompass, FiRadio, FiWifi, FiWifiOff
+  FiCalendar, FiClock as FiClockIcon, FiUsers, FiMoreVertical,
+  FiPower, FiAlertTriangle, FiFileText, FiDownload, FiPrinter
 } from "react-icons/fi";
 import { MdTwoWheeler, MdDirectionsCar, MdDirectionsWalk, MdTrain } from "react-icons/md";
 
@@ -45,11 +44,24 @@ function formatDate(dateStr) {
   return date.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 }
 
+function formatDateTime(dateStr) {
+  if (!dateStr) return "-";
+  const date = new Date(dateStr);
+  return date.toLocaleDateString("id-ID", { 
+    day: "numeric", 
+    month: "short", 
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
 function formatTimeAgo(dateStr) {
   if (!dateStr) return "-";
   const date = new Date(dateStr);
   const now = new Date();
   const diff = Math.floor((now - date) / 1000);
+  
   if (diff < 60) return `${diff} detik lalu`;
   if (diff < 3600) return `${Math.floor(diff / 60)} menit lalu`;
   if (diff < 86400) return `${Math.floor(diff / 3600)} jam lalu`;
@@ -71,6 +83,28 @@ function getTransportLabel(type) {
   return labels[type] || "Mobil";
 }
 
+function getStopReason(lat, lng) {
+  // Daftar lokasi SPBU di Indonesia (koordinat aproximasi)
+  const spbuLocations = [
+    { lat: -7.7956, lng: 110.3695, name: "SPBU Yogyakarta" },
+    { lat: -7.7200, lng: 109.9084, name: "SPBU Kutoarjo" },
+    { lat: -7.7059, lng: 110.6077, name: "SPBU Klaten" },
+  ];
+  
+  // Cek jarak ke SPBU terdekat
+  for (const spbu of spbuLocations) {
+    const dist = getDistanceKm(lat, lng, spbu.lat, spbu.lng);
+    if (dist < 0.5) { // 500 meter
+      return { reason: "Pengisian BBM", location: spbu.name };
+    }
+  }
+  
+  // Cek apakah di rest area (aproximasi)
+  // Bisa ditambahkan database rest area nanti
+  
+  return null;
+}
+
 const TRANSPORT_OPTIONS = [
   { value: "motor", label: "Motor", icon: <MdTwoWheeler size={20} /> },
   { value: "mobil", label: "Mobil", icon: <MdDirectionsCar size={20} /> },
@@ -79,41 +113,129 @@ const TRANSPORT_OPTIONS = [
 ];
 
 const DEFAULT_CHECKPOINTS = [
-  { city_name: "Kutoarjo", latitude: -7.7200, longitude: 109.9084, scheduled_date: new Date().toISOString().split('T')[0], scheduled_time: "07:00", is_final_destination: false },
-  { city_name: "Yogyakarta", latitude: -7.7956, longitude: 110.3695, scheduled_date: new Date().toISOString().split('T')[0], scheduled_time: "08:30", is_final_destination: false },
-  { city_name: "Klaten", latitude: -7.7059, longitude: 110.6077, scheduled_date: new Date().toISOString().split('T')[0], scheduled_time: "09:30", is_final_destination: false },
-  { city_name: "Wonogiri", latitude: -7.8126, longitude: 110.9228, scheduled_date: new Date().toISOString().split('T')[0], scheduled_time: "11:00", is_final_destination: false },
-  { city_name: "Purwantoro", latitude: -7.8717, longitude: 111.3321, scheduled_date: new Date().toISOString().split('T')[0], scheduled_time: "12:30", is_final_destination: false },
-  { city_name: "Ponorogo", latitude: -7.8683, longitude: 111.4617, scheduled_date: new Date().toISOString().split('T')[0], scheduled_time: "14:00", is_final_destination: false },
-  { city_name: "Trenggalek", latitude: -8.0501, longitude: 111.7082, scheduled_date: new Date().toISOString().split('T')[0], scheduled_time: "15:30", is_final_destination: false },
-  { city_name: "Tulungagung", latitude: -8.0661, longitude: 111.9044, scheduled_date: new Date().toISOString().split('T')[0], scheduled_time: "17:00", is_final_destination: true },
+  { 
+    city_name: "Kutoarjo", 
+    latitude: -7.7200, 
+    longitude: 109.9084, 
+    scheduled_date: new Date().toISOString().split('T')[0],
+    scheduled_time: "07:00",
+    is_final_destination: false
+  },
+  { 
+    city_name: "Yogyakarta", 
+    latitude: -7.7956, 
+    longitude: 110.3695, 
+    scheduled_date: new Date().toISOString().split('T')[0],
+    scheduled_time: "08:30",
+    is_final_destination: false
+  },
+  { 
+    city_name: "Klaten", 
+    latitude: -7.7059, 
+    longitude: 110.6077, 
+    scheduled_date: new Date().toISOString().split('T')[0],
+    scheduled_time: "09:30",
+    is_final_destination: false
+  },
+  { 
+    city_name: "Wonogiri", 
+    latitude: -7.8126, 
+    longitude: 110.9228, 
+    scheduled_date: new Date().toISOString().split('T')[0],
+    scheduled_time: "11:00",
+    is_final_destination: false
+  },
+  { 
+    city_name: "Purwantoro", 
+    latitude: -7.8717, 
+    longitude: 111.3321, 
+    scheduled_date: new Date().toISOString().split('T')[0],
+    scheduled_time: "12:30",
+    is_final_destination: false
+  },
+  { 
+    city_name: "Ponorogo", 
+    latitude: -7.8683, 
+    longitude: 111.4617, 
+    scheduled_date: new Date().toISOString().split('T')[0],
+    scheduled_time: "14:00",
+    is_final_destination: false
+  },
+  { 
+    city_name: "Trenggalek", 
+    latitude: -8.0501, 
+    longitude: 111.7082, 
+    scheduled_date: new Date().toISOString().split('T')[0],
+    scheduled_time: "15:30",
+    is_final_destination: false
+  },
+  { 
+    city_name: "Tulungagung", 
+    latitude: -8.0661, 
+    longitude: 111.9044, 
+    scheduled_date: new Date().toISOString().split('T')[0],
+    scheduled_time: "17:00",
+    is_final_destination: true
+  },
 ];
 
 // ─── STYLES ───────────────────────────────────────────────────────────────────
 
 const inputStyle = {
-  background: "#0F172A", border: "1px solid #334155", borderRadius: "8px",
-  color: "#F1F5F9", padding: "8px 12px", fontSize: "13px", width: "100%",
-  outline: "none", boxSizing: "border-box", transition: "border-color 0.2s"
+  background: "#0F172A",
+  border: "1px solid #334155",
+  borderRadius: "8px",
+  color: "#F1F5F9",
+  padding: "8px 12px",
+  fontSize: "13px",
+  width: "100%",
+  outline: "none",
+  boxSizing: "border-box",
+  transition: "border-color 0.2s"
 };
 
 const btnPrimary = {
-  display: "flex", alignItems: "center", gap: "6px", padding: "10px 20px",
-  background: "#3B82F6", color: "white", border: "none", borderRadius: "8px",
-  cursor: "pointer", fontSize: "13px", fontWeight: "600", transition: "all 0.2s"
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+  padding: "10px 20px",
+  background: "#3B82F6",
+  color: "white",
+  border: "none",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontSize: "13px",
+  fontWeight: "600",
+  transition: "all 0.2s"
 };
 
 const btnSecondary = {
-  display: "flex", alignItems: "center", gap: "6px", padding: "10px 20px",
-  background: "#1E293B", color: "#94A3B8", border: "1px solid #334155",
-  borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: "600",
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+  padding: "10px 20px",
+  background: "#1E293B",
+  color: "#94A3B8",
+  border: "1px solid #334155",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontSize: "13px",
+  fontWeight: "600",
   transition: "all 0.2s"
 };
 
 const iconBtn = {
-  background: "#1E293B", border: "1px solid #334155", borderRadius: "6px",
-  color: "#94A3B8", cursor: "pointer", padding: "6px 8px", display: "flex",
-  alignItems: "center", gap: "4px", fontSize: "12px", transition: "all 0.2s"
+  background: "#1E293B",
+  border: "1px solid #334155",
+  borderRadius: "6px",
+  color: "#94A3B8",
+  cursor: "pointer",
+  padding: "6px 8px",
+  display: "flex",
+  alignItems: "center",
+  gap: "4px",
+  fontSize: "12px",
+  transition: "all 0.2s"
 };
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
@@ -124,10 +246,13 @@ export default function TouringPage() {
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const [session, setSession] = useState(null);
   const [checkpoints, setCheckpoints] = useState(DEFAULT_CHECKPOINTS);
-  const [transport, setTransport] = useState({
-    transport_type: "motor", plate_number: "", driver_name: "", fuel_liters: 5
+  const [transport, setTransport] = useState({ 
+    transport_type: "motor", 
+    plate_number: "", 
+    driver_name: "", 
+    fuel_liters: 5 
   });
-  const [currentLocation, setCurrentLocation] = useState(null);
+  const [currentLocation, setCurrentLocation] = useState({ lat: -7.7200, lng: 109.9084 });
   const [sessionStatus, setSessionStatus] = useState("pending");
   const [isTracking, setIsTracking] = useState(false);
   const [notifications, setNotifications] = useState([]);
@@ -143,486 +268,202 @@ export default function TouringPage() {
   const [showSessionList, setShowSessionList] = useState(true);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [lateDeparture, setLateDeparture] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [currentStatus, setCurrentStatus] = useState({
-    status: "idle", location_name: "Belum mulai", speed: 0, last_update: null
-  });
-  const [showStatusDetail, setShowStatusDetail] = useState(false);
-
-  // ─── REFS ────────────────────────────────────────────────────────────────────
-  // Gunakan refs untuk nilai yang dibutuhkan callback tanpa menyebabkan re-render
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportData, setReportData] = useState(null);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [totalDistance, setTotalDistance] = useState(0);
+  const [statusMessage, setStatusMessage] = useState({ text: "Belum Mulai", location: "", isMoving: false });
+  const [stops, setStops] = useState([]);
+  const [isStopped, setIsStopped] = useState(false);
+  const [stopStartTime, setStopStartTime] = useState(null);
+  const [currentStopId, setCurrentStopId] = useState(null);
+  const [lastPosition, setLastPosition] = useState(null);
+  const [movementHistory, setMovementHistory] = useState([]);
+  
   const watchIdRef = useRef(null);
   const notificationIdRef = useRef(0);
   const sessionIdRef = useRef(null);
   const isMounted = useRef(true);
+  const loadAttempted = useRef(false);
   const autoStartIntervalRef = useRef(null);
   const backgroundIntervalRef = useRef(null);
-  const statusCheckIntervalRef = useRef(null);
-
-  // Refs untuk nilai state yang diakses dari dalam interval/callback
-  const checkpointsRef = useRef(DEFAULT_CHECKPOINTS);
-  const sessionStatusRef = useRef("pending");
-  const lateDepartureRef = useRef(false);
-  const selectedCheckpointRef = useRef(null);
-  const transportRef = useRef({ transport_type: "motor", plate_number: "", driver_name: "", fuel_liters: 5 });
-  const currentStatusRef = useRef({ status: "idle", location_name: "Belum mulai", speed: 0, last_update: null });
-
-  // Sync refs dengan state
-  useEffect(() => { checkpointsRef.current = checkpoints; }, [checkpoints]);
-  useEffect(() => { sessionStatusRef.current = sessionStatus; }, [sessionStatus]);
-  useEffect(() => { lateDepartureRef.current = lateDeparture; }, [lateDeparture]);
-  useEffect(() => { selectedCheckpointRef.current = selectedCheckpoint; }, [selectedCheckpoint]);
-  useEffect(() => { transportRef.current = transport; }, [transport]);
-  useEffect(() => { currentStatusRef.current = currentStatus; }, [currentStatus]);
+  const movementCheckIntervalRef = useRef(null);
+  const locationHistoryRef = useRef([]);
+  const totalDistanceRef = useRef(0);
+  const isTrackingRef = useRef(false);
+  const lastLocationRef = useRef(null);
+  const stopCheckTimerRef = useRef(null);
 
   // ─── RESPONSIVE ─────────────────────────────────────────────────────────────
+
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    setIsMobile(window.innerWidth < 768);
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // ─── NOTIFICATIONS ─────────────────────────────────────────────────────────
-  // Definisikan addNotification lebih awal sebelum fungsi lain membutuhkannya
-  const addNotification = useCallback((type, message, minutes) => {
-    const id = notificationIdRef.current++;
-    setNotifications(prev => [
-      { id, type, message, minutes, created_at: new Date().toISOString() },
-      ...prev
-    ].slice(0, 10));
+  // ─── FUNGSI ──────────────────────────────────────────────────────────────────
 
-    if (sessionIdRef.current) {
-      supabase
-        .from("touring_notifications")
-        .insert({
-          session_id: sessionIdRef.current,
-          checkpoint_id: selectedCheckpointRef.current?.id || null,
-          type, minutes, message
-        })
-        .then(() => {});
-    }
-  }, []);
-
-  const removeNotification = useCallback((id) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
-  }, []);
-
-  // ─── STOP TRACKING BACKGROUND ──────────────────────────────────────────────
-  const stopTrackingInBackground = useCallback(() => {
-    if (backgroundIntervalRef.current) {
-      clearInterval(backgroundIntervalRef.current);
-      backgroundIntervalRef.current = null;
-    }
-    if (statusCheckIntervalRef.current) {
-      clearInterval(statusCheckIntervalRef.current);
-      statusCheckIntervalRef.current = null;
-    }
-    if (watchIdRef.current) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-    }
-  }, []);
-
-  // ─── SIMPAN KE DATABASE ────────────────────────────────────────────────────
-  // Gunakan ref untuk mendapatkan nilai terbaru tanpa dependency
-  const saveToDatabase = useCallback(async () => {
-    if (!sessionIdRef.current) return;
-    const currentTransport = transportRef.current;
-    const currentCheckpoints = checkpointsRef.current;
-    const currentSessStatus = sessionStatusRef.current;
-    const currentLateDep = lateDepartureRef.current;
-    const currentSt = currentStatusRef.current;
-
+  // Load semua session
+  const loadAllSessions = useCallback(async () => {
     try {
-      await supabase
-        .from("touring_sessions")
-        .update({
-          transport_type: currentTransport.transport_type,
-          plate_number: currentTransport.plate_number,
-          driver_name: currentTransport.driver_name,
-          fuel_liters: currentTransport.fuel_liters,
-          status: currentSessStatus,
-          late_departure: currentLateDep,
-          updated_at: new Date().toISOString(),
-          current_status: currentSt.status,
-          current_location_name: currentSt.location_name,
-          last_location_update: new Date().toISOString()
-        })
-        .eq("id", sessionIdRef.current);
-
-      for (const cp of currentCheckpoints) {
-        if (cp.id) {
-          const scheduledDatetime = cp.scheduled_date && cp.scheduled_time
-            ? new Date(`${cp.scheduled_date}T${cp.scheduled_time}:00`).toISOString()
-            : null;
-          await supabase
-            .from("touring_checkpoints")
-            .update({
-              city_name: cp.city_name,
-              latitude: cp.latitude,
-              longitude: cp.longitude,
-              scheduled_date: cp.scheduled_date,
-              scheduled_time: cp.scheduled_time,
-              scheduled_datetime: scheduledDatetime,
-              order_index: currentCheckpoints.indexOf(cp),
-              status: cp.status || "pending",
-              delay_minutes: cp.delay_minutes || 0,
-              is_final_destination: cp.is_final_destination || false,
-              is_deleted: cp.is_deleted || false
-            })
-            .eq("id", cp.id)
-            .eq("session_id", sessionIdRef.current);
-        }
-      }
-
-      const { data: sessionsData } = await supabase
+      const { data, error } = await supabase
         .from("touring_sessions")
         .select("*")
         .order("created_at", { ascending: false });
-      if (sessionsData && isMounted.current) setSessions(sessionsData);
 
-    } catch (err) {
-      console.error("Error saving to database:", err);
+      if (error) throw error;
+      
+      if (isMounted.current) {
+        setSessions(data || []);
+        
+        const savedSession = localStorage.getItem("touring_session");
+        if (savedSession) {
+          try {
+            const parsed = JSON.parse(savedSession);
+            const existing = data?.find(s => s.id === parsed.id);
+            if (existing) {
+              setSelectedSessionId(existing.id);
+              loadSessionData(existing.id);
+              return;
+            }
+          } catch (e) {}
+        }
+        
+        if (data && data.length > 0) {
+          setSelectedSessionId(data[0].id);
+          loadSessionData(data[0].id);
+        } else {
+          createNewSession();
+        }
+      }
+    } catch (error) {
+      console.error("Error loading sessions:", error);
+      setError("Gagal memuat daftar perjalanan");
+    } finally {
+      if (isMounted.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
-  // ─── UPDATE STATUS BERDASARKAN KECEPATAN ───────────────────────────────────
-  const updateStatusBasedOnSpeed = useCallback(async (sessionId, lat, lng, speed) => {
-    if (!sessionId) return;
-    const cps = checkpointsRef.current;
-    let newStatus = "running";
-    let locationName = "Sedang berjalan";
-
-    if (speed < 0.3) {
-      newStatus = "stopped";
-      let nearestCp = null;
-      let nearestDist = Infinity;
-      for (const cp of cps) {
-        if (cp.is_deleted) continue;
-        const dist = getDistanceKm(lat, lng, cp.latitude, cp.longitude);
-        if (dist < nearestDist) { nearestDist = dist; nearestCp = cp; }
-      }
-      locationName = (nearestCp && nearestDist < 0.5)
-        ? `Berhenti di ${nearestCp.city_name}`
-        : `Berhenti (${(speed * 3.6).toFixed(1)} km/jam)`;
-    } else {
-      let nearestCp = null;
-      let nearestDist = Infinity;
-      for (const cp of cps) {
-        if (cp.is_deleted) continue;
-        const dist = getDistanceKm(lat, lng, cp.latitude, cp.longitude);
-        if (dist < nearestDist) { nearestDist = dist; nearestCp = cp; }
-      }
-      locationName = (nearestCp && nearestDist < 10)
-        ? `Menuju ${nearestCp.city_name} (${nearestDist.toFixed(1)} km)`
-        : `Sedang berjalan (${(speed * 3.6).toFixed(1)} km/jam)`;
-    }
-
-    const newStatusObj = { status: newStatus, location_name: locationName, speed, last_update: new Date() };
-    if (isMounted.current) {
-      setCurrentStatus(newStatusObj);
-      currentStatusRef.current = newStatusObj;
-    }
-
-    await supabase.from("touring_sessions").update({
-      current_status: newStatus,
-      current_location_name: locationName,
-      is_running: true,
-      last_location_update: new Date().toISOString()
-    }).eq("id", sessionId);
-
-    await supabase.from("touring_status_logs").insert({
-      session_id: sessionId, status: newStatus, location_name: locationName,
-      latitude: lat, longitude: lng, notes: locationName
-    });
-
-    if (newStatus === "stopped") {
-      addNotification("info", `⏸️ ${locationName}`, 0);
-    }
-  }, [addNotification]);
-
-  // ─── CHECK CHECKPOINT ──────────────────────────────────────────────────────
-  const checkForCheckpoint = useCallback((lat, lng, onFinish) => {
-    const threshold = 0.5;
-    const now = new Date();
-    const cps = checkpointsRef.current;
-    let updated = [...cps];
-    let didUpdate = false;
-    let shouldStop = false;
-
-    cps.forEach((cp, index) => {
-      if (cp.status === "reached" || cp.is_deleted) return;
-      const dist = getDistanceKm(lat, lng, cp.latitude, cp.longitude);
-      if (dist < threshold) {
-        updated[index] = { ...cp, status: "reached", actual_arrival_time: now.toISOString() };
-        didUpdate = true;
-
-        if (cp.scheduled_time && cp.scheduled_date) {
-          const scheduledDateTime = new Date(`${cp.scheduled_date}T${cp.scheduled_time}:00`);
-          const delayMinutes = Math.floor((now - scheduledDateTime) / 60000);
-          updated[index].delay_minutes = delayMinutes;
-
-          if (delayMinutes > 5) {
-            addNotification("late", `Telat ${delayMinutes} menit di ${cp.city_name}`, delayMinutes);
-          } else if (delayMinutes < -5) {
-            addNotification("early", `Lebih awal ${Math.abs(delayMinutes)} menit di ${cp.city_name}`, delayMinutes);
-          } else {
-            addNotification("arrived", `Tiba tepat waktu di ${cp.city_name}`, 0);
-          }
-        }
-
-        if (cp.is_final_destination) {
-          shouldStop = true;
-          addNotification("info", `🎉 Perjalanan selesai! Tiba di tujuan akhir: ${cp.city_name}`, 0);
-        }
-      }
-    });
-
-    if (didUpdate) {
-      checkpointsRef.current = updated;
-      if (isMounted.current) setCheckpoints(updated);
-      // Simpan async tanpa blocking
-      if (sessionIdRef.current) {
-        supabase.from("touring_sessions").update({
-          updated_at: new Date().toISOString()
-        }).eq("id", sessionIdRef.current).then(() => {});
-      }
-    }
-
-    if (shouldStop && onFinish) onFinish();
-  }, [addNotification]);
-
-  // ─── STOP TRACKING ────────────────────────────────────────────────────────
-  const stopTracking = useCallback(async () => {
-    stopTrackingInBackground();
-    if (isMounted.current) {
-      setIsTracking(false);
-      setSessionStatus("completed");
-      sessionStatusRef.current = "completed";
-    }
-
-    if (sessionIdRef.current) {
-      await supabase.from("touring_sessions").update({
-        status: "completed",
-        completed_at: new Date().toISOString(),
-        is_running: false,
-        current_status: "idle"
-      }).eq("id", sessionIdRef.current);
-    }
-
-    await saveToDatabase();
-    addNotification("info", "🏁 Perjalanan telah selesai", 0);
-  }, [stopTrackingInBackground, saveToDatabase, addNotification]);
-
-  // ─── BACKGROUND TRACKING ──────────────────────────────────────────────────
-  const startTrackingInBackground = useCallback((sessionId) => {
-    if (!sessionId) return;
-
-    if (backgroundIntervalRef.current) clearInterval(backgroundIntervalRef.current);
-    if (statusCheckIntervalRef.current) clearInterval(statusCheckIntervalRef.current);
-
-    backgroundIntervalRef.current = setInterval(() => {
-      if (!sessionId || !navigator.geolocation) return;
-
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const { latitude, longitude, speed } = position.coords;
-          const currentSpeed = speed || 0;
-
-          if (isMounted.current) {
-            setCurrentLocation({ lat: latitude, lng: longitude, speed: currentSpeed });
-          }
-
-          await supabase.from("touring_location_tracking").insert({
-            session_id: sessionId, latitude, longitude,
-            speed: currentSpeed, heading: position.coords.heading || 0
-          });
-
-          await updateStatusBasedOnSpeed(sessionId, latitude, longitude, currentSpeed);
-          checkForCheckpoint(latitude, longitude, () => stopTracking());
-        },
-        (err) => console.error("Background geolocation error:", err),
-        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
-      );
-    }, 5000);
-
-    statusCheckIntervalRef.current = setInterval(async () => {
-      if (!sessionId) return;
-      const { data } = await supabase
-        .from("touring_sessions")
-        .select("current_status, current_location_name")
-        .eq("id", sessionId)
-        .single();
-      if (data && isMounted.current) {
-        setCurrentStatus(prev => ({
-          ...prev,
-          status: data.current_status || "idle",
-          location_name: data.current_location_name || "Lokasi tidak diketahui",
-          last_update: new Date()
-        }));
-      }
-    }, 10000);
-  }, [updateStatusBasedOnSpeed, checkForCheckpoint, stopTracking]);
-
-  // ─── AUTO START CHECKER ──────────────────────────────────────────────────
-  const startAutoStartChecker = useCallback((sessionId) => {
-    if (autoStartIntervalRef.current) clearInterval(autoStartIntervalRef.current);
-
-    autoStartIntervalRef.current = setInterval(async () => {
-      if (!sessionId) return;
-      if (lateDepartureRef.current) return;
-      if (sessionStatusRef.current === "active" || sessionStatusRef.current === "completed") return;
-
-      try {
-        const { data: cpData } = await supabase
-          .from("touring_checkpoints")
-          .select("*")
-          .eq("session_id", sessionId)
-          .eq("order_index", 0)
-          .eq("is_deleted", false)
-          .single();
-
-        if (!cpData || !cpData.scheduled_date || !cpData.scheduled_time) return;
-
-        const scheduledDateTime = new Date(`${cpData.scheduled_date}T${cpData.scheduled_time}:00`);
-        const now = new Date();
-        if (now < scheduledDateTime) return;
-
-        const { data: finalCp } = await supabase
-          .from("touring_checkpoints")
-          .select("*")
-          .eq("session_id", sessionId)
-          .eq("is_final_destination", true)
-          .eq("is_deleted", false)
-          .single();
-
-        if (finalCp && finalCp.status === "reached") {
-          await supabase.from("touring_sessions").update({
-            status: "completed", completed_at: new Date().toISOString(), is_running: false
-          }).eq("id", sessionId);
-          if (isMounted.current) {
-            setSessionStatus("completed");
-            sessionStatusRef.current = "completed";
-          }
-          stopTrackingInBackground();
-          return;
-        }
-
-        const { data: sessionData } = await supabase
-          .from("touring_sessions")
-          .update({ status: "active", auto_started: true, is_running: true })
-          .eq("id", sessionId)
-          .select()
-          .single();
-
-        if (sessionData && isMounted.current) {
-          setSessionStatus("active");
-          sessionStatusRef.current = "active";
-          setIsTracking(true);
-          startTrackingInBackground(sessionId);
-          addNotification("info", "🚀 Perjalanan dimulai otomatis sesuai jadwal", 0);
-        }
-      } catch (err) {
-        console.error("Auto-start checker error:", err);
-      }
-    }, 30000);
-  }, [startTrackingInBackground, stopTrackingInBackground, addNotification]);
-
-  // ─── LOAD DATA ─────────────────────────────────────────────────────────────
+  // Load data session tertentu dengan semua data terkait
   const loadSessionData = useCallback(async (sessionId) => {
     try {
-      if (isMounted.current) setIsLoading(true);
-
-      const { data, error: loadErr } = await supabase
+      setIsLoading(true);
+      
+      // Load session
+      const { data, error } = await supabase
         .from("touring_sessions")
         .select("*, touring_checkpoints(*)")
         .eq("id", sessionId)
         .single();
 
-      if (loadErr) throw loadErr;
+      if (error) throw error;
+
       if (!isMounted.current) return;
 
       setSession(data);
       setSessionCode(data.session_code);
       setSessionStatus(data.status || "pending");
-      sessionStatusRef.current = data.status || "pending";
       setLateDeparture(data.late_departure || false);
-      lateDepartureRef.current = data.late_departure || false;
-
-      const newTransport = {
+      setTotalDistance(data.total_distance_km || 0);
+      totalDistanceRef.current = data.total_distance_km || 0;
+      
+      setTransport({
         transport_type: data.transport_type || "motor",
         plate_number: data.plate_number || "",
         driver_name: data.driver_name || "",
         fuel_liters: data.fuel_liters || 5
-      };
-      setTransport(newTransport);
-      transportRef.current = newTransport;
-
+      });
+      
       if (data.touring_checkpoints && data.touring_checkpoints.length > 0) {
-        const sorted = data.touring_checkpoints
-          .filter(cp => !cp.is_deleted)
-          .sort((a, b) => a.order_index - b.order_index);
+        const sorted = data.touring_checkpoints.sort((a, b) => a.order_index - b.order_index);
         setCheckpoints(sorted);
-        checkpointsRef.current = sorted;
       } else {
         setCheckpoints(DEFAULT_CHECKPOINTS);
-        checkpointsRef.current = DEFAULT_CHECKPOINTS;
       }
-
+      
       sessionIdRef.current = data.id;
       setSelectedSessionId(data.id);
       localStorage.setItem("touring_session", JSON.stringify({ id: data.id, code: data.session_code }));
 
+      // Load notifications
       const { data: notifData } = await supabase
         .from("touring_notifications")
         .select("*")
         .eq("session_id", data.id)
         .order("created_at", { ascending: false })
-        .limit(20);
-      if (notifData && isMounted.current) setNotifications(notifData);
+        .limit(50);
 
+      if (notifData) {
+        setNotifications(notifData);
+      }
+
+      // Load stops
+      const { data: stopsData } = await supabase
+        .from("touring_stops")
+        .select("*")
+        .eq("session_id", data.id)
+        .order("stopped_at", { ascending: false });
+
+      if (stopsData) {
+        setStops(stopsData);
+      }
+
+      // Load latest tracking
       const { data: trackData } = await supabase
         .from("touring_location_tracking")
         .select("*")
         .eq("session_id", data.id)
         .order("recorded_at", { ascending: false })
         .limit(1);
-      if (trackData && trackData.length > 0 && isMounted.current) {
-        setCurrentLocation({ lat: trackData[0].latitude, lng: trackData[0].longitude, speed: trackData[0].speed || 0 });
-      }
 
-      if (data.current_status && isMounted.current) {
-        const st = {
-          status: data.current_status,
-          location_name: data.current_location_name || "Lokasi tidak diketahui",
-          speed: 0,
-          last_update: data.last_location_update || new Date()
+      if (trackData && trackData.length > 0) {
+        setCurrentLocation({
+          lat: trackData[0].latitude,
+          lng: trackData[0].longitude
+        });
+        lastLocationRef.current = {
+          lat: trackData[0].latitude,
+          lng: trackData[0].longitude
         };
-        setCurrentStatus(st);
-        currentStatusRef.current = st;
       }
 
+      // Check if already tracking
       if (data.status === "active") {
         setIsTracking(true);
-        startTrackingInBackground(data.id);
+        isTrackingRef.current = true;
+        startBackgroundTracking(data.id);
+        startMovementDetection();
       }
 
+      // Start auto-start checker
       startAutoStartChecker(data.id);
 
-    } catch (err) {
-      console.error("Error loading session data:", err);
-      if (isMounted.current) setError("Gagal memuat data perjalanan");
-    } finally {
-      if (isMounted.current) setIsLoading(false);
-    }
-  }, [startTrackingInBackground, startAutoStartChecker]);
+      // Update status message
+      updateStatusMessage(data.status);
 
+    } catch (error) {
+      console.error("Error loading session data:", error);
+      setError("Gagal memuat data perjalanan");
+    } finally {
+      if (isMounted.current) {
+        setIsLoading(false);
+      }
+    }
+  }, []);
+
+  // Buat session baru
   const createNewSession = useCallback(async () => {
     try {
-      if (isMounted.current) { setIsLoading(true); setIsCreatingNew(true); }
-
+      setIsLoading(true);
+      setIsCreatingNew(true);
+      
       const code = generateSessionCode();
       const today = new Date().toISOString().split('T')[0];
       const { data: newSession, error: createError } = await supabase
@@ -633,14 +474,14 @@ export default function TouringPage() {
           transport_type: "motor",
           status: "pending",
           late_departure: false,
-          is_running: false,
-          current_status: "idle"
+          total_distance_km: 0
         })
         .select()
         .single();
 
       if (createError) throw createError;
 
+      // Insert checkpoints
       const checkpointsData = DEFAULT_CHECKPOINTS.map((cp, i) => ({
         session_id: newSession.id,
         order_index: i,
@@ -651,234 +492,894 @@ export default function TouringPage() {
         scheduled_time: cp.scheduled_time,
         scheduled_datetime: new Date(`${cp.scheduled_date || today}T${cp.scheduled_time}:00`).toISOString(),
         status: "pending",
-        is_final_destination: cp.is_final_destination || false,
-        is_deleted: false
+        is_final_destination: cp.is_final_destination || false
       }));
 
-      const { error: cpError } = await supabase.from("touring_checkpoints").insert(checkpointsData);
+      const { error: cpError } = await supabase
+        .from("touring_checkpoints")
+        .insert(checkpointsData);
+
       if (cpError) throw cpError;
 
+      // Refresh session list
       const { data: sessionsData } = await supabase
-        .from("touring_sessions").select("*").order("created_at", { ascending: false });
-      if (sessionsData && isMounted.current) setSessions(sessionsData);
-
-      sessionIdRef.current = newSession.id;
-      localStorage.setItem("touring_session", JSON.stringify({ id: newSession.id, code: newSession.session_code }));
-      await loadSessionData(newSession.id);
-
-    } catch (err) {
-      console.error("Error creating session:", err);
-      if (isMounted.current) setError("Gagal membuat perjalanan baru");
-    } finally {
-      if (isMounted.current) { setIsLoading(false); setIsCreatingNew(false); }
-    }
-  }, [loadSessionData]);
-
-  const loadAllSessions = useCallback(async () => {
-    try {
-      const { data, error: loadErr } = await supabase
         .from("touring_sessions")
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (loadErr) throw loadErr;
-      if (!isMounted.current) return;
-
-      setSessions(data || []);
-
-      const savedSession = localStorage.getItem("touring_session");
-      if (savedSession) {
-        try {
-          const parsed = JSON.parse(savedSession);
-          const existing = data?.find(s => s.id === parsed.id);
-          if (existing) {
-            setSelectedSessionId(existing.id);
-            await loadSessionData(existing.id);
-            return;
-          }
-        } catch (e) {}
+      if (sessionsData) {
+        setSessions(sessionsData);
       }
 
-      if (data && data.length > 0) {
-        setSelectedSessionId(data[0].id);
-        await loadSessionData(data[0].id);
-      } else {
-        await createNewSession();
-      }
-    } catch (err) {
-      console.error("Error loading sessions:", err);
-      if (isMounted.current) setError("Gagal memuat daftar perjalanan");
+      setSelectedSessionId(newSession.id);
+      sessionIdRef.current = newSession.id;
+      localStorage.setItem("touring_session", JSON.stringify({ id: newSession.id, code: newSession.session_code }));
+      
+      await loadSessionData(newSession.id);
+
+    } catch (error) {
+      console.error("Error creating session:", error);
+      setError("Gagal membuat perjalanan baru");
     } finally {
-      if (isMounted.current) setIsLoading(false);
+      if (isMounted.current) {
+        setIsLoading(false);
+        setIsCreatingNew(false);
+      }
     }
-  }, [loadSessionData, createNewSession]);
+  }, [loadSessionData]);
 
+  // Hapus session
   const deleteSession = useCallback(async (sessionId) => {
     if (!window.confirm("Apakah Anda yakin ingin menghapus perjalanan ini?")) return;
+    
     try {
-      const { error: delErr } = await supabase.from("touring_sessions").delete().eq("id", sessionId);
-      if (delErr) throw delErr;
-      setSessions(prev => {
-        const remaining = prev.filter(s => s.id !== sessionId);
-        if (selectedSessionId === sessionId) {
-          if (remaining.length > 0) {
-            setSelectedSessionId(remaining[0].id);
-            loadSessionData(remaining[0].id);
-          } else {
-            createNewSession();
-          }
+      const { error } = await supabase
+        .from("touring_sessions")
+        .delete()
+        .eq("id", sessionId);
+
+      if (error) throw error;
+
+      setSessions(prev => prev.filter(s => s.id !== sessionId));
+      
+      if (selectedSessionId === sessionId) {
+        const remaining = sessions.filter(s => s.id !== sessionId);
+        if (remaining.length > 0) {
+          setSelectedSessionId(remaining[0].id);
+          loadSessionData(remaining[0].id);
+        } else {
+          createNewSession();
         }
-        return remaining;
-      });
-    } catch (err) {
-      console.error("Error deleting session:", err);
+      }
+    } catch (error) {
+      console.error("Error deleting session:", error);
       alert("Gagal menghapus perjalanan");
     }
-  }, [selectedSessionId, loadSessionData, createNewSession]);
+  }, [selectedSessionId, sessions, loadSessionData, createNewSession]);
 
-  // ─── TRACKING CONTROLS ─────────────────────────────────────────────────────
+  // Simpan perubahan ke database
+  const saveToDatabase = useCallback(async () => {
+    if (!sessionIdRef.current) return;
+
+    try {
+      await supabase
+        .from("touring_sessions")
+        .update({
+          transport_type: transport.transport_type,
+          plate_number: transport.plate_number,
+          driver_name: transport.driver_name,
+          fuel_liters: transport.fuel_liters,
+          status: sessionStatus,
+          late_departure: lateDeparture,
+          total_distance_km: totalDistanceRef.current,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", sessionIdRef.current);
+
+      for (const cp of checkpoints) {
+        if (cp.id) {
+          const scheduledDatetime = cp.scheduled_date && cp.scheduled_time 
+            ? new Date(`${cp.scheduled_date}T${cp.scheduled_time}:00`).toISOString()
+            : null;
+          
+          await supabase
+            .from("touring_checkpoints")
+            .update({
+              city_name: cp.city_name,
+              latitude: cp.latitude,
+              longitude: cp.longitude,
+              scheduled_date: cp.scheduled_date,
+              scheduled_time: cp.scheduled_time,
+              scheduled_datetime: scheduledDatetime,
+              order_index: checkpoints.indexOf(cp),
+              status: cp.status || "pending",
+              delay_minutes: cp.delay_minutes || 0,
+              is_final_destination: cp.is_final_destination || false
+            })
+            .eq("id", cp.id)
+            .eq("session_id", sessionIdRef.current);
+        }
+      }
+
+      const { data: sessionsData } = await supabase
+        .from("touring_sessions")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (sessionsData) {
+        setSessions(sessionsData);
+      }
+
+    } catch (error) {
+      console.error("Error saving to database:", error);
+    }
+  }, [checkpoints, transport, sessionStatus, lateDeparture]);
+
+  // ─── UPDATE STATUS MESSAGE ──────────────────────────────────────────────
+
+  const updateStatusMessage = useCallback((status, location = null, isMoving = null) => {
+    let text = "";
+    let loc = "";
+    let moving = false;
+
+    if (status === "active") {
+      if (isMoving !== null) {
+        moving = isMoving;
+        text = isMoving ? "🟢 Sedang Berjalan" : "🔴 Sedang Berhenti";
+      } else {
+        // Cek dari data terakhir
+        const lastTrack = locationHistoryRef.current[locationHistoryRef.current.length - 1];
+        if (lastTrack) {
+          const now = Date.now();
+          const timeDiff = (now - lastTrack.timestamp) / 1000;
+          moving = timeDiff < 10;
+          text = moving ? "🟢 Sedang Berjalan" : "🔴 Sedang Berhenti";
+        } else {
+          text = "🟢 Sedang Berjalan";
+          moving = true;
+        }
+      }
+    } else if (status === "completed") {
+      text = "✅ Perjalanan Selesai";
+      moving = false;
+    } else {
+      text = "⏳ Belum Mulai";
+      moving = false;
+    }
+
+    if (location) {
+      loc = location;
+    } else if (currentLocation) {
+      // Cari nama kota terdekat
+      let nearest = "";
+      let minDist = Infinity;
+      for (const cp of checkpoints) {
+        const dist = getDistanceKm(currentLocation.lat, currentLocation.lng, cp.latitude, cp.longitude);
+        if (dist < minDist) {
+          minDist = dist;
+          nearest = cp.city_name;
+        }
+      }
+      loc = minDist < 10 ? nearest : `${currentLocation.lat.toFixed(4)}, ${currentLocation.lng.toFixed(4)}`;
+    }
+
+    setStatusMessage({ text, location: loc, isMoving: moving });
+    setIsStopped(!moving && status === "active");
+  }, [currentLocation, checkpoints]);
+
+  // ─── MOVEMENT DETECTION ──────────────────────────────────────────────────
+
+  const startMovementDetection = useCallback(() => {
+    if (movementCheckIntervalRef.current) {
+      clearInterval(movementCheckIntervalRef.current);
+    }
+
+    movementCheckIntervalRef.current = setInterval(() => {
+      if (!isTrackingRef.current || !sessionIdRef.current) return;
+
+      const lastTrack = locationHistoryRef.current[locationHistoryRef.current.length - 1];
+      if (!lastTrack) return;
+
+      const now = Date.now();
+      const timeDiff = (now - lastTrack.timestamp) / 1000;
+      const isMoving = timeDiff < 15; // Jika tidak ada update dalam 15 detik, dianggap berhenti
+
+      // Cek apakah ada perubahan status
+      const currentMoving = statusMessage.isMoving;
+      if (isMoving !== currentMoving && sessionStatus === "active") {
+        updateStatusMessage("active", null, isMoving);
+        
+        // Jika berhenti, catat stop
+        if (!isMoving) {
+          recordStop(lastTrack.lat, lastTrack.lng);
+        } else {
+          // Jika mulai bergerak lagi, resume dari stop
+          resumeFromStop();
+        }
+      }
+
+      // Update status message dengan lokasi terdekat
+      updateStatusMessage("active", null, isMoving);
+
+    }, 5000); // Cek setiap 5 detik
+  }, [statusMessage, sessionStatus, updateStatusMessage]);
+
+  // ─── RECORD STOP ─────────────────────────────────────────────────────────
+
+  const recordStop = useCallback(async (lat, lng) => {
+    if (currentStopId) return; // Sudah dalam status berhenti
+
+    try {
+      // Cek alasan berhenti
+      const stopInfo = getStopReason(lat, lng);
+      const reason = stopInfo ? stopInfo.reason : "Istirahat";
+      const locationName = stopInfo ? stopInfo.location : "Lokasi saat ini";
+
+      const { data: stopData, error } = await supabase
+        .from("touring_stops")
+        .insert({
+          session_id: sessionIdRef.current,
+          latitude: lat,
+          longitude: lng,
+          stop_reason: reason,
+          location_name: locationName,
+          stopped_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (!error && stopData) {
+        setCurrentStopId(stopData.id);
+        setStopStartTime(new Date());
+        setStops(prev => [stopData, ...prev]);
+        
+        // Tambahkan notifikasi
+        addNotification("info", `🛑 Berhenti: ${reason} di ${locationName}`, 0);
+      }
+    } catch (error) {
+      console.error("Error recording stop:", error);
+    }
+  }, [currentStopId]);
+
+  // ─── RESUME FROM STOP ────────────────────────────────────────────────────
+
+  const resumeFromStop = useCallback(async () => {
+    if (!currentStopId) return;
+
+    try {
+      const now = new Date();
+      const duration = stopStartTime ? Math.floor((now - stopStartTime) / 60000) : 0;
+
+      await supabase
+        .from("touring_stops")
+        .update({
+          resumed_at: now.toISOString(),
+          duration_minutes: duration
+        })
+        .eq("id", currentStopId);
+
+      setCurrentStopId(null);
+      setStopStartTime(null);
+      
+      // Update stops list
+      setStops(prev => prev.map(s => 
+        s.id === currentStopId 
+          ? { ...s, resumed_at: now.toISOString(), duration_minutes: duration }
+          : s
+      ));
+
+      addNotification("info", `🚀 Melanjutkan perjalanan setelah ${duration} menit`, 0);
+    } catch (error) {
+      console.error("Error resuming from stop:", error);
+    }
+  }, [currentStopId, stopStartTime]);
+
+  // ─── BACKGROUND TRACKING ──────────────────────────────────────────────────
+
+  const startBackgroundTracking = useCallback((sessionId) => {
+    if (backgroundIntervalRef.current) {
+      clearInterval(backgroundIntervalRef.current);
+    }
+
+    // Update lokasi setiap 5 detik di background
+    backgroundIntervalRef.current = setInterval(() => {
+      if (!sessionId || !isTrackingRef.current) return;
+      
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const { latitude, longitude, speed, heading } = position.coords;
+          const now = Date.now();
+          
+          setCurrentLocation({ lat: latitude, lng: longitude });
+          
+          // Hitung jarak tempuh
+          if (lastLocationRef.current) {
+            const dist = getDistanceKm(
+              lastLocationRef.current.lat,
+              lastLocationRef.current.lng,
+              latitude,
+              longitude
+            );
+            if (dist > 0.01) { // Minimal 10 meter untuk dihitung
+              totalDistanceRef.current += dist;
+              setTotalDistance(totalDistanceRef.current);
+            }
+          }
+          lastLocationRef.current = { lat: latitude, lng: longitude };
+
+          // Simpan ke history
+          locationHistoryRef.current.push({
+            lat: latitude,
+            lng: longitude,
+            timestamp: now
+          });
+          // Keep hanya 100 data terakhir
+          if (locationHistoryRef.current.length > 100) {
+            locationHistoryRef.current.shift();
+          }
+
+          // Simpan tracking ke database
+          await supabase
+            .from("touring_location_tracking")
+            .insert({
+              session_id: sessionId,
+              latitude,
+              longitude,
+              speed: speed || 0,
+              heading: heading || 0
+            });
+
+          // Update total distance di database
+          await supabase
+            .from("touring_sessions")
+            .update({ total_distance_km: totalDistanceRef.current })
+            .eq("id", sessionId);
+
+          // Check checkpoint
+          checkForCheckpoint(latitude, longitude);
+          
+          // Update status message
+          updateStatusMessage("active", null, true);
+
+          // Update status di UI
+          if (isMounted.current) {
+            setTotalDistance(totalDistanceRef.current);
+          }
+        },
+        (error) => {
+          console.error("Background geolocation error:", error);
+        },
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+      );
+    }, 5000); // Update setiap 5 detik
+  }, [updateStatusMessage]);
+
+  const stopBackgroundTracking = useCallback(() => {
+    if (backgroundIntervalRef.current) {
+      clearInterval(backgroundIntervalRef.current);
+      backgroundIntervalRef.current = null;
+    }
+    if (movementCheckIntervalRef.current) {
+      clearInterval(movementCheckIntervalRef.current);
+      movementCheckIntervalRef.current = null;
+    }
+    isTrackingRef.current = false;
+  }, []);
+
+  // ─── AUTO START CHECKER ──────────────────────────────────────────────────
+
+  const startAutoStartChecker = useCallback((sessionId) => {
+    if (autoStartIntervalRef.current) {
+      clearInterval(autoStartIntervalRef.current);
+    }
+
+    autoStartIntervalRef.current = setInterval(async () => {
+      if (!sessionId || lateDeparture || sessionStatus === "active" || sessionStatus === "completed") return;
+
+      try {
+        const { data: cpData } = await supabase
+          .from("touring_checkpoints")
+          .select("*")
+          .eq("session_id", sessionId)
+          .eq("order_index", 0)
+          .single();
+
+        if (!cpData || !cpData.scheduled_date || !cpData.scheduled_time) return;
+
+        const scheduledDateTime = new Date(`${cpData.scheduled_date}T${cpData.scheduled_time}:00`);
+        const now = new Date();
+        
+        // Auto-start jika waktu sekarang >= jadwal berangkat
+        if (now >= scheduledDateTime) {
+          // Cek apakah sudah mencapai final destination
+          const { data: finalCp } = await supabase
+            .from("touring_checkpoints")
+            .select("*")
+            .eq("session_id", sessionId)
+            .eq("is_final_destination", true)
+            .single();
+
+          if (finalCp && finalCp.status === "reached") {
+            // Sudah sampai tujuan akhir, stop
+            await supabase
+              .from("touring_sessions")
+              .update({ 
+                status: "completed",
+                completed_at: new Date().toISOString()
+              })
+              .eq("id", sessionId);
+            setSessionStatus("completed");
+            stopTracking();
+            return;
+          }
+
+          // Auto start
+          const { data: sessionData } = await supabase
+            .from("touring_sessions")
+            .update({ 
+              status: "active",
+              auto_started: true
+            })
+            .eq("id", sessionId)
+            .select()
+            .single();
+
+          if (sessionData) {
+            setSessionStatus("active");
+            setIsTracking(true);
+            isTrackingRef.current = true;
+            startBackgroundTracking(sessionId);
+            startMovementDetection();
+            addNotification("info", "🚀 Perjalanan dimulai otomatis sesuai jadwal", 0);
+            updateStatusMessage("active");
+          }
+        }
+      } catch (error) {
+        console.error("Auto-start checker error:", error);
+      }
+    }, 30000); // Cek setiap 30 detik
+  }, [lateDeparture, sessionStatus, startBackgroundTracking, updateStatusMessage]);
+
+  // ─── TRACKING FUNCTIONS ──────────────────────────────────────────────────
+
   const startTracking = useCallback(() => {
     if (!navigator.geolocation) {
-      alert("Browser Anda tidak mendukung Geolocation");
+      alert("Browser Anda tidak mendukung Geolocation. Pastikan GPS aktif.");
       return;
     }
+
+    // Minta izin lokasi
+    navigator.geolocation.getCurrentPosition(
+      () => {},
+      () => {
+        alert("Akses lokasi ditolak. Mohon izinkan akses lokasi di pengaturan browser.");
+      },
+      { enableHighAccuracy: true }
+    );
+
     setIsTracking(true);
+    isTrackingRef.current = true;
     setSessionStatus("active");
-    sessionStatusRef.current = "active";
     setLateDeparture(false);
-    lateDepartureRef.current = false;
+    totalDistanceRef.current = 0;
+    setTotalDistance(0);
+    locationHistoryRef.current = [];
 
-    if (sessionIdRef.current) {
-      supabase.from("touring_sessions").update({
-        status: "active", late_departure: false, auto_started: false,
-        is_running: true, current_status: "running"
-      }).eq("id", sessionIdRef.current).then(() => saveToDatabase());
+    supabase
+      .from("touring_sessions")
+      .update({ 
+        status: "active",
+        late_departure: false,
+        auto_started: false,
+        total_distance_km: 0
+      })
+      .eq("id", sessionIdRef.current)
+      .then(() => saveToDatabase());
+
+    startBackgroundTracking(sessionIdRef.current);
+    startMovementDetection();
+    updateStatusMessage("active");
+
+    // Watch position untuk real-time update yang lebih akurat
+    if (watchIdRef.current) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
     }
 
-    startTrackingInBackground(sessionIdRef.current);
-    addNotification("info", "🚀 Perjalanan dimulai", 0);
-  }, [saveToDatabase, startTrackingInBackground, addNotification]);
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      async (position) => {
+        const { latitude, longitude, speed, heading } = position.coords;
+        const now = Date.now();
+        
+        setCurrentLocation({ lat: latitude, lng: longitude });
+        
+        // Hitung jarak
+        if (lastLocationRef.current) {
+          const dist = getDistanceKm(
+            lastLocationRef.current.lat,
+            lastLocationRef.current.lng,
+            latitude,
+            longitude
+          );
+          if (dist > 0.01) {
+            totalDistanceRef.current += dist;
+            setTotalDistance(totalDistanceRef.current);
+          }
+        }
+        lastLocationRef.current = { lat: latitude, lng: longitude };
 
-  // ─── LATE DEPARTURE ────────────────────────────────────────────────────────
-  const handleLateDeparture = useCallback(() => {
-    setLateDeparture(true);
-    lateDepartureRef.current = true;
-    if (sessionIdRef.current) {
-      supabase.from("touring_sessions")
-        .update({ late_departure: true })
-        .eq("id", sessionIdRef.current)
-        .then(() => addNotification("info", "⚠️ Berangkat telat, auto-start dinonaktifkan", 0));
+        // Simpan history
+        locationHistoryRef.current.push({
+          lat: latitude,
+          lng: longitude,
+          timestamp: now
+        });
+        if (locationHistoryRef.current.length > 100) {
+          locationHistoryRef.current.shift();
+        }
+
+        await supabase
+          .from("touring_location_tracking")
+          .insert({
+            session_id: sessionIdRef.current,
+            latitude,
+            longitude,
+            speed: speed || 0,
+            heading: heading || 0
+          });
+
+        await supabase
+          .from("touring_sessions")
+          .update({ total_distance_km: totalDistanceRef.current })
+          .eq("id", sessionIdRef.current);
+
+        checkForCheckpoint(latitude, longitude);
+        updateStatusMessage("active", null, true);
+        setTotalDistance(totalDistanceRef.current);
+      },
+      (error) => {
+        console.error("Watch position error:", error);
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+    );
+
+    addNotification("info", "🚀 Perjalanan dimulai!", 0);
+  }, [saveToDatabase, startBackgroundTracking, updateStatusMessage]);
+
+  const stopTracking = useCallback(async () => {
+    if (watchIdRef.current) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
     }
-  }, [addNotification]);
+    
+    // Resume stop jika sedang berhenti
+    if (currentStopId) {
+      await resumeFromStop();
+    }
+    
+    stopBackgroundTracking();
+    setIsTracking(false);
+    isTrackingRef.current = false;
+    setSessionStatus("completed");
 
-  // ─── MANUAL DELAY ──────────────────────────────────────────────────────────
-  const handleManualDelay = useCallback((cp, type, minutes) => {
-    setCheckpoints(prev => {
-      const updated = prev.map(c => {
-        if (c.id === cp.id) return { ...c, delay_minutes: type === "late" ? minutes : -minutes };
-        return c;
-      });
-      checkpointsRef.current = updated;
-      return updated;
+    await supabase
+      .from("touring_sessions")
+      .update({ 
+        status: "completed",
+        completed_at: new Date().toISOString(),
+        total_distance_km: totalDistanceRef.current
+      })
+      .eq("id", sessionIdRef.current);
+
+    saveToDatabase();
+    updateStatusMessage("completed");
+    addNotification("info", `✅ Perjalanan selesai! Total jarak: ${totalDistanceRef.current.toFixed(1)} km`, 0);
+    
+    // Generate report otomatis
+    generateReport();
+  }, [saveToDatabase, stopBackgroundTracking, updateStatusMessage, currentStopId, resumeFromStop]);
+
+  // ─── CHECK CHECKPOINT ──────────────────────────────────────────────────
+
+  const checkForCheckpoint = useCallback((lat, lng) => {
+    const threshold = 0.5;
+    const now = new Date();
+
+    checkpoints.forEach((cp, index) => {
+      if (cp.status === "reached") return;
+      
+      const dist = getDistanceKm(lat, lng, cp.latitude, cp.longitude);
+      if (dist < threshold) {
+        const updated = [...checkpoints];
+        updated[index] = { 
+          ...cp, 
+          status: "reached", 
+          actual_arrival_time: now.toISOString() 
+        };
+        setCheckpoints(updated);
+
+        if (cp.scheduled_time && cp.scheduled_date) {
+          const scheduledDateTime = new Date(`${cp.scheduled_date}T${cp.scheduled_time}:00`);
+          const delayMinutes = Math.floor((now - scheduledDateTime) / 60000);
+          updated[index].delay_minutes = delayMinutes;
+          setCheckpoints(updated);
+
+          if (delayMinutes > 5) {
+            addNotification("late", `⏰ Telat ${delayMinutes} menit di ${cp.city_name}`, delayMinutes);
+          } else if (delayMinutes < -5) {
+            addNotification("early", `⏰ Lebih awal ${Math.abs(delayMinutes)} menit di ${cp.city_name}`, delayMinutes);
+          } else {
+            addNotification("arrived", `✅ Tiba tepat waktu di ${cp.city_name}`, 0);
+          }
+        }
+
+        saveToDatabase();
+
+        // Check if final destination reached
+        if (cp.is_final_destination) {
+          stopTracking();
+          addNotification("info", `🎉 Perjalanan selesai! Tiba di tujuan akhir: ${cp.city_name}`, 0);
+        }
+      }
     });
+  }, [checkpoints, saveToDatabase, stopTracking]);
+
+  // ─── NOTIFICATIONS ─────────────────────────────────────────────────────
+
+  const addNotification = useCallback((type, message, minutes) => {
+    const id = notificationIdRef.current++;
+    setNotifications(prev => [{ 
+      id, 
+      type, 
+      message, 
+      minutes, 
+      created_at: new Date().toISOString() 
+    }, ...prev].slice(0, 50));
+
+    supabase
+      .from("touring_notifications")
+      .insert({
+        session_id: sessionIdRef.current,
+        checkpoint_id: selectedCheckpoint?.id || null,
+        type,
+        minutes,
+        message
+      })
+      .then(() => {});
+  }, [selectedCheckpoint]);
+
+  const removeNotification = useCallback((id) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  }, []);
+
+  // ─── MANUAL DELAY ──────────────────────────────────────────────────────
+
+  const handleManualDelay = useCallback((cp, type, minutes) => {
+    const updated = checkpoints.map(c => {
+      if (c.id === cp.id) {
+        return { ...c, delay_minutes: type === "late" ? minutes : -minutes };
+      }
+      return c;
+    });
+    setCheckpoints(updated);
     setShowDelayModal(false);
     setSelectedCheckpoint(null);
-    selectedCheckpointRef.current = null;
-    const message = type === "late"
-      ? `Telat ${minutes} menit di ${cp.city_name} (manual)`
-      : `Lebih awal ${minutes} menit di ${cp.city_name} (manual)`;
+    
+    const message = type === "late" 
+      ? `⏰ Telat ${minutes} menit di ${cp.city_name} (manual)` 
+      : `⏰ Lebih awal ${minutes} menit di ${cp.city_name} (manual)`;
     addNotification(type, message, minutes);
     saveToDatabase();
-  }, [addNotification, saveToDatabase]);
+  }, [checkpoints, addNotification, saveToDatabase]);
 
-  // ─── EDIT CHECKPOINT ───────────────────────────────────────────────────────
+  // ─── LATE DEPARTURE ──────────────────────────────────────────────────
+
+  const handleLateDeparture = useCallback(() => {
+    setLateDeparture(true);
+    supabase
+      .from("touring_sessions")
+      .update({ late_departure: true })
+      .eq("id", sessionIdRef.current)
+      .then(() => {
+        addNotification("info", "⚠️ Berangkat telat, auto-start dinonaktifkan", 0);
+      });
+  }, [addNotification]);
+
+  // ─── EDIT CHECKPOINT ──────────────────────────────────────────────────
+
   const startEditCheckpoint = useCallback((cp, index) => {
     setEditingCheckpoint(index);
     setEditForm({ ...cp });
   }, []);
 
   const saveEditCheckpoint = useCallback(() => {
-    setCheckpoints(prev => {
-      const updated = [...prev];
-      updated[editingCheckpoint] = { ...editForm };
-      checkpointsRef.current = updated;
-      return updated;
-    });
+    const updated = [...checkpoints];
+    updated[editingCheckpoint] = { ...editForm };
+    setCheckpoints(updated);
     setEditingCheckpoint(null);
     setEditForm({});
     saveToDatabase();
-  }, [editingCheckpoint, editForm, saveToDatabase]);
+  }, [editingCheckpoint, editForm, checkpoints, saveToDatabase]);
 
-  // ─── CHECKPOINT CRUD ───────────────────────────────────────────────────────
+  // ─── CHECKPOINT CRUD ──────────────────────────────────────────────────
+
   const addCheckpoint = useCallback(() => {
     const today = new Date().toISOString().split('T')[0];
-    const newCp = {
-      city_name: "Kota Baru", latitude: -7.5, longitude: 110.0,
-      scheduled_date: today, scheduled_time: "12:00",
-      status: "pending", is_final_destination: false, is_deleted: false
+    const newCp = { 
+      city_name: "Kota Baru", 
+      latitude: -7.5, 
+      longitude: 110.0, 
+      scheduled_date: today,
+      scheduled_time: "12:00", 
+      status: "pending",
+      is_final_destination: false
     };
-    setCheckpoints(prev => {
-      const updated = [...prev, newCp];
-      checkpointsRef.current = updated;
-      return updated;
-    });
+    setCheckpoints([...checkpoints, newCp]);
     saveToDatabase();
-  }, [saveToDatabase]);
+  }, [checkpoints, saveToDatabase]);
 
   const removeCheckpoint = useCallback((index) => {
-    setCheckpoints(prev => {
-      const updated = prev.map((cp, i) => i === index ? { ...cp, is_deleted: true } : cp)
-        .filter(cp => !cp.is_deleted);
-      checkpointsRef.current = updated;
-      return updated;
-    });
+    if (checkpoints[index].status === "reached") {
+      if (!window.confirm("Kota ini sudah dicapai. Yakin ingin menghapus?")) return;
+    }
+    setCheckpoints(checkpoints.filter((_, i) => i !== index));
     saveToDatabase();
-  }, [saveToDatabase]);
+  }, [checkpoints, saveToDatabase]);
 
   const moveCheckpoint = useCallback((index, direction) => {
-    setCheckpoints(prev => {
-      const arr = [...prev];
-      const swap = index + direction;
-      if (swap < 0 || swap >= arr.length) return prev;
-      [arr[index], arr[swap]] = [arr[swap], arr[index]];
-      checkpointsRef.current = arr;
-      return arr;
-    });
+    const arr = [...checkpoints];
+    const swap = index + direction;
+    if (swap < 0 || swap >= arr.length) return;
+    [arr[index], arr[swap]] = [arr[swap], arr[index]];
+    setCheckpoints(arr);
     saveToDatabase();
-  }, [saveToDatabase]);
+  }, [checkpoints, saveToDatabase]);
 
-  // ─── SHARE ─────────────────────────────────────────────────────────────────
+  // ─── SHARE ────────────────────────────────────────────────────────────
+
   const shareLink = useCallback(() => {
-    return `${window.location.origin}${window.location.pathname}?view=${sessionCode}`;
+    const url = `${window.location.origin}${window.location.pathname}?view=${sessionCode}`;
+    return url;
   }, [sessionCode]);
 
   const copyLink = useCallback(async () => {
-    await navigator.clipboard.writeText(shareLink());
+    const url = shareLink();
+    await navigator.clipboard.writeText(url);
     alert("Link pemantau berhasil disalin!");
   }, [shareLink]);
 
-  // ─── INIT ──────────────────────────────────────────────────────────────────
+  // ─── GENERATE REPORT ──────────────────────────────────────────────────
+
+  const generateReport = useCallback(async () => {
+    if (!sessionIdRef.current) return;
+    
+    setIsGeneratingReport(true);
+    
+    try {
+      // Kumpulkan semua data
+      const { data: sessionData } = await supabase
+        .from("touring_sessions")
+        .select("*")
+        .eq("id", sessionIdRef.current)
+        .single();
+
+      const { data: cpData } = await supabase
+        .from("touring_checkpoints")
+        .select("*")
+        .eq("session_id", sessionIdRef.current)
+        .order("order_index");
+
+      const { data: notifData } = await supabase
+        .from("touring_notifications")
+        .select("*")
+        .eq("session_id", sessionIdRef.current)
+        .order("created_at");
+
+      const { data: stopsData } = await supabase
+        .from("touring_stops")
+        .select("*")
+        .eq("session_id", sessionIdRef.current)
+        .order("stopped_at");
+
+      const { data: trackData } = await supabase
+        .from("touring_location_tracking")
+        .select("*")
+        .eq("session_id", sessionIdRef.current)
+        .order("recorded_at");
+
+      // Hitung statistik
+      const totalCheckpoints = cpData?.length || 0;
+      const reachedCheckpoints = cpData?.filter(c => c.status === "reached").length || 0;
+      const totalDelays = notifData?.filter(n => n.type === "late").length || 0;
+      const totalEarly = notifData?.filter(n => n.type === "early").length || 0;
+      const totalOnTime = notifData?.filter(n => n.type === "arrived").length || 0;
+      const totalStops = stopsData?.length || 0;
+      const totalDistance = sessionData?.total_distance_km || 0;
+
+      // Hitung total durasi perjalanan
+      let totalDuration = 0;
+      if (sessionData?.created_at && sessionData?.completed_at) {
+        totalDuration = Math.floor((new Date(sessionData.completed_at) - new Date(sessionData.created_at)) / 60000);
+      }
+
+      const report = {
+        session: sessionData,
+        checkpoints: cpData,
+        notifications: notifData,
+        stops: stopsData,
+        tracking: trackData,
+        summary: {
+          totalCheckpoints,
+          reachedCheckpoints,
+          totalDelays,
+          totalEarly,
+          totalOnTime,
+          totalStops,
+          totalDistance: totalDistance.toFixed(2),
+          totalDuration,
+          transportType: sessionData?.transport_type,
+          driverName: sessionData?.driver_name,
+          plateNumber: sessionData?.plate_number,
+          fuelLiters: sessionData?.fuel_liters,
+          status: sessionData?.status,
+          startedAt: sessionData?.created_at,
+          completedAt: sessionData?.completed_at
+        }
+      };
+
+      // Simpan report ke database
+      await supabase
+        .from("touring_reports")
+        .insert({
+          session_id: sessionIdRef.current,
+          report_data: report,
+          generated_at: new Date().toISOString()
+        });
+
+      await supabase
+        .from("touring_sessions")
+        .update({ report_generated: true })
+        .eq("id", sessionIdRef.current);
+
+      setReportData(report);
+      setShowReportModal(true);
+      
+    } catch (error) {
+      console.error("Error generating report:", error);
+      alert("Gagal membuat laporan perjalanan");
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  }, []);
+
+  // ─── INIT ──────────────────────────────────────────────────────────────
+
   useEffect(() => {
     isMounted.current = true;
+    loadAllSessions();
 
     const params = new URLSearchParams(window.location.search);
     const viewCode = params.get("view");
     if (viewCode) {
       window.location.href = `/touring-view?code=${viewCode}`;
-      return;
     }
-
-    loadAllSessions();
 
     return () => {
       isMounted.current = false;
-      stopTrackingInBackground();
-      if (autoStartIntervalRef.current) clearInterval(autoStartIntervalRef.current);
+      if (watchIdRef.current) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+      stopBackgroundTracking();
+      if (autoStartIntervalRef.current) {
+        clearInterval(autoStartIntervalRef.current);
+      }
+      if (movementCheckIntervalRef.current) {
+        clearInterval(movementCheckIntervalRef.current);
+      }
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  // Intentionally empty deps: hanya jalankan sekali saat mount
+  }, [loadAllSessions, stopBackgroundTracking]);
 
-  // ─── RENDER ────────────────────────────────────────────────────────────────
+  // ─── RENDER ────────────────────────────────────────────────────────────
+
   if (isLoading && sessions.length === 0) {
     return (
       <div style={styles.loadingContainer}>
@@ -894,14 +1395,20 @@ export default function TouringPage() {
         <FiAlertCircle size={48} color="#EF4444" />
         <h3 style={{ color: "#F1F5F9", marginTop: "16px" }}>Terjadi Kesalahan</h3>
         <p style={{ color: "#94A3B8", maxWidth: "400px", textAlign: "center" }}>{error}</p>
-        <button onClick={() => { setError(null); loadAllSessions(); }} style={{ ...btnPrimary, marginTop: "16px" }}>
+        <button 
+          onClick={() => {
+            loadAttempted.current = false;
+            loadAllSessions();
+          }} 
+          style={{ ...btnPrimary, marginTop: "16px" }}
+        >
           <FiRefreshCw size={14} /> Coba Lagi
         </button>
       </div>
     );
   }
 
-  const isSessionComplete = sessionStatus === "completed" ||
+  const isSessionComplete = sessionStatus === "completed" || 
     checkpoints.some(cp => cp.is_final_destination && cp.status === "reached");
 
   return (
@@ -914,8 +1421,8 @@ export default function TouringPage() {
             Touring Tracker
           </h1>
           {!isMobile && (
-            <button
-              onClick={() => setShowSessionList(!showSessionList)}
+            <button 
+              onClick={() => setShowSessionList(!showSessionList)} 
               style={{ ...iconBtn, padding: "4px 10px", background: showSessionList ? "#1D4ED8" : "#1E293B", color: showSessionList ? "#93C5FD" : "#94A3B8" }}
             >
               <FiList size={14} />
@@ -923,15 +1430,44 @@ export default function TouringPage() {
           )}
         </div>
         <div style={{ ...styles.headerRight, ...(isMobile ? styles.headerRightMobile : {}) }}>
-          <span style={{
-            ...styles.statusBadge,
+          {/* Status Message */}
+          <div style={styles.statusContainer}>
+            <span style={styles.statusText}>{statusMessage.text}</span>
+            {statusMessage.location && (
+              <span style={styles.statusLocation}>
+                <FiMapPin size={10} /> {statusMessage.location}
+              </span>
+            )}
+            {sessionStatus === "active" && (
+              <button 
+                onClick={() => {
+                  // Show detail modal
+                  const detailMsg = `
+📍 Status: ${statusMessage.isMoving ? 'Sedang Berjalan' : 'Sedang Berhenti'}
+📍 Lokasi: ${statusMessage.location}
+📏 Total Jarak: ${totalDistance.toFixed(1)} km
+🛑 Jumlah Berhenti: ${stops.length}
+⏱️ Waktu: ${new Date().toLocaleTimeString('id-ID')}
+                  `;
+                  alert(detailMsg);
+                }}
+                style={styles.detailBtn}
+              >
+                <FiInfo size={12} /> Detail
+              </button>
+            )}
+          </div>
+          
+          <span style={{ 
+            ...styles.statusBadge, 
             ...(isMobile ? styles.statusBadgeMobile : {}),
-            background: isSessionComplete ? "#1E293B" : sessionStatus === "active" ? "#065F46" : "#1E293B",
-            color: isSessionComplete ? "#94A3B8" : sessionStatus === "active" ? "#6EE7B7" : "#94A3B8"
+            background: isSessionComplete ? "#1E293B" : sessionStatus === "active" ? "#065F46" : "#1E293B", 
+            color: isSessionComplete ? "#94A3B8" : sessionStatus === "active" ? "#6EE7B7" : "#94A3B8" 
           }}>
             {isSessionComplete ? <FiCheckCircle size={12} /> : sessionStatus === "active" ? <FiZap size={12} /> : <FiClock size={12} />}
             {isSessionComplete ? "Selesai" : sessionStatus === "active" ? "Berjalan" : "Belum Mulai"}
           </span>
+          
           {!isMobile && (
             <>
               <button onClick={() => setShowSharePanel(true)} style={btnPrimary}>
@@ -950,61 +1486,6 @@ export default function TouringPage() {
         </div>
       </header>
 
-      {/* Status Bar */}
-      {sessionStatus === "active" && !isSessionComplete && (
-        <div style={styles.statusBar}>
-          <div style={styles.statusBarContent}>
-            <div style={styles.statusIcon}>
-              {currentStatus.status === "running" ? <FiActivity size={20} color="#10B981" />
-                : currentStatus.status === "stopped" ? <FiPause size={20} color="#F59E0B" />
-                : <FiClock size={20} color="#94A3B8" />}
-            </div>
-            <div style={styles.statusInfo}>
-              <div style={styles.statusText}>
-                {currentStatus.status === "running" ? <span style={{ color: "#10B981" }}>🟢 Sedang Berjalan</span>
-                  : currentStatus.status === "stopped" ? <span style={{ color: "#F59E0B" }}>🟡 Sedang Berhenti</span>
-                  : <span style={{ color: "#94A3B8" }}>⏳ Menunggu</span>}
-                <span style={styles.statusLocation}>{currentStatus.location_name || "Lokasi tidak diketahui"}</span>
-              </div>
-              {currentStatus.speed !== undefined && currentStatus.status === "running" && (
-                <span style={styles.statusSpeed}>{(currentStatus.speed * 3.6).toFixed(1)} km/jam</span>
-              )}
-            </div>
-            <button onClick={() => setShowStatusDetail(!showStatusDetail)} style={styles.statusDetailBtn}>
-              <FiInfo size={14} /> Detail
-            </button>
-          </div>
-          {showStatusDetail && (
-            <div style={styles.statusDetailPopup}>
-              <div style={styles.statusDetailItem}>
-                <span style={styles.statusDetailLabel}>Status</span>
-                <span style={{ color: currentStatus.status === "running" ? "#10B981" : currentStatus.status === "stopped" ? "#F59E0B" : "#94A3B8" }}>
-                  {currentStatus.status === "running" ? "🟢 Berjalan" : currentStatus.status === "stopped" ? "🟡 Berhenti" : "⏳ Idle"}
-                </span>
-              </div>
-              <div style={styles.statusDetailItem}>
-                <span style={styles.statusDetailLabel}>Lokasi</span>
-                <span>{currentStatus.location_name || "-"}</span>
-              </div>
-              {currentStatus.speed !== undefined && (
-                <div style={styles.statusDetailItem}>
-                  <span style={styles.statusDetailLabel}>Kecepatan</span>
-                  <span>{(currentStatus.speed * 3.6).toFixed(1)} km/jam</span>
-                </div>
-              )}
-              <div style={styles.statusDetailItem}>
-                <span style={styles.statusDetailLabel}>Update</span>
-                <span>{currentStatus.last_update ? formatTimeAgo(currentStatus.last_update) : "-"}</span>
-              </div>
-              <div style={styles.statusDetailItem}>
-                <span style={styles.statusDetailLabel}>Sinyal GPS</span>
-                <span style={{ color: "#10B981" }}><FiWifi size={12} /> Aktif</span>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Mobile Menu */}
       {isMobile && showMobileMenu && (
         <div style={styles.mobileMenu}>
@@ -1022,11 +1503,13 @@ export default function TouringPage() {
 
       {/* Main Content */}
       <div style={{ ...styles.mainContent, ...(isMobile ? styles.mainContentMobile : {}) }}>
-        {/* Session List Sidebar (desktop) */}
+        {/* Session List Sidebar */}
         {showSessionList && !isMobile && (
           <aside style={styles.sessionSidebar}>
             <div style={styles.sessionSidebarHeader}>
-              <h3 style={styles.sessionSidebarTitle}><FiList size={16} /> Daftar Perjalanan</h3>
+              <h3 style={styles.sessionSidebarTitle}>
+                <FiList size={16} /> Daftar Perjalanan
+              </h3>
               <button onClick={createNewSession} style={{ ...btnPrimary, padding: "6px 12px", fontSize: "12px" }}>
                 <FiPlus size={14} /> Baru
               </button>
@@ -1035,7 +1518,10 @@ export default function TouringPage() {
               {sessions.map(s => (
                 <div
                   key={s.id}
-                  onClick={() => { setSelectedSessionId(s.id); loadSessionData(s.id); }}
+                  onClick={() => {
+                    setSelectedSessionId(s.id);
+                    loadSessionData(s.id);
+                  }}
                   style={{
                     ...styles.sessionItem,
                     background: selectedSessionId === s.id ? "#1D4ED8" : "#1E293B",
@@ -1045,20 +1531,34 @@ export default function TouringPage() {
                   <div style={styles.sessionItemLeft}>
                     <div style={styles.sessionCode}>{s.session_code}</div>
                     <div style={styles.sessionMeta}>
-                      <span style={styles.sessionMetaItem}><FiCalendar size={10} /> {formatDate(s.created_at)}</span>
-                      <span style={styles.sessionMetaItem}>{getTransportIcon(s.transport_type)} {getTransportLabel(s.transport_type)}</span>
+                      <span style={styles.sessionMetaItem}>
+                        <FiCalendar size={10} /> {formatDate(s.created_at)}
+                      </span>
+                      <span style={styles.sessionMetaItem}>
+                        {getTransportIcon(s.transport_type)} {getTransportLabel(s.transport_type)}
+                      </span>
+                      {s.total_distance_km > 0 && (
+                        <span style={styles.sessionMetaItem}>
+                          <FiMapPin size={10} /> {s.total_distance_km.toFixed(1)} km
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div style={styles.sessionItemRight}>
                     <span style={{
                       ...styles.sessionStatusBadge,
-                      background: s.status === "active" ? "#065F46" : "#1E293B",
-                      color: s.status === "active" ? "#6EE7B7" : "#94A3B8"
+                      background: s.status === "active" ? "#065F46" : s.status === "completed" ? "#1E293B" : "#1E293B",
+                      color: s.status === "active" ? "#6EE7B7" : s.status === "completed" ? "#94A3B8" : "#94A3B8"
                     }}>
                       {s.status === "active" ? "Active" : s.status === "completed" ? "Selesai" : "Pending"}
                     </span>
-                    <button onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
-                      style={{ ...iconBtn, padding: "2px 6px", color: "#EF4444", border: "none" }}>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteSession(s.id);
+                      }}
+                      style={{ ...iconBtn, padding: "2px 6px", color: "#EF4444", border: "none" }}
+                    >
                       <FiTrash2 size={12} />
                     </button>
                   </div>
@@ -1081,7 +1581,8 @@ export default function TouringPage() {
           <div style={styles.mobileSessionList}>
             <div style={styles.mobileSessionHeader}>
               <span style={{ color: "#94A3B8", fontSize: "14px", fontWeight: "600" }}>
-                <FiList size={14} style={{ marginRight: "8px" }} />Daftar Perjalanan
+                <FiList size={14} style={{ marginRight: "8px" }} />
+                Daftar Perjalanan
               </span>
               <button onClick={createNewSession} style={{ ...btnPrimary, padding: "4px 12px", fontSize: "11px" }}>
                 <FiPlus size={12} /> Baru
@@ -1089,9 +1590,17 @@ export default function TouringPage() {
             </div>
             <div style={styles.mobileSessionItems}>
               {sessions.slice(0, 5).map(s => (
-                <div key={s.id}
-                  onClick={() => { setSelectedSessionId(s.id); loadSessionData(s.id); setShowSessionList(false); }}
-                  style={{ ...styles.mobileSessionItem, background: selectedSessionId === s.id ? "#1D4ED8" : "#1E293B" }}
+                <div
+                  key={s.id}
+                  onClick={() => {
+                    setSelectedSessionId(s.id);
+                    loadSessionData(s.id);
+                    setShowSessionList(false);
+                  }}
+                  style={{
+                    ...styles.mobileSessionItem,
+                    background: selectedSessionId === s.id ? "#1D4ED8" : "#1E293B"
+                  }}
                 >
                   <span style={styles.mobileSessionCode}>{s.session_code}</span>
                   <span style={{
@@ -1116,7 +1625,7 @@ export default function TouringPage() {
         {showSettings && (
           <aside style={{ ...styles.sidebar, ...(isMobile ? styles.sidebarMobile : {}) }}>
             <div style={styles.sidebarContent}>
-              {/* Session Info */}
+              {/* Session Info dengan Total Jarak */}
               <div style={styles.section}>
                 <h3 style={styles.sectionTitle}><FiInfo size={14} /> Informasi Sesi</h3>
                 <div style={styles.sessionInfo}>
@@ -1130,14 +1639,27 @@ export default function TouringPage() {
                   </div>
                   <div style={styles.sessionInfoRow}>
                     <span style={styles.sessionInfoLabel}>Status</span>
-                    <span style={{ ...styles.sessionInfoValue, color: isSessionComplete ? "#94A3B8" : sessionStatus === "active" ? "#6EE7B7" : "#94A3B8" }}>
+                    <span style={{
+                      ...styles.sessionInfoValue,
+                      color: isSessionComplete ? "#94A3B8" : sessionStatus === "active" ? "#6EE7B7" : "#94A3B8"
+                    }}>
                       {isSessionComplete ? "✅ Selesai" : sessionStatus === "active" ? "🟢 Berjalan" : "⏳ Belum Mulai"}
                     </span>
+                  </div>
+                  <div style={styles.sessionInfoRow}>
+                    <span style={styles.sessionInfoLabel}><FiMapPin size={12} /> Total Jarak</span>
+                    <span style={styles.sessionInfoValue}>{totalDistance.toFixed(1)} km</span>
                   </div>
                   {lateDeparture && (
                     <div style={{ ...styles.sessionInfoRow, color: "#F59E0B" }}>
                       <span style={styles.sessionInfoLabel}><FiAlertTriangle size={12} /> Status</span>
                       <span style={{ color: "#F59E0B", fontSize: "12px" }}>⏰ Berangkat Telat</span>
+                    </div>
+                  )}
+                  {stops.length > 0 && (
+                    <div style={styles.sessionInfoRow}>
+                      <span style={styles.sessionInfoLabel}><FiClock size={12} /> Total Berhenti</span>
+                      <span style={styles.sessionInfoValue}>{stops.length} kali</span>
                     </div>
                   )}
                 </div>
@@ -1148,9 +1670,12 @@ export default function TouringPage() {
                 <h3 style={styles.sectionTitle}><FiTruck size={14} /> Transportasi</h3>
                 <div style={{ ...styles.transportGrid, ...(isMobile ? styles.transportGridMobile : {}) }}>
                   {TRANSPORT_OPTIONS.map(t => (
-                    <button key={t.value} onClick={() => setTransport(prev => ({ ...prev, transport_type: t.value }))}
+                    <button
+                      key={t.value}
+                      onClick={() => setTransport({ ...transport, transport_type: t.value })}
                       style={{
-                        ...styles.transportBtn, ...(isMobile ? styles.transportBtnMobile : {}),
+                        ...styles.transportBtn,
+                        ...(isMobile ? styles.transportBtnMobile : {}),
                         borderColor: transport.transport_type === t.value ? "#3B82F6" : "#334155",
                         background: transport.transport_type === t.value ? "rgba(59,130,246,0.15)" : "#1E293B",
                         color: transport.transport_type === t.value ? "#60A5FA" : "#64748B"
@@ -1162,21 +1687,36 @@ export default function TouringPage() {
                 </div>
                 {transport.transport_type !== "jalan" && transport.transport_type !== "kereta" && (
                   <>
-                    <input value={transport.plate_number}
-                      onChange={e => setTransport(prev => ({ ...prev, plate_number: e.target.value }))}
-                      style={inputStyle} placeholder="Nomor Plat" />
-                    <input type="number" step="0.5" value={transport.fuel_liters}
-                      onChange={e => setTransport(prev => ({ ...prev, fuel_liters: parseFloat(e.target.value) || 0 }))}
-                      style={inputStyle} placeholder="Jumlah Bensin (Liter)" />
+                    <input
+                      value={transport.plate_number}
+                      onChange={e => setTransport({ ...transport, plate_number: e.target.value })}
+                      style={inputStyle}
+                      placeholder="Nomor Plat"
+                    />
+                    <input
+                      type="number"
+                      step="0.5"
+                      value={transport.fuel_liters}
+                      onChange={e => setTransport({ ...transport, fuel_liters: parseFloat(e.target.value) || 0 })}
+                      style={inputStyle}
+                      placeholder="Jumlah Bensin (Liter)"
+                    />
                   </>
                 )}
                 {transport.transport_type === "kereta" && (
-                  <input value={transport.plate_number || "Kereta"} disabled
-                    style={{ ...inputStyle, opacity: 0.5 }} placeholder="Kereta tidak memerlukan plat" />
+                  <input
+                    value={transport.plate_number || "Kereta"}
+                    disabled
+                    style={{ ...inputStyle, opacity: 0.5 }}
+                    placeholder="Kereta tidak memerlukan plat"
+                  />
                 )}
-                <input value={transport.driver_name}
-                  onChange={e => setTransport(prev => ({ ...prev, driver_name: e.target.value }))}
-                  style={inputStyle} placeholder="Nama Pengemudi/Penumpang" />
+                <input
+                  value={transport.driver_name}
+                  onChange={e => setTransport({ ...transport, driver_name: e.target.value })}
+                  style={inputStyle}
+                  placeholder="Nama Pengemudi/Penumpang"
+                />
                 <button onClick={saveToDatabase} style={{ ...btnPrimary, width: "100%", justifyContent: "center" }}>
                   <FiSave size={14} /> Simpan Data
                 </button>
@@ -1187,16 +1727,49 @@ export default function TouringPage() {
                 <h3 style={styles.sectionTitle}><FiMap size={14} /> Rute & Jadwal</h3>
                 <div style={{ ...styles.checkpointList, ...(isMobile ? styles.checkpointListMobile : {}) }}>
                   {checkpoints.map((cp, i) => (
-                    <div key={cp.id || i} style={styles.checkpointItem}>
+                    <div key={i} style={styles.checkpointItem}>
                       {editingCheckpoint === i ? (
                         <div style={styles.editForm}>
-                          <input value={editForm.city_name || ""} onChange={e => setEditForm(f => ({ ...f, city_name: e.target.value }))} style={inputStyle} placeholder="Nama Kota" />
-                          <input type="date" value={editForm.scheduled_date || ""} onChange={e => setEditForm(f => ({ ...f, scheduled_date: e.target.value }))} style={inputStyle} />
-                          <input type="time" value={editForm.scheduled_time || ""} onChange={e => setEditForm(f => ({ ...f, scheduled_time: e.target.value }))} style={inputStyle} />
-                          <input type="number" step="0.0001" value={editForm.latitude || ""} onChange={e => setEditForm(f => ({ ...f, latitude: parseFloat(e.target.value) || 0 }))} style={inputStyle} placeholder="Latitude" />
-                          <input type="number" step="0.0001" value={editForm.longitude || ""} onChange={e => setEditForm(f => ({ ...f, longitude: parseFloat(e.target.value) || 0 }))} style={inputStyle} placeholder="Longitude" />
+                          <input
+                            value={editForm.city_name || ""}
+                            onChange={e => setEditForm({ ...editForm, city_name: e.target.value })}
+                            style={inputStyle}
+                            placeholder="Nama Kota"
+                          />
+                          <input
+                            type="date"
+                            value={editForm.scheduled_date || ""}
+                            onChange={e => setEditForm({ ...editForm, scheduled_date: e.target.value })}
+                            style={inputStyle}
+                          />
+                          <input
+                            type="time"
+                            value={editForm.scheduled_time || ""}
+                            onChange={e => setEditForm({ ...editForm, scheduled_time: e.target.value })}
+                            style={inputStyle}
+                          />
+                          <input
+                            type="number"
+                            step="0.0001"
+                            value={editForm.latitude || ""}
+                            onChange={e => setEditForm({ ...editForm, latitude: parseFloat(e.target.value) || 0 })}
+                            style={inputStyle}
+                            placeholder="Latitude"
+                          />
+                          <input
+                            type="number"
+                            step="0.0001"
+                            value={editForm.longitude || ""}
+                            onChange={e => setEditForm({ ...editForm, longitude: parseFloat(e.target.value) || 0 })}
+                            style={inputStyle}
+                            placeholder="Longitude"
+                          />
                           <label style={{ color: "#94A3B8", fontSize: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
-                            <input type="checkbox" checked={editForm.is_final_destination || false} onChange={e => setEditForm(f => ({ ...f, is_final_destination: e.target.checked }))} />
+                            <input
+                              type="checkbox"
+                              checked={editForm.is_final_destination || false}
+                              onChange={e => setEditForm({ ...editForm, is_final_destination: e.target.checked })}
+                            />
                             Tujuan Akhir
                           </label>
                           <div style={styles.editActions}>
@@ -1206,12 +1779,18 @@ export default function TouringPage() {
                         </div>
                       ) : (
                         <div style={styles.checkpointRow}>
-                          <div style={{ ...styles.checkpointNumber, ...(isMobile ? styles.checkpointNumberMobile : {}) }}>{i + 1}</div>
+                          <div style={{ ...styles.checkpointNumber, ...(isMobile ? styles.checkpointNumberMobile : {}) }}>
+                            {i + 1}
+                          </div>
                           <div style={styles.checkpointInfo}>
                             <div style={{ ...styles.checkpointName, ...(isMobile ? styles.checkpointNameMobile : {}) }}>
                               {cp.city_name}
-                              {cp.is_final_destination && <span style={{ color: "#F59E0B", fontSize: "10px", marginLeft: "6px" }}>🏁</span>}
-                              {cp.status === "reached" && <FiCheckCircle size={12} color="#10B981" style={{ marginLeft: "4px" }} />}
+                              {cp.is_final_destination && (
+                                <span style={{ color: "#F59E0B", fontSize: "10px", marginLeft: "6px" }}>🏁</span>
+                              )}
+                              {cp.status === "reached" && (
+                                <FiCheckCircle size={12} color="#10B981" style={{ marginLeft: "6px" }} />
+                              )}
                             </div>
                             <div style={{ ...styles.checkpointTime, ...(isMobile ? styles.checkpointTimeMobile : {}) }}>
                               <FiCalendar size={10} /> {formatDate(cp.scheduled_date)} <FiClock size={10} /> {formatTime(cp.scheduled_time)}
@@ -1257,14 +1836,36 @@ export default function TouringPage() {
                       )}
                     </>
                   ) : (
-                    <button onClick={stopTracking} style={{ ...btnPrimary, width: "100%", justifyContent: "center", background: "#EF4444" }}>
-                      <FiSquare size={14} /> Selesaikan Perjalanan
-                    </button>
+                    <>
+                      <button onClick={stopTracking} style={{ ...btnPrimary, width: "100%", justifyContent: "center", background: "#EF4444" }}>
+                        <FiSquare size={14} /> Selesaikan Perjalanan
+                      </button>
+                      <div style={{ textAlign: "center", color: "#6EE7B7", fontSize: "12px", marginTop: "8px" }}>
+                        <FiMapPin size={12} /> {totalDistance.toFixed(1)} km ditempuh
+                      </div>
+                    </>
                   )
                 ) : (
                   <div style={{ textAlign: "center", color: "#6EE7B7", padding: "12px" }}>
                     <FiCheckCircle size={24} style={{ display: "block", margin: "0 auto 8px" }} />
                     Perjalanan Selesai! 🎉
+                    {!session?.report_generated && (
+                      <button 
+                        onClick={generateReport}
+                        style={{ ...btnPrimary, marginTop: "12px", background: "#8B5CF6" }}
+                        disabled={isGeneratingReport}
+                      >
+                        <FiFileText size={14} /> {isGeneratingReport ? "Membuat..." : "Laporan Perjalanan"}
+                      </button>
+                    )}
+                    {session?.report_generated && (
+                      <button 
+                        onClick={() => setShowReportModal(true)}
+                        style={{ ...btnPrimary, marginTop: "12px", background: "#8B5CF6" }}
+                      >
+                        <FiFileText size={14} /> Lihat Laporan
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1278,18 +1879,25 @@ export default function TouringPage() {
             checkpoints={checkpoints}
             currentLocation={currentLocation}
             sessionStatus={sessionStatus}
-            onReportDelay={(cp) => { setSelectedCheckpoint(cp); selectedCheckpointRef.current = cp; setShowDelayModal(true); }}
+            onReportDelay={(cp) => {
+              setSelectedCheckpoint(cp);
+              setShowDelayModal(true);
+            }}
             onMarkReached={(cp) => {
-              setCheckpoints(prev => {
-                const updated = prev.map(c => c.id === cp.id ? { ...c, status: "reached", actual_arrival_time: new Date().toISOString() } : c);
-                checkpointsRef.current = updated;
-                return updated;
+              const updated = checkpoints.map(c => {
+                if (c.id === cp.id) {
+                  return { ...c, status: "reached", actual_arrival_time: new Date().toISOString() };
+                }
+                return c;
               });
+              setCheckpoints(updated);
               saveToDatabase();
             }}
             isTracking={isTracking}
             isMobile={isMobile}
-            currentStatus={currentStatus}
+            totalDistance={totalDistance}
+            statusMessage={statusMessage}
+            stops={stops}
           />
         </div>
       </div>
@@ -1297,22 +1905,27 @@ export default function TouringPage() {
       {/* Notification Panel */}
       {notifications.length > 0 && (
         <div style={{ ...styles.notificationPanel, ...(isMobile ? styles.notificationPanelMobile : {}) }}>
-          {notifications.map(n => (
+          {notifications.slice(0, isMobile ? 3 : 5).map(n => (
             <div key={n.id} style={{
               ...styles.notificationItem,
               ...(isMobile ? styles.notificationItemMobile : {}),
               borderColor: n.type === "late" ? "#EF4444" : n.type === "early" ? "#F59E0B" : n.type === "info" ? "#3B82F6" : "#10B981"
             }}>
-              {n.type === "late" ? <FiArrowDown color="#EF4444" />
-                : n.type === "early" ? <FiArrowUp color="#F59E0B" />
-                : n.type === "info" ? <FiInfo color="#3B82F6" />
-                : <FiCheckCircle color="#10B981" />}
+              {n.type === "late" ? <FiArrowDown color="#EF4444" /> :
+               n.type === "early" ? <FiArrowUp color="#F59E0B" /> :
+               n.type === "info" ? <FiInfo color="#3B82F6" /> :
+               <FiCheckCircle color="#10B981" />}
               <span style={styles.notificationMessage}>{n.message}</span>
               <button onClick={() => removeNotification(n.id)} style={styles.notificationClose}>
                 <FiX size={12} />
               </button>
             </div>
           ))}
+          {notifications.length > (isMobile ? 3 : 5) && (
+            <div style={{ textAlign: "center", color: "#64748B", fontSize: "11px" }}>
+              +{notifications.length - (isMobile ? 3 : 5)} notifikasi lainnya
+            </div>
+          )}
         </div>
       )}
 
@@ -1320,7 +1933,7 @@ export default function TouringPage() {
       {showDelayModal && selectedCheckpoint && (
         <DelayModal
           checkpoint={selectedCheckpoint}
-          onClose={() => { setShowDelayModal(false); setSelectedCheckpoint(null); selectedCheckpointRef.current = null; }}
+          onClose={() => { setShowDelayModal(false); setSelectedCheckpoint(null); }}
           onSubmit={(type, minutes) => handleManualDelay(selectedCheckpoint, type, minutes)}
           isMobile={isMobile}
         />
@@ -1336,28 +1949,71 @@ export default function TouringPage() {
           isMobile={isMobile}
         />
       )}
+
+      {/* Report Modal */}
+      {showReportModal && reportData && (
+        <ReportModal
+          report={reportData}
+          onClose={() => setShowReportModal(false)}
+          isMobile={isMobile}
+        />
+      )}
     </div>
   );
 }
 
 // ─── MAP COMPONENT ────────────────────────────────────────────────────────────
 
-function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay, onMarkReached, isTracking, isMobile, currentStatus }) {
+function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay, onMarkReached, isTracking, isMobile, totalDistance, statusMessage, stops }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
   const polylineRef = useRef(null);
   const currentMarkerRef = useRef(null);
   const initializedRef = useRef(false);
+  const routeHistoryRef = useRef([]);
 
   useEffect(() => {
     if (initializedRef.current || mapInstanceRef.current) return;
-    const L = window.L;
-    if (!L) { console.warn("Leaflet not loaded"); return; }
+    
+    // Load Leaflet dari CDN jika belum ada
+    if (!window.L) {
+      const script = document.createElement('script');
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      script.async = true;
+      script.onload = () => {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        document.head.appendChild(link);
+        initMap();
+      };
+      document.head.appendChild(script);
+      return;
+    }
 
-    const startLat = checkpoints[0]?.latitude || -7.7200;
-    const startLng = checkpoints[0]?.longitude || 109.9084;
-    const map = L.map(mapRef.current, { zoomControl: !isMobile, attributionControl: true });
+    initMap();
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+        initializedRef.current = false;
+      }
+    };
+  }, []);
+
+  const initMap = () => {
+    const L = window.L;
+    if (!L) return;
+
+    const startLat = currentLocation?.lat || checkpoints[0]?.latitude || -7.7200;
+    const startLng = currentLocation?.lng || checkpoints[0]?.longitude || 109.9084;
+
+    const map = L.map(mapRef.current, { 
+      zoomControl: !isMobile,
+      attributionControl: true 
+    });
     mapInstanceRef.current = map;
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -1367,84 +2023,90 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
 
     map.setView([startLat, startLng], isMobile ? 8 : 9);
     initializedRef.current = true;
-    renderMarkers(L, map, checkpoints, isMobile);
+    renderMarkers(L, map);
+  };
 
-    return () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-        initializedRef.current = false;
-      }
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const renderMarkers = (L, map, cps, mobile) => {
+  const renderMarkers = (L, map) => {
     if (!map) return;
-    markersRef.current.forEach(m => { try { m.remove(); } catch(e) {} });
+    markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
 
-    cps.forEach((cp, i) => {
-      if (cp.is_deleted) return;
+    checkpoints.forEach((cp, i) => {
       const color = cp.status === "reached" ? "#10B981" : cp.status === "active" ? "#3B82F6" : "#6B7280";
-      const size = mobile ? 28 : 34;
+      const size = isMobile ? 28 : 34;
       const icon = L.divIcon({
-        html: `<div style="background:${color};color:white;border-radius:50%;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:${mobile ? 10 : 13}px;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)">${i + 1}</div>`,
-        className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2],
+        html: `<div style="background:${color};color:white;border-radius:50%;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:${isMobile ? 10 : 13}px;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)">${i + 1}</div>`,
+        className: "",
+        iconSize: [size, size],
+        iconAnchor: [size/2, size/2],
       });
       const marker = L.marker([cp.latitude, cp.longitude], { icon })
-        .bindPopup(`<b>${cp.city_name}</b><br>Tanggal: ${cp.scheduled_date || "--"}<br>Jadwal: ${cp.scheduled_time || "--:--"}<br>${cp.status === "reached" ? "✅ Tiba" : ""}${cp.delay_minutes ? `Delay: ${cp.delay_minutes} menit` : ""}${cp.is_final_destination ? "<br>🏁 Tujuan Akhir" : ""}`)
+        .bindPopup(`
+          <b>${cp.city_name}</b><br>
+          Tanggal: ${cp.scheduled_date || "--"}<br>
+          Jadwal: ${cp.scheduled_time || "--:--"}<br>
+          ${cp.status === "reached" ? "✅ Tiba" : "⏳ Menunggu"}<br>
+          ${cp.delay_minutes ? `Delay: ${cp.delay_minutes} menit` : ""}
+          ${cp.is_final_destination ? "<br>🏁 Tujuan Akhir" : ""}
+        `)
         .addTo(map);
       markersRef.current.push(marker);
     });
 
-    if (polylineRef.current) { try { polylineRef.current.remove(); } catch(e) {} }
-    const latlngs = cps.filter(cp => !cp.is_deleted).map(cp => [cp.latitude, cp.longitude]);
-    if (latlngs.length > 0) {
-      polylineRef.current = L.polyline(latlngs, { color: "#3B82F6", weight: mobile ? 2 : 3, opacity: 0.6, dashArray: "8,4" }).addTo(map);
-    }
+    if (polylineRef.current) polylineRef.current.remove();
+    const latlngs = checkpoints.map(cp => [cp.latitude, cp.longitude]);
+    polylineRef.current = L.polyline(latlngs, { 
+      color: "#3B82F6", 
+      weight: isMobile ? 2 : 3, 
+      opacity: 0.6, 
+      dashArray: "8,4" 
+    }).addTo(map);
   };
 
   useEffect(() => {
     const L = window.L;
     if (!L || !mapInstanceRef.current || !initializedRef.current) return;
-    renderMarkers(L, mapInstanceRef.current, checkpoints, isMobile);
+    renderMarkers(L, mapInstanceRef.current);
   }, [checkpoints, isMobile]);
 
   useEffect(() => {
     const L = window.L;
     if (!L || !mapInstanceRef.current || !currentLocation || !initializedRef.current) return;
 
-    if (currentMarkerRef.current) {
-      const latlng = [currentLocation.lat, currentLocation.lng];
-      currentMarkerRef.current.setLatLng(latlng);
-      if (isTracking) mapInstanceRef.current.panTo(latlng, { animate: true, duration: 0.5 });
-    } else {
-      const size = isMobile ? 30 : 40;
-      const pulseIcon = L.divIcon({
-        html: `<div style="position:relative;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center"><div style="position:absolute;width:${size}px;height:${size}px;background:rgba(59,130,246,0.2);border-radius:50%;animation:ping 1.5s infinite"></div><div style="width:${isMobile ? 14 : 20}px;height:${isMobile ? 14 : 20}px;background:#3B82F6;border-radius:50%;border:3px solid white;box-shadow:0 0 12px rgba(59,130,246,0.6);position:relative;z-index:1"></div></div>`,
-        className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2],
-      });
-      currentMarkerRef.current = L.marker([currentLocation.lat, currentLocation.lng], { icon: pulseIcon })
-        .bindPopup("📍 Lokasi Anda Sekarang")
-        .addTo(mapInstanceRef.current);
-      if (isTracking) mapInstanceRef.current.setView([currentLocation.lat, currentLocation.lng], isMobile ? 11 : 13, { animate: true });
-    }
+    if (currentMarkerRef.current) currentMarkerRef.current.remove();
 
-    if (currentMarkerRef.current && currentStatus) {
-      const statusText = currentStatus.status === "running" ? "🟢 Berjalan" : currentStatus.status === "stopped" ? "🟡 Berhenti" : "⏳ Idle";
-      currentMarkerRef.current.setPopupContent(`📍 Lokasi Anda Sekarang<br>Status: ${statusText}<br>${currentStatus.location_name || ""}`);
-    }
-  }, [currentLocation, isTracking, isMobile, currentStatus]);
+    const size = isMobile ? 30 : 40;
+    const isMoving = statusMessage?.isMoving !== false;
+    const color = isMoving ? "#3B82F6" : "#EF4444";
+    
+    const pulseIcon = L.divIcon({
+      html: `<div style="position:relative;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center">
+        <div style="position:absolute;width:${size}px;height:${size}px;background:${color}33;border-radius:50%;animation:ping 1.5s infinite"></div>
+        <div style="width:${isMobile ? 14 : 20}px;height:${isMobile ? 14 : 20}px;background:${color};border-radius:50%;border:3px solid white;box-shadow:0 0 12px ${color}99;position:relative;z-index:1;transition:background 0.5s"></div>
+        ${!isMoving ? `<div style="position:absolute;top:-8px;right:-8px;background:#EF4444;border-radius:50%;width:14px;height:14px;display:flex;align-items:center;justify-content:center;font-size:8px;color:white;border:2px solid white;">⏸</div>` : ''}
+      </div>`,
+      className: "",
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2],
+    });
 
-  useEffect(() => {
-    if (mapInstanceRef.current) {
-      setTimeout(() => { try { mapInstanceRef.current.invalidateSize(); } catch(e) {} }, 300);
+    currentMarkerRef.current = L.marker([currentLocation.lat, currentLocation.lng], { icon: pulseIcon })
+      .bindPopup(`
+        <b>📍 Lokasi Saat Ini</b><br>
+        Status: ${statusMessage?.text || 'Sedang Berjalan'}<br>
+        Lokasi: ${statusMessage?.location || '-'}<br>
+        Total Jarak: ${totalDistance?.toFixed(1) || 0} km
+      `)
+      .addTo(mapInstanceRef.current);
+
+    if (isTracking) {
+      mapInstanceRef.current.setView([currentLocation.lat, currentLocation.lng], isMobile ? 11 : 13, { animate: true });
     }
-  }, [isMobile]);
+  }, [currentLocation, isTracking, isMobile, statusMessage, totalDistance]);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      <style>{`@keyframes ping { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(2.5); opacity: 0; } }`}</style>
+      <style>{`@keyframes ping{0%{transform:scale(1);opacity:1}100%{transform:scale(2.5);opacity:0}}`}</style>
       <div ref={mapRef} style={{ width: "100%", height: "100%", borderRadius: "12px" }} />
     </div>
   );
@@ -1466,37 +2128,55 @@ function DelayModal({ checkpoint, onClose, onSubmit, isMobile }) {
           <button onClick={onClose} style={iconBtn}><FiX size={18} /></button>
         </div>
         <p style={styles.modalSubtitle}>Checkpoint: <strong style={{ color: "#94A3B8" }}>{checkpoint?.city_name}</strong></p>
+
         <div style={{ ...styles.modalTypeButtons, ...(isMobile ? styles.modalTypeButtonsMobile : {}) }}>
-          <button onClick={() => setType("late")} style={{
-            ...styles.modalTypeBtn, ...(isMobile ? styles.modalTypeBtnMobile : {}),
-            background: type === "late" ? "#7F1D1D" : "#1E293B",
-            borderColor: type === "late" ? "#EF4444" : "#334155",
-            color: type === "late" ? "#FCA5A5" : "#64748B"
-          }}>
+          <button
+            onClick={() => setType("late")}
+            style={{
+              ...styles.modalTypeBtn,
+              ...(isMobile ? styles.modalTypeBtnMobile : {}),
+              background: type === "late" ? "#7F1D1D" : "#1E293B",
+              borderColor: type === "late" ? "#EF4444" : "#334155",
+              color: type === "late" ? "#FCA5A5" : "#64748B"
+            }}
+          >
             <FiArrowDown size={14} /> Telat
           </button>
-          <button onClick={() => setType("early")} style={{
-            ...styles.modalTypeBtn, ...(isMobile ? styles.modalTypeBtnMobile : {}),
-            background: type === "early" ? "#78350F" : "#1E293B",
-            borderColor: type === "early" ? "#F59E0B" : "#334155",
-            color: type === "early" ? "#FDE68A" : "#64748B"
-          }}>
+          <button
+            onClick={() => setType("early")}
+            style={{
+              ...styles.modalTypeBtn,
+              ...(isMobile ? styles.modalTypeBtnMobile : {}),
+              background: type === "early" ? "#78350F" : "#1E293B",
+              borderColor: type === "early" ? "#F59E0B" : "#334155",
+              color: type === "early" ? "#FDE68A" : "#64748B"
+            }}
+          >
             <FiArrowUp size={14} /> Awal
           </button>
         </div>
+
         <div style={styles.modalMinutes}>
           <label style={styles.modalLabel}>Jumlah Menit</label>
           <div style={{ ...styles.modalMinutesControl, ...(isMobile ? styles.modalMinutesControlMobile : {}) }}>
             <button onClick={() => setMinutes(m => Math.max(1, m - 5))} style={iconBtn}><FiMinus size={16} /></button>
-            <input type="number" value={minutes} onChange={e => setMinutes(parseInt(e.target.value) || 0)}
-              style={{ ...inputStyle, textAlign: "center", width: isMobile ? "60px" : "80px", fontSize: isMobile ? "16px" : "20px", fontWeight: "700" }} min={1} />
+            <input
+              type="number"
+              value={minutes}
+              onChange={e => setMinutes(parseInt(e.target.value) || 0)}
+              style={{ ...inputStyle, textAlign: "center", width: isMobile ? "60px" : "80px", fontSize: isMobile ? "16px" : "20px", fontWeight: "700" }}
+              min={1}
+            />
             <button onClick={() => setMinutes(m => m + 5)} style={iconBtn}><FiPlus size={16} /></button>
           </div>
         </div>
+
         <div style={{ ...styles.modalActions, ...(isMobile ? styles.modalActionsMobile : {}) }}>
           <button onClick={onClose} style={btnSecondary}>Batal</button>
-          <button onClick={() => onSubmit(type, minutes)}
-            style={type === "late" ? { ...btnPrimary, background: "#DC2626" } : { ...btnPrimary, background: "#D97706" }}>
+          <button
+            onClick={() => onSubmit(type, minutes)}
+            style={type === "late" ? { ...btnPrimary, background: "#DC2626" } : { ...btnPrimary, background: "#D97706" }}
+          >
             <FiSave size={14} /> Simpan
           </button>
         </div>
@@ -1517,14 +2197,17 @@ function SharePanel({ sessionCode, onClose, onCopy, shareUrl, isMobile }) {
           </h3>
           <button onClick={onClose} style={iconBtn}><FiX size={18} /></button>
         </div>
+
         <div style={{ ...styles.shareCodeBox, ...(isMobile ? styles.shareCodeBoxMobile : {}) }}>
           <div style={styles.shareCodeLabel}>KODE SESI</div>
           <div style={{ ...styles.shareCode, ...(isMobile ? styles.shareCodeMobile : {}) }}>{sessionCode}</div>
         </div>
+
         <div style={{ ...styles.shareUrlBox, ...(isMobile ? styles.shareUrlBoxMobile : {}) }}>
           <div style={styles.shareCodeLabel}>LINK PEMANTAU</div>
           <div style={{ ...styles.shareUrl, ...(isMobile ? styles.shareUrlMobile : {}) }}>{shareUrl}</div>
         </div>
+
         <button onClick={onCopy} style={{ ...btnPrimary, width: "100%", justifyContent: "center" }}>
           <FiLink size={14} /> Salin Link Pemantau
         </button>
@@ -1536,128 +2219,1012 @@ function SharePanel({ sessionCode, onClose, onCopy, shareUrl, isMobile }) {
   );
 }
 
+// ─── REPORT MODAL ─────────────────────────────────────────────────────────────
+
+function ReportModal({ report, onClose, isMobile }) {
+  const summary = report?.summary || {};
+  const checkpoints = report?.checkpoints || [];
+  const notifications = report?.notifications || [];
+  const stops = report?.stops || [];
+
+  return (
+    <div style={styles.modalOverlay}>
+      <div style={{ ...styles.modalContent, maxWidth: isMobile ? "95%" : "700px", maxHeight: "90vh", overflowY: "auto", ...(isMobile ? styles.modalContentMobile : {}) }}>
+        <div style={styles.modalHeader}>
+          <h3 style={{ ...styles.modalTitle, ...(isMobile ? styles.modalTitleMobile : {}) }}>
+            <FiFileText size={18} color="#8B5CF6" /> Laporan Perjalanan
+          </h3>
+          <div>
+            <button 
+              onClick={() => {
+                window.print();
+              }} 
+              style={{ ...iconBtn, marginRight: "8px" }}
+            >
+              <FiPrinter size={14} />
+            </button>
+            <button onClick={onClose} style={iconBtn}><FiX size={18} /></button>
+          </div>
+        </div>
+
+        <div style={styles.reportContent}>
+          {/* Header Report */}
+          <div style={styles.reportHeader}>
+            <h2 style={styles.reportTitle}>📋 Laporan Perjalanan</h2>
+            <p style={styles.reportSubtitle}>
+              Kode Sesi: <strong>{report?.session?.session_code}</strong>
+            </p>
+            <p style={styles.reportSubtitle}>
+              Tanggal: {formatDateTime(report?.session?.created_at)}
+            </p>
+          </div>
+
+          {/* Summary */}
+          <div style={styles.reportSection}>
+            <h4 style={styles.reportSectionTitle}>📊 Ringkasan</h4>
+            <div style={styles.reportGrid}>
+              <div style={styles.reportItem}>
+                <span style={styles.reportLabel}>Total Jarak</span>
+                <span style={styles.reportValue}>{summary.totalDistance || 0} km</span>
+              </div>
+              <div style={styles.reportItem}>
+                <span style={styles.reportLabel}>Durasi</span>
+                <span style={styles.reportValue}>
+                  {summary.totalDuration ? `${Math.floor(summary.totalDuration / 60)} jam ${summary.totalDuration % 60} menit` : '-'}
+                </span>
+              </div>
+              <div style={styles.reportItem}>
+                <span style={styles.reportLabel}>Kota Dikunjungi</span>
+                <span style={styles.reportValue}>{summary.reachedCheckpoints || 0}/{summary.totalCheckpoints || 0}</span>
+              </div>
+              <div style={styles.reportItem}>
+                <span style={styles.reportLabel}>Total Berhenti</span>
+                <span style={styles.reportValue}>{summary.totalStops || 0} kali</span>
+              </div>
+              <div style={styles.reportItem}>
+                <span style={styles.reportLabel}>Moda Transportasi</span>
+                <span style={styles.reportValue}>{getTransportLabel(summary.transportType)}</span>
+              </div>
+              <div style={styles.reportItem}>
+                <span style={styles.reportLabel}>Pengemudi</span>
+                <span style={styles.reportValue}>{summary.driverName || '-'}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Notifikasi */}
+          <div style={styles.reportSection}>
+            <h4 style={styles.reportSectionTitle}>🔔 Notifikasi Perjalanan</h4>
+            <div style={styles.reportStats}>
+              <span style={{ ...styles.reportStat, background: "#7F1D1D", color: "#FCA5A5" }}>
+                Telat: {summary.totalDelays || 0}
+              </span>
+              <span style={{ ...styles.reportStat, background: "#78350F", color: "#FDE68A" }}>
+                Awal: {summary.totalEarly || 0}
+              </span>
+              <span style={{ ...styles.reportStat, background: "#064E3B", color: "#6EE7B7" }}>
+                Tepat: {summary.totalOnTime || 0}
+              </span>
+            </div>
+            <div style={styles.reportNotificationList}>
+              {notifications.slice(0, 10).map((n, i) => (
+                <div key={i} style={styles.reportNotificationItem}>
+                  <span style={{ 
+                    color: n.type === "late" ? "#EF4444" : n.type === "early" ? "#F59E0B" : "#10B981",
+                    marginRight: "8px"
+                  }}>
+                    {n.type === "late" ? "🔴" : n.type === "early" ? "🟡" : "🟢"}
+                  </span>
+                  <span style={{ flex: 1 }}>{n.message}</span>
+                  <span style={{ color: "#64748B", fontSize: "11px" }}>
+                    {new Date(n.created_at).toLocaleTimeString("id-ID")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Checkpoints Detail */}
+          <div style={styles.reportSection}>
+            <h4 style={styles.reportSectionTitle}>📍 Rute Perjalanan</h4>
+            <div style={styles.reportCheckpointList}>
+              {checkpoints.map((cp, i) => (
+                <div key={i} style={styles.reportCheckpointItem}>
+                  <span style={styles.reportCheckpointNumber}>{i + 1}</span>
+                  <div style={styles.reportCheckpointInfo}>
+                    <span style={styles.reportCheckpointName}>{cp.city_name}</span>
+                    <span style={styles.reportCheckpointTime}>
+                      {formatDate(cp.scheduled_date)} {formatTime(cp.scheduled_time)}
+                      {cp.status === "reached" && " ✅"}
+                      {cp.delay_minutes !== 0 && cp.delay_minutes != null && (
+                        <span style={{ 
+                          color: cp.delay_minutes > 0 ? "#FCA5A5" : "#FDE68A",
+                          marginLeft: "8px"
+                        }}>
+                          {cp.delay_minutes > 0 ? "🔴" : "🟡"} {Math.abs(cp.delay_minutes)}mnt
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Stops Detail */}
+          {stops.length > 0 && (
+            <div style={styles.reportSection}>
+              <h4 style={styles.reportSectionTitle}>🛑 Riwayat Berhenti</h4>
+              <div style={styles.reportStopList}>
+                {stops.map((stop, i) => (
+                  <div key={i} style={styles.reportStopItem}>
+                    <span style={styles.reportStopNumber}>{i + 1}</span>
+                    <div style={styles.reportStopInfo}>
+                      <span style={styles.reportStopReason}>{stop.stop_reason || "Istirahat"}</span>
+                      <span style={styles.reportStopLocation}>{stop.location_name || "Lokasi"}</span>
+                      <span style={styles.reportStopTime}>
+                        {formatDateTime(stop.stopped_at)}
+                        {stop.duration_minutes > 0 && ` (${stop.duration_minutes} menit)`}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Footer */}
+          <div style={styles.reportFooter}>
+            <p style={{ color: "#64748B", fontSize: "12px", textAlign: "center" }}>
+              Laporan dibuat otomatis oleh Touring Tracker
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── STYLES ───────────────────────────────────────────────────────────────────
 
 const styles = {
-  container: { minHeight: "100vh", background: "#0F172A", color: "#F1F5F9", display: "flex", flexDirection: "column", fontFamily: "'Inter', system-ui, -apple-system, sans-serif" },
-  containerMobile: { fontSize: "14px" },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 24px", background: "#1E293B", borderBottom: "1px solid #334155", flexWrap: "wrap", gap: "12px" },
-  headerMobile: { padding: "12px 16px", gap: "8px" },
-  headerLeft: { display: "flex", alignItems: "center", gap: "12px" },
-  headerTitle: { fontSize: "20px", fontWeight: "700", color: "#F1F5F9", margin: 0 },
-  headerTitleMobile: { fontSize: "16px" },
-  headerRight: { display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" },
-  headerRightMobile: { gap: "6px" },
-  statusBadge: { display: "flex", alignItems: "center", gap: "6px", padding: "6px 14px", borderRadius: "20px", fontSize: "12px", fontWeight: "600" },
-  statusBadgeMobile: { padding: "4px 10px", fontSize: "10px" },
-  statusBar: { background: "#1E293B", borderBottom: "1px solid #334155", padding: "8px 16px", position: "relative" },
-  statusBarContent: { display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" },
-  statusIcon: { display: "flex", alignItems: "center", justifyContent: "center", width: "36px", height: "36px", borderRadius: "50%", background: "rgba(16, 185, 129, 0.1)", flexShrink: 0 },
-  statusInfo: { flex: 1, display: "flex", flexDirection: "column", gap: "2px" },
-  statusText: { display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", fontWeight: "600", flexWrap: "wrap" },
-  statusLocation: { color: "#94A3B8", fontSize: "12px", fontWeight: "400" },
-  statusSpeed: { color: "#64748B", fontSize: "11px" },
-  statusDetailBtn: { display: "flex", alignItems: "center", gap: "4px", padding: "4px 12px", background: "#0F172A", border: "1px solid #334155", borderRadius: "6px", color: "#94A3B8", cursor: "pointer", fontSize: "12px", transition: "all 0.2s" },
-  statusDetailPopup: { position: "absolute", top: "calc(100% + 8px)", right: "16px", background: "#0F172A", border: "1px solid #334155", borderRadius: "10px", padding: "12px 16px", minWidth: "200px", zIndex: 100, boxShadow: "0 8px 24px rgba(0,0,0,0.4)" },
-  statusDetailItem: { display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: "12px", borderBottom: "1px solid #1E293B" },
-  statusDetailLabel: { color: "#64748B" },
-  mainContent: { display: "flex", flex: 1, height: "calc(100vh - 120px)", overflow: "hidden" },
-  mainContentMobile: { flexDirection: "column", height: "auto", minHeight: "calc(100vh - 160px)" },
-  sessionSidebar: { width: "280px", minWidth: "250px", background: "#0F172A", borderRight: "1px solid #1E293B", display: "flex", flexDirection: "column", flexShrink: 0 },
-  sessionSidebarHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px", borderBottom: "1px solid #1E293B" },
-  sessionSidebarTitle: { display: "flex", alignItems: "center", gap: "8px", color: "#94A3B8", fontSize: "14px", fontWeight: "600", margin: 0 },
-  sessionList: { flex: 1, overflowY: "auto", padding: "8px" },
-  sessionItem: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderRadius: "8px", border: "1px solid #334155", marginBottom: "6px", cursor: "pointer", transition: "all 0.2s" },
-  sessionItemLeft: { flex: 1, minWidth: 0 },
-  sessionCode: { color: "#F1F5F9", fontWeight: "700", fontSize: "13px", fontFamily: "monospace", letterSpacing: "0.5px" },
-  sessionMeta: { display: "flex", gap: "8px", marginTop: "2px", flexWrap: "wrap" },
-  sessionMetaItem: { color: "#64748B", fontSize: "10px", display: "flex", alignItems: "center", gap: "3px" },
-  sessionItemRight: { display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 },
-  sessionStatusBadge: { fontSize: "9px", padding: "2px 8px", borderRadius: "12px", fontWeight: "600", textTransform: "uppercase" },
-  emptySession: { textAlign: "center", padding: "32px 16px", color: "#64748B" },
-  sidebar: { width: "340px", minWidth: "300px", background: "#0F172A", borderRight: "1px solid #1E293B", overflowY: "auto", padding: "16px", flexShrink: 0 },
-  sidebarMobile: { width: "100%", minWidth: "unset", borderRight: "none", borderBottom: "1px solid #1E293B", padding: "12px", maxHeight: "60vh" },
-  sidebarContent: { display: "flex", flexDirection: "column", gap: "20px" },
-  section: { background: "#1E293B", borderRadius: "12px", padding: "16px", border: "1px solid #334155" },
-  sectionTitle: { display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", fontWeight: "600", color: "#94A3B8", margin: "0 0 12px 0" },
-  sessionInfo: { display: "flex", flexDirection: "column", gap: "6px" },
-  sessionInfoRow: { display: "flex", justifyContent: "space-between", alignItems: "center" },
-  sessionInfoLabel: { color: "#64748B", fontSize: "12px" },
-  sessionInfoValue: { color: "#F1F5F9", fontSize: "12px", fontWeight: "600" },
-  transportGrid: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "6px", marginBottom: "12px" },
-  transportGridMobile: { gridTemplateColumns: "1fr 1fr", gap: "4px" },
-  transportBtn: { display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", padding: "10px", borderRadius: "8px", border: "2px solid #334155", background: "#1E293B", color: "#64748B", cursor: "pointer", fontSize: "11px", fontWeight: "600", transition: "all 0.2s" },
-  transportBtnMobile: { padding: "8px", fontSize: "10px" },
-  checkpointList: { display: "flex", flexDirection: "column", gap: "6px", maxHeight: "250px", overflowY: "auto" },
-  checkpointListMobile: { maxHeight: "200px" },
-  checkpointItem: { background: "#0F172A", borderRadius: "8px", padding: "8px", border: "1px solid #334155" },
-  checkpointRow: { display: "flex", alignItems: "center", gap: "10px" },
-  checkpointNumber: { width: "28px", height: "28px", borderRadius: "50%", background: "#3B82F6", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: "700", flexShrink: 0 },
-  checkpointNumberMobile: { width: "24px", height: "24px", fontSize: "10px" },
-  checkpointInfo: { flex: 1, minWidth: 0 },
-  checkpointName: { color: "#F1F5F9", fontWeight: "600", fontSize: "13px" },
-  checkpointNameMobile: { fontSize: "12px" },
-  checkpointTime: { color: "#64748B", fontSize: "11px", display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap" },
-  checkpointTimeMobile: { fontSize: "10px" },
-  checkpointActions: { display: "flex", gap: "2px", flexShrink: 0 },
-  checkpointActionsMobile: { gap: "1px" },
-  editForm: { display: "flex", flexDirection: "column", gap: "6px" },
-  editActions: { display: "flex", gap: "6px", justifyContent: "flex-end" },
-  mapContainer: { flex: 1, padding: "16px", background: "#0F172A", minHeight: "300px" },
-  mapContainerMobile: { padding: "8px", minHeight: "250px", height: "50vh" },
-  notificationPanel: { position: "fixed", bottom: "24px", right: "24px", display: "flex", flexDirection: "column", gap: "8px", zIndex: 9999, maxWidth: "380px" },
-  notificationPanelMobile: { bottom: "12px", right: "12px", left: "12px", maxWidth: "unset", width: "auto" },
-  notificationItem: { display: "flex", alignItems: "center", gap: "10px", padding: "12px 16px", background: "#1E293B", borderLeft: "4px solid #3B82F6", borderRadius: "8px", boxShadow: "0 4px 12px rgba(0,0,0,0.4)" },
-  notificationItemMobile: { padding: "10px 12px", fontSize: "12px", gap: "8px" },
-  notificationMessage: { flex: 1, color: "#F1F5F9", fontSize: "13px" },
-  notificationClose: { background: "none", border: "none", color: "#64748B", cursor: "pointer", padding: "4px" },
-  modalOverlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9000, backdropFilter: "blur(4px)" },
-  modalContent: { background: "#0F172A", border: "1px solid #1E293B", borderRadius: "16px", padding: "24px", width: "380px", maxWidth: "95%" },
-  modalContentMobile: { padding: "16px", width: "95%", margin: "10px" },
-  modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" },
-  modalTitle: { display: "flex", alignItems: "center", gap: "8px", color: "#F1F5F9", fontSize: "18px", fontWeight: "700", margin: 0 },
-  modalTitleMobile: { fontSize: "16px" },
-  modalSubtitle: { color: "#64748B", fontSize: "13px", marginBottom: "20px" },
-  modalTypeButtons: { display: "flex", gap: "8px", marginBottom: "16px" },
-  modalTypeButtonsMobile: { gap: "4px" },
-  modalTypeBtn: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", padding: "10px", borderRadius: "8px", border: "2px solid", cursor: "pointer", fontSize: "13px", fontWeight: "600", transition: "all 0.2s" },
-  modalTypeBtnMobile: { padding: "8px", fontSize: "12px", gap: "4px" },
-  modalMinutes: { marginBottom: "20px" },
-  modalLabel: { display: "block", color: "#94A3B8", fontSize: "12px", marginBottom: "8px" },
-  modalMinutesControl: { display: "flex", alignItems: "center", gap: "12px" },
-  modalMinutesControlMobile: { gap: "8px" },
-  modalActions: { display: "flex", gap: "8px", justifyContent: "flex-end" },
-  modalActionsMobile: { gap: "4px" },
-  shareCodeBox: { background: "#1E293B", borderRadius: "10px", padding: "16px", marginBottom: "16px" },
-  shareCodeBoxMobile: { padding: "12px" },
-  shareCodeLabel: { color: "#64748B", fontSize: "11px", marginBottom: "4px" },
-  shareCode: { color: "#60A5FA", fontSize: "28px", fontWeight: "800", letterSpacing: "6px", fontFamily: "monospace" },
-  shareCodeMobile: { fontSize: "22px", letterSpacing: "4px" },
-  shareUrlBox: { background: "#1E293B", borderRadius: "10px", padding: "12px", marginBottom: "16px" },
-  shareUrlBoxMobile: { padding: "10px" },
-  shareUrl: { color: "#94A3B8", fontSize: "12px", wordBreak: "break-all" },
-  shareUrlMobile: { fontSize: "11px" },
-  shareInfo: { color: "#475569", fontSize: "11px", textAlign: "center", marginTop: "10px", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px" },
-  loadingContainer: { minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#0F172A" },
-  loadingSpinner: { width: "48px", height: "48px", border: "4px solid #1E293B", borderTop: "4px solid #3B82F6", borderRadius: "50%", animation: "spin 1s linear infinite" },
-  loadingText: { color: "#64748B", marginTop: "16px", fontSize: "14px" },
-  mobileMenu: { background: "#1E293B", padding: "12px 16px", borderBottom: "1px solid #334155", display: "flex", gap: "12px", flexWrap: "wrap" },
-  mobileMenuItem: { background: "none", border: "none", color: "#94A3B8", display: "flex", alignItems: "center", gap: "6px", padding: "6px 12px", borderRadius: "6px", cursor: "pointer", fontSize: "13px", transition: "all 0.2s" },
-  mobileSessionList: { background: "#0F172A", borderBottom: "1px solid #1E293B", padding: "8px 12px" },
-  mobileSessionHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" },
-  mobileSessionItems: { display: "flex", gap: "6px", flexWrap: "wrap" },
-  mobileSessionItem: { display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px", borderRadius: "6px", background: "#1E293B", cursor: "pointer", fontSize: "12px" },
-  mobileSessionCode: { color: "#F1F5F9", fontWeight: "600", fontFamily: "monospace" }
+  container: {
+    minHeight: "100vh",
+    background: "#0F172A",
+    color: "#F1F5F9",
+    display: "flex",
+    flexDirection: "column",
+    fontFamily: "'Inter', system-ui, -apple-system, sans-serif"
+  },
+  containerMobile: {
+    fontSize: "14px"
+  },
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "12px 20px",
+    background: "#1E293B",
+    borderBottom: "1px solid #334155",
+    flexWrap: "wrap",
+    gap: "8px"
+  },
+  headerMobile: {
+    padding: "8px 12px",
+    gap: "4px"
+  },
+  headerLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px"
+  },
+  headerTitle: {
+    fontSize: "18px",
+    fontWeight: "700",
+    color: "#F1F5F9",
+    margin: 0
+  },
+  headerTitleMobile: {
+    fontSize: "14px"
+  },
+  headerRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    flexWrap: "wrap"
+  },
+  headerRightMobile: {
+    gap: "4px"
+  },
+  statusContainer: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    background: "#0F172A",
+    padding: "4px 10px",
+    borderRadius: "20px",
+    border: "1px solid #334155",
+    flexWrap: "wrap"
+  },
+  statusText: {
+    fontSize: "12px",
+    fontWeight: "600",
+    color: "#F1F5F9"
+  },
+  statusLocation: {
+    fontSize: "10px",
+    color: "#94A3B8",
+    display: "flex",
+    alignItems: "center",
+    gap: "4px"
+  },
+  detailBtn: {
+    background: "none",
+    border: "none",
+    color: "#3B82F6",
+    cursor: "pointer",
+    fontSize: "10px",
+    padding: "2px 6px",
+    borderRadius: "4px",
+    display: "flex",
+    alignItems: "center",
+    gap: "2px"
+  },
+  statusBadge: {
+    display: "flex",
+    alignItems: "center",
+    gap: "4px",
+    padding: "4px 10px",
+    borderRadius: "20px",
+    fontSize: "10px",
+    fontWeight: "600"
+  },
+  statusBadgeMobile: {
+    padding: "2px 8px",
+    fontSize: "9px"
+  },
+  mainContent: {
+    display: "flex",
+    flex: 1,
+    height: "calc(100vh - 70px)",
+    overflow: "hidden"
+  },
+  mainContentMobile: {
+    flexDirection: "column",
+    height: "auto",
+    minHeight: "calc(100vh - 100px)"
+  },
+  sessionSidebar: {
+    width: "260px",
+    minWidth: "230px",
+    background: "#0F172A",
+    borderRight: "1px solid #1E293B",
+    display: "flex",
+    flexDirection: "column",
+    flexShrink: 0
+  },
+  sessionSidebarHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "12px 14px",
+    borderBottom: "1px solid #1E293B"
+  },
+  sessionSidebarTitle: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    color: "#94A3B8",
+    fontSize: "12px",
+    fontWeight: "600",
+    margin: 0
+  },
+  sessionList: {
+    flex: 1,
+    overflowY: "auto",
+    padding: "6px"
+  },
+  sessionItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "8px 10px",
+    borderRadius: "6px",
+    border: "1px solid #334155",
+    marginBottom: "4px",
+    cursor: "pointer",
+    transition: "all 0.2s"
+  },
+  sessionItemLeft: {
+    flex: 1,
+    minWidth: 0
+  },
+  sessionCode: {
+    color: "#F1F5F9",
+    fontWeight: "700",
+    fontSize: "11px",
+    fontFamily: "monospace",
+    letterSpacing: "0.5px"
+  },
+  sessionMeta: {
+    display: "flex",
+    gap: "6px",
+    marginTop: "2px",
+    flexWrap: "wrap"
+  },
+  sessionMetaItem: {
+    color: "#64748B",
+    fontSize: "9px",
+    display: "flex",
+    alignItems: "center",
+    gap: "2px"
+  },
+  sessionItemRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: "4px",
+    flexShrink: 0
+  },
+  sessionStatusBadge: {
+    fontSize: "8px",
+    padding: "2px 6px",
+    borderRadius: "10px",
+    fontWeight: "600",
+    textTransform: "uppercase"
+  },
+  emptySession: {
+    textAlign: "center",
+    padding: "24px 12px",
+    color: "#64748B",
+    fontSize: "12px"
+  },
+  sidebar: {
+    width: "320px",
+    minWidth: "280px",
+    background: "#0F172A",
+    borderRight: "1px solid #1E293B",
+    overflowY: "auto",
+    padding: "12px",
+    flexShrink: 0
+  },
+  sidebarMobile: {
+    width: "100%",
+    minWidth: "unset",
+    borderRight: "none",
+    borderBottom: "1px solid #1E293B",
+    padding: "10px",
+    maxHeight: "50vh"
+  },
+  sidebarContent: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px"
+  },
+  section: {
+    background: "#1E293B",
+    borderRadius: "10px",
+    padding: "12px",
+    border: "1px solid #334155"
+  },
+  sectionTitle: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    fontSize: "12px",
+    fontWeight: "600",
+    color: "#94A3B8",
+    margin: "0 0 10px 0"
+  },
+  sessionInfo: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px"
+  },
+  sessionInfoRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    fontSize: "11px"
+  },
+  sessionInfoLabel: {
+    color: "#64748B",
+    display: "flex",
+    alignItems: "center",
+    gap: "4px"
+  },
+  sessionInfoValue: {
+    color: "#F1F5F9",
+    fontWeight: "600"
+  },
+  transportGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr 1fr 1fr",
+    gap: "4px",
+    marginBottom: "8px"
+  },
+  transportGridMobile: {
+    gridTemplateColumns: "1fr 1fr",
+    gap: "3px"
+  },
+  transportBtn: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "2px",
+    padding: "8px",
+    borderRadius: "6px",
+    border: "2px solid #334155",
+    background: "#1E293B",
+    color: "#64748B",
+    cursor: "pointer",
+    fontSize: "9px",
+    fontWeight: "600",
+    transition: "all 0.2s"
+  },
+  transportBtnMobile: {
+    padding: "6px",
+    fontSize: "8px"
+  },
+  checkpointList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    maxHeight: "200px",
+    overflowY: "auto"
+  },
+  checkpointListMobile: {
+    maxHeight: "150px"
+  },
+  checkpointItem: {
+    background: "#0F172A",
+    borderRadius: "6px",
+    padding: "6px",
+    border: "1px solid #334155"
+  },
+  checkpointRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px"
+  },
+  checkpointNumber: {
+    width: "24px",
+    height: "24px",
+    borderRadius: "50%",
+    background: "#3B82F6",
+    color: "white",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "10px",
+    fontWeight: "700",
+    flexShrink: 0
+  },
+  checkpointNumberMobile: {
+    width: "20px",
+    height: "20px",
+    fontSize: "8px"
+  },
+  checkpointInfo: {
+    flex: 1,
+    minWidth: 0
+  },
+  checkpointName: {
+    color: "#F1F5F9",
+    fontWeight: "600",
+    fontSize: "12px"
+  },
+  checkpointNameMobile: {
+    fontSize: "11px"
+  },
+  checkpointTime: {
+    color: "#64748B",
+    fontSize: "10px",
+    display: "flex",
+    alignItems: "center",
+    gap: "3px",
+    flexWrap: "wrap"
+  },
+  checkpointTimeMobile: {
+    fontSize: "9px"
+  },
+  checkpointActions: {
+    display: "flex",
+    gap: "2px",
+    flexShrink: 0
+  },
+  checkpointActionsMobile: {
+    gap: "1px"
+  },
+  editForm: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px"
+  },
+  editActions: {
+    display: "flex",
+    gap: "4px",
+    justifyContent: "flex-end"
+  },
+  mapContainer: {
+    flex: 1,
+    padding: "12px",
+    background: "#0F172A",
+    minHeight: "300px"
+  },
+  mapContainerMobile: {
+    padding: "6px",
+    minHeight: "200px",
+    height: "40vh"
+  },
+  notificationPanel: {
+    position: "fixed",
+    bottom: "16px",
+    right: "16px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    zIndex: 9999,
+    maxWidth: "360px"
+  },
+  notificationPanelMobile: {
+    bottom: "8px",
+    right: "8px",
+    left: "8px",
+    maxWidth: "unset",
+    width: "auto"
+  },
+  notificationItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "10px 14px",
+    background: "#1E293B",
+    borderLeft: "3px solid #3B82F6",
+    borderRadius: "6px",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+    animation: "slideIn 0.3s ease"
+  },
+  notificationItemMobile: {
+    padding: "8px 10px",
+    fontSize: "11px",
+    gap: "6px"
+  },
+  notificationMessage: {
+    flex: 1,
+    color: "#F1F5F9",
+    fontSize: "12px"
+  },
+  notificationClose: {
+    background: "none",
+    border: "none",
+    color: "#64748B",
+    cursor: "pointer",
+    padding: "2px"
+  },
+  modalOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.7)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 9000,
+    backdropFilter: "blur(4px)"
+  },
+  modalContent: {
+    background: "#0F172A",
+    border: "1px solid #1E293B",
+    borderRadius: "14px",
+    padding: "20px",
+    width: "380px",
+    maxWidth: "95%"
+  },
+  modalContentMobile: {
+    padding: "14px",
+    width: "95%",
+    margin: "8px"
+  },
+  modalHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "6px"
+  },
+  modalTitle: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    color: "#F1F5F9",
+    fontSize: "16px",
+    fontWeight: "700",
+    margin: 0
+  },
+  modalTitleMobile: {
+    fontSize: "14px"
+  },
+  modalSubtitle: {
+    color: "#64748B",
+    fontSize: "12px",
+    marginBottom: "16px"
+  },
+  modalTypeButtons: {
+    display: "flex",
+    gap: "6px",
+    marginBottom: "12px"
+  },
+  modalTypeButtonsMobile: {
+    gap: "4px"
+  },
+  modalTypeBtn: {
+    flex: 1,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "4px",
+    padding: "8px",
+    borderRadius: "6px",
+    border: "2px solid",
+    cursor: "pointer",
+    fontSize: "12px",
+    fontWeight: "600",
+    transition: "all 0.2s"
+  },
+  modalTypeBtnMobile: {
+    padding: "6px",
+    fontSize: "11px",
+    gap: "3px"
+  },
+  modalMinutes: {
+    marginBottom: "16px"
+  },
+  modalLabel: {
+    display: "block",
+    color: "#94A3B8",
+    fontSize: "11px",
+    marginBottom: "6px"
+  },
+  modalMinutesControl: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px"
+  },
+  modalMinutesControlMobile: {
+    gap: "6px"
+  },
+  modalActions: {
+    display: "flex",
+    gap: "6px",
+    justifyContent: "flex-end"
+  },
+  modalActionsMobile: {
+    gap: "4px"
+  },
+  shareCodeBox: {
+    background: "#1E293B",
+    borderRadius: "8px",
+    padding: "12px",
+    marginBottom: "12px"
+  },
+  shareCodeBoxMobile: {
+    padding: "10px"
+  },
+  shareCodeLabel: {
+    color: "#64748B",
+    fontSize: "10px",
+    marginBottom: "2px"
+  },
+  shareCode: {
+    color: "#60A5FA",
+    fontSize: "24px",
+    fontWeight: "800",
+    letterSpacing: "4px",
+    fontFamily: "monospace"
+  },
+  shareCodeMobile: {
+    fontSize: "18px",
+    letterSpacing: "3px"
+  },
+  shareUrlBox: {
+    background: "#1E293B",
+    borderRadius: "8px",
+    padding: "10px",
+    marginBottom: "12px"
+  },
+  shareUrlBoxMobile: {
+    padding: "8px"
+  },
+  shareUrl: {
+    color: "#94A3B8",
+    fontSize: "11px",
+    wordBreak: "break-all"
+  },
+  shareUrlMobile: {
+    fontSize: "10px"
+  },
+  shareInfo: {
+    color: "#475569",
+    fontSize: "10px",
+    textAlign: "center",
+    marginTop: "8px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "4px"
+  },
+  loadingContainer: {
+    minHeight: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#0F172A"
+  },
+  loadingSpinner: {
+    width: "40px",
+    height: "40px",
+    border: "4px solid #1E293B",
+    borderTop: "4px solid #3B82F6",
+    borderRadius: "50%",
+    animation: "spin 1s linear infinite"
+  },
+  loadingText: {
+    color: "#64748B",
+    marginTop: "12px",
+    fontSize: "13px"
+  },
+  mobileMenu: {
+    background: "#1E293B",
+    padding: "10px 14px",
+    borderBottom: "1px solid #334155",
+    display: "flex",
+    gap: "10px",
+    flexWrap: "wrap"
+  },
+  mobileMenuItem: {
+    background: "none",
+    border: "none",
+    color: "#94A3B8",
+    display: "flex",
+    alignItems: "center",
+    gap: "4px",
+    padding: "4px 10px",
+    borderRadius: "4px",
+    cursor: "pointer",
+    fontSize: "12px",
+    transition: "all 0.2s"
+  },
+  mobileSessionList: {
+    background: "#0F172A",
+    borderBottom: "1px solid #1E293B",
+    padding: "6px 10px"
+  },
+  mobileSessionHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "6px"
+  },
+  mobileSessionItems: {
+    display: "flex",
+    gap: "4px",
+    flexWrap: "wrap"
+  },
+  mobileSessionItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    padding: "4px 8px",
+    borderRadius: "4px",
+    background: "#1E293B",
+    cursor: "pointer",
+    fontSize: "11px"
+  },
+  mobileSessionCode: {
+    color: "#F1F5F9",
+    fontWeight: "600",
+    fontFamily: "monospace"
+  },
+  // Report styles
+  reportContent: {
+    padding: "4px 0"
+  },
+  reportHeader: {
+    textAlign: "center",
+    padding: "12px 0",
+    borderBottom: "1px solid #1E293B",
+    marginBottom: "16px"
+  },
+  reportTitle: {
+    color: "#F1F5F9",
+    fontSize: "18px",
+    margin: 0
+  },
+  reportSubtitle: {
+    color: "#94A3B8",
+    fontSize: "12px",
+    margin: "4px 0"
+  },
+  reportSection: {
+    marginBottom: "16px",
+    padding: "12px",
+    background: "#1E293B",
+    borderRadius: "8px",
+    border: "1px solid #334155"
+  },
+  reportSectionTitle: {
+    color: "#94A3B8",
+    fontSize: "13px",
+    fontWeight: "600",
+    margin: "0 0 10px 0"
+  },
+  reportGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: "8px"
+  },
+  reportItem: {
+    display: "flex",
+    flexDirection: "column",
+    padding: "6px",
+    background: "#0F172A",
+    borderRadius: "4px"
+  },
+  reportLabel: {
+    color: "#64748B",
+    fontSize: "10px"
+  },
+  reportValue: {
+    color: "#F1F5F9",
+    fontSize: "13px",
+    fontWeight: "600"
+  },
+  reportStats: {
+    display: "flex",
+    gap: "8px",
+    flexWrap: "wrap",
+    marginBottom: "10px"
+  },
+  reportStat: {
+    padding: "4px 12px",
+    borderRadius: "12px",
+    fontSize: "11px",
+    fontWeight: "600"
+  },
+  reportNotificationList: {
+    maxHeight: "150px",
+    overflowY: "auto"
+  },
+  reportNotificationItem: {
+    display: "flex",
+    alignItems: "center",
+    padding: "4px 8px",
+    background: "#0F172A",
+    borderRadius: "4px",
+    marginBottom: "4px",
+    fontSize: "11px"
+  },
+  reportCheckpointList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px"
+  },
+  reportCheckpointItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "6px 8px",
+    background: "#0F172A",
+    borderRadius: "4px"
+  },
+  reportCheckpointNumber: {
+    width: "22px",
+    height: "22px",
+    borderRadius: "50%",
+    background: "#3B82F6",
+    color: "white",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "10px",
+    fontWeight: "700",
+    flexShrink: 0
+  },
+  reportCheckpointInfo: {
+    flex: 1,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    flexWrap: "wrap"
+  },
+  reportCheckpointName: {
+    color: "#F1F5F9",
+    fontSize: "12px",
+    fontWeight: "600"
+  },
+  reportCheckpointTime: {
+    color: "#94A3B8",
+    fontSize: "11px"
+  },
+  reportStopList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px"
+  },
+  reportStopItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "6px 8px",
+    background: "#0F172A",
+    borderRadius: "4px"
+  },
+  reportStopNumber: {
+    width: "22px",
+    height: "22px",
+    borderRadius: "50%",
+    background: "#F59E0B",
+    color: "white",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "10px",
+    fontWeight: "700",
+    flexShrink: 0
+  },
+  reportStopInfo: {
+    flex: 1
+  },
+  reportStopReason: {
+    color: "#F1F5F9",
+    fontSize: "12px",
+    fontWeight: "600"
+  },
+  reportStopLocation: {
+    color: "#94A3B8",
+    fontSize: "11px",
+    marginLeft: "8px"
+  },
+  reportStopTime: {
+    color: "#64748B",
+    fontSize: "10px",
+    display: "block"
+  },
+  reportFooter: {
+    marginTop: "16px",
+    paddingTop: "12px",
+    borderTop: "1px solid #1E293B"
+  }
 };
 
-// Inject animasi global
+// Tambahkan animasi
 const styleSheet = document.createElement("style");
 styleSheet.textContent = `
-  @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-  @media (max-width: 768px) { .leaflet-control-zoom { display: none !important; } }
+  @keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  @media (max-width: 768px) {
+    .leaflet-control-zoom {
+      display: none !important;
+    }
+  }
+  @media print {
+    .modalOverlay {
+      position: static !important;
+      background: white !important;
+      backdrop-filter: none !important;
+    }
+    .modalContent {
+      box-shadow: none !important;
+      border: 1px solid #ddd !important;
+    }
+    button {
+      display: none !important;
+    }
+  }
 `;
-if (!document.head.querySelector('style[data-touring-page]')) {
-  styleSheet.setAttribute('data-touring-page', '1');
-  document.head.appendChild(styleSheet);
-}
+document.head.appendChild(styleSheet);
