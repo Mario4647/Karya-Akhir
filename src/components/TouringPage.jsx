@@ -10,9 +10,9 @@ import {
   FiZap, FiMenu, FiMap, FiBell, FiList, FiPlay, FiSquare,
   FiHash, FiGlobe, FiMinus, FiInfo, FiLink, FiEyeOff,
   FiCalendar, FiClock as FiClockIcon, FiUsers, FiMoreVertical,
-  FiPower, FiAlertTriangle, FiTrain
+  FiPower, FiAlertTriangle
 } from "react-icons/fi";
-import { MdTwoWheeler, MdDirectionsCar, MdDirectionsWalk } from "react-icons/md";
+import { MdTwoWheeler, MdDirectionsCar, MdDirectionsWalk, MdTrain } from "react-icons/md";
 
 // ─── UTILS ────────────────────────────────────────────────────────────────────
 
@@ -73,7 +73,7 @@ function getTransportIcon(type) {
     motor: <MdTwoWheeler size={16} />,
     mobil: <MdDirectionsCar size={16} />,
     jalan: <MdDirectionsWalk size={16} />,
-    kereta: <FiTrain size={16} />
+    kereta: <MdTrain size={16} />
   };
   return icons[type] || <MdDirectionsCar size={16} />;
 }
@@ -86,7 +86,7 @@ function getTransportLabel(type) {
 const TRANSPORT_OPTIONS = [
   { value: "motor", label: "Motor", icon: <MdTwoWheeler size={20} /> },
   { value: "mobil", label: "Mobil", icon: <MdDirectionsCar size={20} /> },
-  { value: "kereta", label: "Kereta", icon: <FiTrain size={20} /> },
+  { value: "kereta", label: "Kereta", icon: <MdTrain size={20} /> },
   { value: "jalan", label: "Jalan Kaki", icon: <MdDirectionsWalk size={20} /> }
 ];
 
@@ -992,7 +992,7 @@ export default function TouringPage() {
           </span>
           {!isMobile && (
             <>
-              <button onClick={() => setShowSharePanel(true)} style={{ ...btnPrimary, ...(isMobile ? btnPrimaryMobile : {}) }}>
+              <button onClick={() => setShowSharePanel(true)} style={btnPrimary}>
                 <FiShare2 size={14} /> Bagikan
               </button>
               <button onClick={() => setShowSettings(!showSettings)} style={{ ...iconBtn, padding: "8px 12px" }}>
