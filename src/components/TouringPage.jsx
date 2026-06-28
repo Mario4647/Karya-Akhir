@@ -106,72 +106,8 @@ const TRANSPORT_OPTIONS = [
   { value: "jalan", label: "Jalan Kaki", icon: <MdDirectionsWalk size={20} /> }
 ];
 
-const DEFAULT_CHECKPOINTS = [
-  { 
-    city_name: "Kutoarjo", 
-    latitude: -7.7200, 
-    longitude: 109.9084, 
-    scheduled_date: new Date().toISOString().split('T')[0],
-    scheduled_time: "07:00",
-    is_final_destination: false
-  },
-  { 
-    city_name: "Yogyakarta", 
-    latitude: -7.7956, 
-    longitude: 110.3695, 
-    scheduled_date: new Date().toISOString().split('T')[0],
-    scheduled_time: "08:30",
-    is_final_destination: false
-  },
-  { 
-    city_name: "Klaten", 
-    latitude: -7.7059, 
-    longitude: 110.6077, 
-    scheduled_date: new Date().toISOString().split('T')[0],
-    scheduled_time: "09:30",
-    is_final_destination: false
-  },
-  { 
-    city_name: "Wonogiri", 
-    latitude: -7.8126, 
-    longitude: 110.9228, 
-    scheduled_date: new Date().toISOString().split('T')[0],
-    scheduled_time: "11:00",
-    is_final_destination: false
-  },
-  { 
-    city_name: "Purwantoro", 
-    latitude: -7.8717, 
-    longitude: 111.3321, 
-    scheduled_date: new Date().toISOString().split('T')[0],
-    scheduled_time: "12:30",
-    is_final_destination: false
-  },
-  { 
-    city_name: "Ponorogo", 
-    latitude: -7.8683, 
-    longitude: 111.4617, 
-    scheduled_date: new Date().toISOString().split('T')[0],
-    scheduled_time: "14:00",
-    is_final_destination: false
-  },
-  { 
-    city_name: "Trenggalek", 
-    latitude: -8.0501, 
-    longitude: 111.7082, 
-    scheduled_date: new Date().toISOString().split('T')[0],
-    scheduled_time: "15:30",
-    is_final_destination: false
-  },
-  { 
-    city_name: "Tulungagung", 
-    latitude: -8.0661, 
-    longitude: 111.9044, 
-    scheduled_date: new Date().toISOString().split('T')[0],
-    scheduled_time: "17:00",
-    is_final_destination: true
-  },
-];
+// DEFAULT CHECKPOINTS KOSONG
+const DEFAULT_CHECKPOINTS = [];
 
 // ─── STYLES ───────────────────────────────────────────────────────────────────
 
@@ -273,6 +209,7 @@ export default function TouringPage() {
   const [isStopped, setIsStopped] = useState(false);
   const [stopStartTime, setStopStartTime] = useState(null);
   const [currentStopId, setCurrentStopId] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
   
   const watchIdRef = useRef(null);
   const notificationIdRef = useRef(0);
@@ -285,7 +222,6 @@ export default function TouringPage() {
   const isTrackingRef = useRef(false);
   const lastLocationRef = useRef(null);
   const isSessionCompletedRef = useRef(false);
-  const checkpointsSavedRef = useRef(false);
 
   // ─── RESPONSIVE ─────────────────────────────────────────────────────────────
 
@@ -294,14 +230,6 @@ export default function TouringPage() {
       setIsMobile(window.innerWidth < 768);
     };
     window.addEventListener('resize', handleResize);
-    
-    // Force map to show on mobile
-    setTimeout(() => {
-      if (window.L && mapInstanceRef.current) {
-        mapInstanceRef.current.invalidateSize();
-      }
-    }, 1000);
-    
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
@@ -379,7 +307,7 @@ export default function TouringPage() {
         fuel_liters: data.fuel_liters || 5
       });
       
-      // Load checkpoints dari database
+      // Load checkpoints dari database - JANGAN PAKAI DEFAULT
       let cpData = [];
       if (data.touring_checkpoints && data.touring_checkpoints.length > 0) {
         cpData = data.touring_checkpoints
@@ -387,22 +315,12 @@ export default function TouringPage() {
           .sort((a, b) => a.order_index - b.order_index);
       }
       
-      // Jika tidak ada checkpoint, buat default
-      if (cpData.length === 0) {
-        const today = new Date().toISOString().split('T')[0];
-        cpData = DEFAULT_CHECKPOINTS.map((cp, i) => ({
-          ...cp,
-          id: null,
-          session_id: data.id,
-          order_index: i,
-          scheduled_date: cp.scheduled_date || today,
-          status: "pending",
-          is_deleted: false
-        }));
+      // Jika ada data dari checkpoints_data di session
+      if (cpData.length === 0 && data.checkpoints_data && data.checkpoints_data.length > 0) {
+        cpData = data.checkpoints_data;
       }
       
       setCheckpoints(cpData);
-      checkpointsSavedRef.current = true;
       
       sessionIdRef.current = data.id;
       setSelectedSessionId(data.id);
@@ -497,14 +415,13 @@ export default function TouringPage() {
     }
   }, []);
 
-  // Buat session baru
+  // Buat session baru - TANPA DEFAULT CHECKPOINTS
   const createNewSession = useCallback(async () => {
     try {
       setIsLoading(true);
       setIsCreatingNew(true);
       
       const code = generateSessionCode();
-      const today = new Date().toISOString().split('T')[0];
       const { data: newSession, error: createError } = await supabase
         .from("touring_sessions")
         .insert({
@@ -514,33 +431,13 @@ export default function TouringPage() {
           status: "pending",
           late_departure: false,
           total_distance_km: 0,
-          manual_start_only: true
+          manual_start_only: true,
+          checkpoints_data: [] // Kosong
         })
         .select()
         .single();
 
       if (createError) throw createError;
-
-      // Insert checkpoints
-      const checkpointsData = DEFAULT_CHECKPOINTS.map((cp, i) => ({
-        session_id: newSession.id,
-        order_index: i,
-        city_name: cp.city_name,
-        latitude: cp.latitude,
-        longitude: cp.longitude,
-        scheduled_date: cp.scheduled_date || today,
-        scheduled_time: cp.scheduled_time,
-        scheduled_datetime: new Date(`${cp.scheduled_date || today}T${cp.scheduled_time}:00`).toISOString(),
-        status: "pending",
-        is_final_destination: cp.is_final_destination || false,
-        is_deleted: false
-      }));
-
-      const { error: cpError } = await supabase
-        .from("touring_checkpoints")
-        .insert(checkpointsData);
-
-      if (cpError) throw cpError;
 
       // Refresh session list
       const { data: sessionsData } = await supabase
@@ -598,25 +495,27 @@ export default function TouringPage() {
     }
   }, [selectedSessionId, sessions, loadSessionData, createNewSession]);
 
-  // ─── SAVE CHECKPOINTS ──────────────────────────────────────────────────
+  // ─── SAVE CHECKPOINTS KE DATABASE ──────────────────────────────────────
 
   const saveCheckpointsToDatabase = useCallback(async () => {
-    if (!sessionIdRef.current || !checkpointsSavedRef.current) return;
-
+    if (!sessionIdRef.current || isSaving) return;
+    
+    setIsSaving(true);
+    
     try {
-      // Hapus semua checkpoint lama (soft delete)
+      // 1. Soft delete semua checkpoint lama
       await supabase
         .from("touring_checkpoints")
         .update({ is_deleted: true })
         .eq("session_id", sessionIdRef.current);
 
-      // Insert checkpoint baru
+      // 2. Insert checkpoint baru
       for (const cp of checkpoints) {
         const scheduledDatetime = cp.scheduled_date && cp.scheduled_time 
           ? new Date(`${cp.scheduled_date}T${cp.scheduled_time}:00`).toISOString()
           : null;
         
-        await supabase
+        const { error: insertError } = await supabase
           .from("touring_checkpoints")
           .insert({
             session_id: sessionIdRef.current,
@@ -624,17 +523,21 @@ export default function TouringPage() {
             city_name: cp.city_name,
             latitude: cp.latitude,
             longitude: cp.longitude,
-            scheduled_date: cp.scheduled_date,
-            scheduled_time: cp.scheduled_time,
+            scheduled_date: cp.scheduled_date || new Date().toISOString().split('T')[0],
+            scheduled_time: cp.scheduled_time || "12:00",
             scheduled_datetime: scheduledDatetime,
             status: cp.status || "pending",
             is_final_destination: cp.is_final_destination || false,
             is_deleted: false,
             delay_minutes: cp.delay_minutes || 0
           });
+
+        if (insertError) {
+          console.error("Error inserting checkpoint:", insertError);
+        }
       }
 
-      // Update session dengan data checkpoints
+      // 3. Update session dengan checkpoints_data
       await supabase
         .from("touring_sessions")
         .update({
@@ -643,7 +546,7 @@ export default function TouringPage() {
         })
         .eq("id", sessionIdRef.current);
 
-      // Refresh session list
+      // 4. Refresh session list
       const { data: sessionsData } = await supabase
         .from("touring_sessions")
         .select("*")
@@ -653,15 +556,21 @@ export default function TouringPage() {
         setSessions(sessionsData);
       }
 
-      checkpointsSavedRef.current = true;
+      // 5. Reload data untuk memastikan
+      await loadSessionData(sessionIdRef.current);
+      
+      alert("Data rute berhasil disimpan!");
       
     } catch (error) {
       console.error("Error saving checkpoints:", error);
       alert("Gagal menyimpan perubahan rute. Silakan coba lagi.");
+    } finally {
+      setIsSaving(false);
     }
-  }, [checkpoints]);
+  }, [checkpoints, loadSessionData]);
 
-  // Simpan semua data ke database
+  // ─── SAVE ALL DATA ──────────────────────────────────────────────────────
+
   const saveAllToDatabase = useCallback(async () => {
     if (!sessionIdRef.current) return;
 
@@ -683,15 +592,6 @@ export default function TouringPage() {
 
       // Save checkpoints
       await saveCheckpointsToDatabase();
-
-      const { data: sessionsData } = await supabase
-        .from("touring_sessions")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (sessionsData) {
-        setSessions(sessionsData);
-      }
 
     } catch (error) {
       console.error("Error saving all data:", error);
@@ -935,6 +835,11 @@ export default function TouringPage() {
       return;
     }
 
+    if (checkpoints.length === 0) {
+      alert("Silakan tambahkan rute perjalanan terlebih dahulu!");
+      return;
+    }
+
     if (!navigator.geolocation) {
       alert("Browser Anda tidak mendukung Geolocation. Pastikan GPS aktif.");
       return;
@@ -966,7 +871,7 @@ export default function TouringPage() {
         total_distance_km: 0
       })
       .eq("id", sessionIdRef.current)
-      .then(() => saveAllToDatabase());
+      .then(() => {});
 
     startBackgroundTracking(sessionIdRef.current);
     startMovementDetection();
@@ -1034,7 +939,7 @@ export default function TouringPage() {
     );
 
     addNotification("info", "🚀 Perjalanan dimulai!", 0);
-  }, [saveAllToDatabase, startBackgroundTracking, updateStatusMessage, sessionStatus]);
+  }, [checkpoints, startBackgroundTracking, updateStatusMessage, sessionStatus]);
 
   const stopTracking = useCallback(async () => {
     if (watchIdRef.current) {
@@ -1061,12 +966,12 @@ export default function TouringPage() {
       })
       .eq("id", sessionIdRef.current);
 
-    saveAllToDatabase();
     updateStatusMessage("completed");
     addNotification("info", `✅ Perjalanan selesai! Total jarak: ${totalDistanceRef.current.toFixed(1)} km`, 0);
     
+    // Auto generate report
     await generateReport();
-  }, [saveAllToDatabase, stopBackgroundTracking, updateStatusMessage, currentStopId, resumeFromStop]);
+  }, [stopBackgroundTracking, updateStatusMessage, currentStopId, resumeFromStop]);
 
   // ─── CHECK CHECKPOINT ──────────────────────────────────────────────────
 
@@ -1104,15 +1009,13 @@ export default function TouringPage() {
           }
         }
 
-        saveAllToDatabase();
-
         if (cp.is_final_destination) {
           stopTracking();
           addNotification("info", `🎉 Perjalanan selesai! Tiba di tujuan akhir: ${cp.city_name}`, 0);
         }
       }
     });
-  }, [checkpoints, saveAllToDatabase, stopTracking]);
+  }, [checkpoints, stopTracking]);
 
   // ─── NOTIFICATIONS ─────────────────────────────────────────────────────
 
@@ -1159,8 +1062,8 @@ export default function TouringPage() {
       ? `⏰ Telat ${minutes} menit di ${cp.city_name} (manual)` 
       : `⏰ Lebih awal ${minutes} menit di ${cp.city_name} (manual)`;
     addNotification(type, message, minutes);
-    saveAllToDatabase();
-  }, [checkpoints, addNotification, saveAllToDatabase]);
+    saveCheckpointsToDatabase();
+  }, [checkpoints, addNotification, saveCheckpointsToDatabase]);
 
   // ─── LATE DEPARTURE ──────────────────────────────────────────────────
 
@@ -1190,8 +1093,8 @@ export default function TouringPage() {
     setCheckpoints(updated);
     setEditingCheckpoint(null);
     setEditForm({});
-    saveAllToDatabase();
-  }, [editingCheckpoint, editForm, checkpoints, saveAllToDatabase]);
+    saveCheckpointsToDatabase();
+  }, [editingCheckpoint, editForm, checkpoints, saveCheckpointsToDatabase]);
 
   // ─── CHECKPOINT CRUD ──────────────────────────────────────────────────
 
@@ -1213,9 +1116,7 @@ export default function TouringPage() {
     };
     const newCheckpoints = [...checkpoints, newCp];
     setCheckpoints(newCheckpoints);
-    checkpointsSavedRef.current = false;
-    saveAllToDatabase();
-  }, [checkpoints, saveAllToDatabase]);
+  }, [checkpoints]);
 
   const removeCheckpoint = useCallback((index) => {
     if (isSessionCompletedRef.current) {
@@ -1228,9 +1129,7 @@ export default function TouringPage() {
     }
     const newCheckpoints = checkpoints.filter((_, i) => i !== index);
     setCheckpoints(newCheckpoints);
-    checkpointsSavedRef.current = false;
-    saveAllToDatabase();
-  }, [checkpoints, saveAllToDatabase]);
+  }, [checkpoints]);
 
   const moveCheckpoint = useCallback((index, direction) => {
     if (isSessionCompletedRef.current) return;
@@ -1240,9 +1139,7 @@ export default function TouringPage() {
     if (swap < 0 || swap >= arr.length) return;
     [arr[index], arr[swap]] = [arr[swap], arr[index]];
     setCheckpoints(arr);
-    checkpointsSavedRef.current = false;
-    saveAllToDatabase();
-  }, [checkpoints, saveAllToDatabase]);
+  }, [checkpoints]);
 
   // ─── SHARE ────────────────────────────────────────────────────────────
 
@@ -1662,6 +1559,10 @@ export default function TouringPage() {
                     <span style={styles.sessionInfoLabel}><FiMapPin size={12} /> Total Jarak</span>
                     <span style={styles.sessionInfoValue}>{totalDistance.toFixed(1)} km</span>
                   </div>
+                  <div style={styles.sessionInfoRow}>
+                    <span style={styles.sessionInfoLabel}><FiMapPin size={12} /> Jumlah Kota</span>
+                    <span style={styles.sessionInfoValue}>{checkpoints.length} kota</span>
+                  </div>
                   {lateDeparture && !isSessionComplete && (
                     <div style={{ ...styles.sessionInfoRow, color: "#F59E0B" }}>
                       <span style={styles.sessionInfoLabel}><FiAlertTriangle size={12} /> Status</span>
@@ -1730,107 +1631,123 @@ export default function TouringPage() {
                   placeholder="Nama Pengemudi/Penumpang"
                 />
                 <button onClick={saveAllToDatabase} style={{ ...btnPrimary, width: "100%", justifyContent: "center" }}>
-                  <FiSave size={14} /> Simpan Data
+                  <FiSave size={14} /> Simpan Data Transportasi
                 </button>
               </div>
 
               {/* Checkpoints Editor */}
               <div style={styles.section}>
                 <h3 style={styles.sectionTitle}><FiMap size={14} /> Rute & Jadwal</h3>
-                <div style={{ ...styles.checkpointList, ...(isMobile ? styles.checkpointListMobile : {}) }}>
-                  {checkpoints.map((cp, i) => (
-                    <div key={i} style={styles.checkpointItem}>
-                      {editingCheckpoint === i ? (
-                        <div style={styles.editForm}>
-                          <input
-                            value={editForm.city_name || ""}
-                            onChange={e => setEditForm({ ...editForm, city_name: e.target.value })}
-                            style={inputStyle}
-                            placeholder="Nama Kota"
-                          />
-                          <input
-                            type="date"
-                            value={editForm.scheduled_date || ""}
-                            onChange={e => setEditForm({ ...editForm, scheduled_date: e.target.value })}
-                            style={inputStyle}
-                          />
-                          <input
-                            type="time"
-                            value={editForm.scheduled_time || ""}
-                            onChange={e => setEditForm({ ...editForm, scheduled_time: e.target.value })}
-                            style={inputStyle}
-                          />
-                          <input
-                            type="number"
-                            step="0.0001"
-                            value={editForm.latitude || ""}
-                            onChange={e => setEditForm({ ...editForm, latitude: parseFloat(e.target.value) || 0 })}
-                            style={inputStyle}
-                            placeholder="Latitude"
-                          />
-                          <input
-                            type="number"
-                            step="0.0001"
-                            value={editForm.longitude || ""}
-                            onChange={e => setEditForm({ ...editForm, longitude: parseFloat(e.target.value) || 0 })}
-                            style={inputStyle}
-                            placeholder="Longitude"
-                          />
-                          <label style={{ color: "#94A3B8", fontSize: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                {checkpoints.length === 0 ? (
+                  <div style={{ textAlign: "center", color: "#64748B", padding: "20px 0" }}>
+                    <p>Belum ada rute</p>
+                    <p style={{ fontSize: "12px" }}>Tambahkan kota di bawah ini</p>
+                  </div>
+                ) : (
+                  <div style={{ ...styles.checkpointList, ...(isMobile ? styles.checkpointListMobile : {}) }}>
+                    {checkpoints.map((cp, i) => (
+                      <div key={i} style={styles.checkpointItem}>
+                        {editingCheckpoint === i ? (
+                          <div style={styles.editForm}>
                             <input
-                              type="checkbox"
-                              checked={editForm.is_final_destination || false}
-                              onChange={e => setEditForm({ ...editForm, is_final_destination: e.target.checked })}
+                              value={editForm.city_name || ""}
+                              onChange={e => setEditForm({ ...editForm, city_name: e.target.value })}
+                              style={inputStyle}
+                              placeholder="Nama Kota"
                             />
-                            Tujuan Akhir
-                          </label>
-                          <div style={styles.editActions}>
-                            <button onClick={() => setEditingCheckpoint(null)} style={btnSecondary}>Batal</button>
-                            <button onClick={saveEditCheckpoint} style={btnPrimary}>Simpan</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={styles.checkpointRow}>
-                          <div style={{ ...styles.checkpointNumber, ...(isMobile ? styles.checkpointNumberMobile : {}) }}>
-                            {i + 1}
-                          </div>
-                          <div style={styles.checkpointInfo}>
-                            <div style={{ ...styles.checkpointName, ...(isMobile ? styles.checkpointNameMobile : {}) }}>
-                              {cp.city_name}
-                              {cp.is_final_destination && (
-                                <span style={{ color: "#F59E0B", fontSize: "10px", marginLeft: "6px" }}>🏁</span>
-                              )}
-                              {cp.status === "reached" && (
-                                <FiCheckCircle size={12} color="#10B981" style={{ marginLeft: "6px" }} />
-                              )}
+                            <input
+                              type="date"
+                              value={editForm.scheduled_date || ""}
+                              onChange={e => setEditForm({ ...editForm, scheduled_date: e.target.value })}
+                              style={inputStyle}
+                            />
+                            <input
+                              type="time"
+                              value={editForm.scheduled_time || ""}
+                              onChange={e => setEditForm({ ...editForm, scheduled_time: e.target.value })}
+                              style={inputStyle}
+                            />
+                            <input
+                              type="number"
+                              step="0.0001"
+                              value={editForm.latitude || ""}
+                              onChange={e => setEditForm({ ...editForm, latitude: parseFloat(e.target.value) || 0 })}
+                              style={inputStyle}
+                              placeholder="Latitude"
+                            />
+                            <input
+                              type="number"
+                              step="0.0001"
+                              value={editForm.longitude || ""}
+                              onChange={e => setEditForm({ ...editForm, longitude: parseFloat(e.target.value) || 0 })}
+                              style={inputStyle}
+                              placeholder="Longitude"
+                            />
+                            <label style={{ color: "#94A3B8", fontSize: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                              <input
+                                type="checkbox"
+                                checked={editForm.is_final_destination || false}
+                                onChange={e => setEditForm({ ...editForm, is_final_destination: e.target.checked })}
+                              />
+                              Tujuan Akhir
+                            </label>
+                            <div style={styles.editActions}>
+                              <button onClick={() => setEditingCheckpoint(null)} style={btnSecondary}>Batal</button>
+                              <button onClick={saveEditCheckpoint} style={btnPrimary}>Simpan</button>
                             </div>
-                            <div style={{ ...styles.checkpointTime, ...(isMobile ? styles.checkpointTimeMobile : {}) }}>
-                              <FiCalendar size={10} /> {formatDate(cp.scheduled_date)} <FiClock size={10} /> {formatTime(cp.scheduled_time)}
-                              {cp.delay_minutes !== 0 && cp.delay_minutes != null && (
-                                <span style={{ color: cp.delay_minutes > 0 ? "#FCA5A5" : "#FDE68A", marginLeft: "8px" }}>
-                                  {cp.delay_minutes > 0 ? <FiArrowDown size={10} /> : <FiArrowUp size={10} />}
-                                  {Math.abs(cp.delay_minutes)}mnt
-                                </span>
-                              )}
+                          </div>
+                        ) : (
+                          <div style={styles.checkpointRow}>
+                            <div style={{ ...styles.checkpointNumber, ...(isMobile ? styles.checkpointNumberMobile : {}) }}>
+                              {i + 1}
+                            </div>
+                            <div style={styles.checkpointInfo}>
+                              <div style={{ ...styles.checkpointName, ...(isMobile ? styles.checkpointNameMobile : {}) }}>
+                                {cp.city_name}
+                                {cp.is_final_destination && (
+                                  <span style={{ color: "#F59E0B", fontSize: "10px", marginLeft: "6px" }}>🏁</span>
+                                )}
+                                {cp.status === "reached" && (
+                                  <FiCheckCircle size={12} color="#10B981" style={{ marginLeft: "6px" }} />
+                                )}
+                              </div>
+                              <div style={{ ...styles.checkpointTime, ...(isMobile ? styles.checkpointTimeMobile : {}) }}>
+                                <FiCalendar size={10} /> {formatDate(cp.scheduled_date)} <FiClock size={10} /> {formatTime(cp.scheduled_time)}
+                                {cp.delay_minutes !== 0 && cp.delay_minutes != null && (
+                                  <span style={{ color: cp.delay_minutes > 0 ? "#FCA5A5" : "#FDE68A", marginLeft: "8px" }}>
+                                    {cp.delay_minutes > 0 ? <FiArrowDown size={10} /> : <FiArrowUp size={10} />}
+                                    {Math.abs(cp.delay_minutes)}mnt
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div style={{ ...styles.checkpointActions, ...(isMobile ? styles.checkpointActionsMobile : {}) }}>
+                              <button onClick={() => moveCheckpoint(i, -1)} style={iconBtn}><FiChevronUp size={12} /></button>
+                              <button onClick={() => moveCheckpoint(i, 1)} style={iconBtn}><FiChevronDown size={12} /></button>
+                              <button onClick={() => startEditCheckpoint(cp, i)} style={iconBtn}><FiEdit2 size={12} /></button>
+                              <button onClick={() => removeCheckpoint(i)} style={{ ...iconBtn, color: "#EF4444" }}><FiTrash2 size={12} /></button>
                             </div>
                           </div>
-                          <div style={{ ...styles.checkpointActions, ...(isMobile ? styles.checkpointActionsMobile : {}) }}>
-                            <button onClick={() => moveCheckpoint(i, -1)} style={iconBtn}><FiChevronUp size={12} /></button>
-                            <button onClick={() => moveCheckpoint(i, 1)} style={iconBtn}><FiChevronDown size={12} /></button>
-                            <button onClick={() => startEditCheckpoint(cp, i)} style={iconBtn}><FiEdit2 size={12} /></button>
-                            <button onClick={() => removeCheckpoint(i)} style={{ ...iconBtn, color: "#EF4444" }}><FiTrash2 size={12} /></button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <button onClick={addCheckpoint} style={{ ...btnSecondary, width: "100%", justifyContent: "center" }}>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button onClick={addCheckpoint} style={{ ...btnSecondary, width: "100%", justifyContent: "center", marginTop: "8px" }}>
                   <FiPlus size={14} /> Tambah Kota
                 </button>
-                <div style={{ fontSize: "11px", color: "#64748B", marginTop: "8px", textAlign: "center" }}>
-                  ⚠️ Perubahan rute harus disimpan dengan klik tombol "Simpan Data" di atas
-                </div>
+                <button 
+                  onClick={saveCheckpointsToDatabase} 
+                  style={{ ...btnPrimary, width: "100%", justifyContent: "center", marginTop: "8px", background: "#10B981" }}
+                  disabled={isSaving}
+                >
+                  <FiSave size={14} /> {isSaving ? "Menyimpan..." : "Simpan Rute ke Database"}
+                </button>
+                {checkpoints.length > 0 && (
+                  <div style={{ fontSize: "11px", color: "#F59E0B", marginTop: "8px", textAlign: "center" }}>
+                    ⚠️ Klik "Simpan Rute ke Database" untuk menyimpan perubahan
+                  </div>
+                )}
               </div>
 
               {/* Control Buttons */}
@@ -1841,10 +1758,15 @@ export default function TouringPage() {
                       <button 
                         onClick={startTracking} 
                         style={{ ...btnPrimary, width: "100%", justifyContent: "center", background: "#10B981" }}
-                        disabled={isSessionComplete}
+                        disabled={isSessionComplete || checkpoints.length === 0}
                       >
                         <FiPlay size={14} /> Mulai Perjalanan (Manual)
                       </button>
+                      {checkpoints.length === 0 && (
+                        <div style={{ color: "#F59E0B", fontSize: "12px", textAlign: "center", marginTop: "8px" }}>
+                          ⚠️ Tambahkan rute terlebih dahulu!
+                        </div>
+                      )}
                       <button 
                         onClick={handleLateDeparture} 
                         style={{ ...btnSecondary, width: "100%", justifyContent: "center", marginTop: "8px", borderColor: "#F59E0B", color: "#F59E0B" }}
@@ -1864,7 +1786,7 @@ export default function TouringPage() {
                   ) : (
                     <>
                       <button onClick={stopTracking} style={{ ...btnPrimary, width: "100%", justifyContent: "center", background: "#EF4444" }}>
-                        <FiSquare size={14} /> Selesaikan Perjalanan
+                        <FiSquare size={14} /> Hentikan Perjalanan
                       </button>
                       <div style={{ textAlign: "center", color: "#6EE7B7", fontSize: "12px", marginTop: "8px" }}>
                         <FiMapPin size={12} /> {totalDistance.toFixed(1)} km ditempuh
@@ -1889,7 +1811,7 @@ export default function TouringPage() {
           </aside>
         )}
 
-        {/* Map Area - PASTI MUNCUL */}
+        {/* Map Area */}
         <div style={{ ...styles.mapContainer, ...(isMobile ? styles.mapContainerMobile : {}) }}>
           <TouringMap
             checkpoints={checkpoints}
@@ -1907,7 +1829,7 @@ export default function TouringPage() {
                 return c;
               });
               setCheckpoints(updated);
-              saveAllToDatabase();
+              saveCheckpointsToDatabase();
             }}
             isTracking={isTracking}
             isMobile={isMobile}
@@ -1988,7 +1910,7 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
   const currentMarkerRef = useRef(null);
   const initializedRef = useRef(false);
 
-  // Inisialisasi map - PASTI MUNCUL
+  // Inisialisasi map
   useEffect(() => {
     if (initializedRef.current || mapInstanceRef.current) return;
     
@@ -2006,22 +1928,10 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
         link.rel = 'stylesheet';
         link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
         document.head.appendChild(link);
-        setTimeout(initMap, 500);
+        setTimeout(initMap, 300);
       };
       script.onerror = () => {
         console.error('Failed to load Leaflet');
-        // Fallback: tampilkan pesan
-        if (mapRef.current) {
-          mapRef.current.innerHTML = `
-            <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#64748B;font-size:14px;background:#1E293B;border-radius:10px;">
-              <div style="text-align:center;">
-                <FiMapPin size={40} color="#3B82F6" />
-                <p>Gagal memuat peta</p>
-                <p style="font-size:12px;color:#475569;">Silakan refresh halaman</p>
-              </div>
-            </div>
-          `;
-        }
       };
       document.head.appendChild(script);
     };
@@ -2039,13 +1949,10 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
 
   const initMap = () => {
     const L = window.L;
-    if (!L) {
-      console.error('Leaflet not loaded');
-      return;
-    }
+    if (!L) return;
 
-    const startLat = currentLocation?.lat || checkpoints[0]?.latitude || -7.7200;
-    const startLng = currentLocation?.lng || checkpoints[0]?.longitude || 109.9084;
+    const startLat = currentLocation?.lat || (checkpoints[0]?.latitude || -7.7200);
+    const startLng = currentLocation?.lng || (checkpoints[0]?.longitude || 109.9084);
 
     const map = L.map(mapRef.current, { 
       zoomControl: true,
@@ -2063,7 +1970,6 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
     map.setView([startLat, startLng], isMobile ? 8 : 9);
     initializedRef.current = true;
     
-    // Force refresh setelah render
     setTimeout(() => {
       map.invalidateSize();
     }, 100);
@@ -2107,13 +2013,15 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
     });
 
     if (polylineRef.current) polylineRef.current.remove();
-    const latlngs = checkpoints.map(cp => [cp.latitude, cp.longitude]);
-    polylineRef.current = L.polyline(latlngs, { 
-      color: "#3B82F6", 
-      weight: isMobile ? 2 : 3, 
-      opacity: 0.6, 
-      dashArray: "8,4" 
-    }).addTo(map);
+    if (checkpoints.length > 1) {
+      const latlngs = checkpoints.map(cp => [cp.latitude, cp.longitude]);
+      polylineRef.current = L.polyline(latlngs, { 
+        color: "#3B82F6", 
+        weight: isMobile ? 2 : 3, 
+        opacity: 0.6, 
+        dashArray: "8,4" 
+      }).addTo(map);
+    }
   };
 
   useEffect(() => {
@@ -2163,13 +2071,6 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
     if (isTracking && sessionStatus === "active") {
       mapInstanceRef.current.setView([currentLocation.lat, currentLocation.lng], isMobile ? 11 : 13, { animate: true });
     }
-    
-    // Force refresh map
-    setTimeout(() => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.invalidateSize();
-      }
-    }, 200);
   }, [currentLocation, isTracking, isMobile, statusMessage, totalDistance, stops, sessionStatus]);
 
   // Force invalidate size on resize
@@ -3329,7 +3230,3 @@ styleSheet.textContent = `
   }
 `;
 document.head.appendChild(styleSheet);
-
-// Export mapInstance for resize
-const mapInstanceRef = { current: null };
-export { mapInstanceRef };
