@@ -72,14 +72,6 @@ function getTransportLabel(type) {
   return labels[type] || "Mobil";
 }
 
-// Tempat-tempat yang dikenali untuk status berhenti
-const STOP_LOCATIONS = [
-  { keywords: ["spbu", "pom bensin", "pertamina", "shell", "bp"], status: "BBM" },
-  { keywords: ["rest area", "restoran", "warung", "cafe", "kafe", "rumah makan"], status: "Istirahat" },
-  { keywords: ["masjid", "musholla", "gereja", "pura", "vihara"], status: "Ibadah" },
-  { keywords: ["hotel", "penginapan", "guest house", "villa"], status: "Tidur" },
-];
-
 const TRANSPORT_OPTIONS = [
   { value: "motor", label: "Motor", icon: <MdTwoWheeler size={20} /> },
   { value: "mobil", label: "Mobil", icon: <MdDirectionsCar size={20} /> },
@@ -220,7 +212,7 @@ export default function TouringPage() {
   const [sessions, setSessions] = useState([]);
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const [session, setSession] = useState(null);
-  const [checkpoints, setCheckpoints] = useState([]);
+  const [checkpoints, setCheckpoints] = useState(DEFAULT_CHECKPOINTS);
   const [transport, setTransport] = useState({ 
     transport_type: "motor", 
     plate_number: "", 
@@ -243,7 +235,7 @@ export default function TouringPage() {
   const [showSessionList, setShowSessionList] = useState(true);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [lateDeparture, setLateDeparture] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [isMobile, setIsMobile] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [currentStatus, setCurrentStatus] = useState({ 
     status: "idle", 
@@ -252,7 +244,6 @@ export default function TouringPage() {
     last_update: null
   });
   const [showStatusDetail, setShowStatusDetail] = useState(false);
-  const [mapInitialized, setMapInitialized] = useState(false);
   
   const watchIdRef = useRef(null);
   const notificationIdRef = useRef(0);
@@ -262,21 +253,14 @@ export default function TouringPage() {
   const autoStartIntervalRef = useRef(null);
   const backgroundIntervalRef = useRef(null);
   const statusCheckIntervalRef = useRef(null);
-  const mapInstanceRef = useRef(null);
-  const mapInitRef = useRef(false);
 
   // ─── RESPONSIVE ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 768);
-      // Re-initialize map on resize
-      if (mapInstanceRef.current) {
-        setTimeout(() => {
-          mapInstanceRef.current.invalidateSize();
-        }, 300);
-      }
     };
+    setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -407,11 +391,9 @@ export default function TouringPage() {
       // Check if already tracking
       if (data.status === "active" && data.is_running) {
         setIsTracking(true);
-        // Start tracking di background
         startTrackingInBackground(data.id);
       } else if (data.status === "active") {
         setIsTracking(true);
-        // Cek apakah session active tapi tracking belum jalan
         startTrackingInBackground(data.id);
       }
 
@@ -550,7 +532,7 @@ export default function TouringPage() {
         })
         .eq("id", sessionIdRef.current);
 
-      // Update checkpoints - soft delete
+      // Update checkpoints
       for (const cp of checkpoints) {
         if (cp.id) {
           const scheduledDatetime = cp.scheduled_date && cp.scheduled_time 
@@ -597,7 +579,6 @@ export default function TouringPage() {
   const startTrackingInBackground = useCallback((sessionId) => {
     if (!sessionId) return;
     
-    // Clear existing intervals
     if (backgroundIntervalRef.current) {
       clearInterval(backgroundIntervalRef.current);
     }
@@ -605,47 +586,41 @@ export default function TouringPage() {
       clearInterval(statusCheckIntervalRef.current);
     }
 
-    // Update lokasi setiap 5 detik (lebih cepat untuk smooth)
     backgroundIntervalRef.current = setInterval(() => {
       if (!sessionId) return;
       
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const { latitude, longitude, speed } = position.coords;
-          const currentSpeed = speed || 0;
-          
-          // Update lokasi
-          setCurrentLocation({ lat: latitude, lng: longitude, speed: currentSpeed });
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            const { latitude, longitude, speed } = position.coords;
+            const currentSpeed = speed || 0;
+            
+            setCurrentLocation({ lat: latitude, lng: longitude, speed: currentSpeed });
 
-          // Simpan ke database
-          await supabase
-            .from("touring_location_tracking")
-            .insert({
-              session_id: sessionId,
-              latitude,
-              longitude,
-              speed: currentSpeed,
-              heading: position.coords.heading || 0
-            });
+            await supabase
+              .from("touring_location_tracking")
+              .insert({
+                session_id: sessionId,
+                latitude,
+                longitude,
+                speed: currentSpeed,
+                heading: position.coords.heading || 0
+              });
 
-          // Update status berdasarkan kecepatan
-          await updateStatusBasedOnSpeed(sessionId, latitude, longitude, currentSpeed);
+            updateStatusBasedOnSpeed(sessionId, latitude, longitude, currentSpeed);
+            checkForCheckpoint(latitude, longitude);
+          },
+          (error) => {
+            console.error("Background geolocation error:", error);
+          },
+          { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+        );
+      }
+    }, 5000);
 
-          // Cek checkpoint
-          checkForCheckpoint(latitude, longitude);
-        },
-        (error) => {
-          console.error("Background geolocation error:", error);
-        },
-        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
-      );
-    }, 5000); // 5 detik
-
-    // Check status setiap 10 detik
     statusCheckIntervalRef.current = setInterval(async () => {
       if (!sessionId) return;
       
-      // Cek status dari database
       const { data } = await supabase
         .from("touring_sessions")
         .select("current_status, current_location_name")
@@ -653,12 +628,12 @@ export default function TouringPage() {
         .single();
       
       if (data) {
-        setCurrentStatus({
+        setCurrentStatus(prev => ({
+          ...prev,
           status: data.current_status || "idle",
           location_name: data.current_location_name || "Lokasi tidak diketahui",
-          speed: 0,
           last_update: new Date()
-        });
+        }));
       }
     }, 10000);
   }, []);
@@ -669,20 +644,14 @@ export default function TouringPage() {
 
     let newStatus = "running";
     let locationName = "Sedang berjalan";
-    let notes = "";
 
-    // Jika kecepatan < 1 km/jam (0.3 m/s), dianggap berhenti
     if (speed < 0.3) {
       newStatus = "stopped";
       
-      // Cek lokasi berhenti menggunakan reverse geocoding (simulasi)
-      // Di real implementation, bisa menggunakan Google Maps API atau OpenCage
-      // Untuk sekarang, kita gunakan pendekatan sederhana
-      
-      // Cek apakah dekat dengan checkpoint
       let nearestCp = null;
       let nearestDist = Infinity;
       for (const cp of checkpoints) {
+        if (cp.is_deleted) continue;
         const dist = getDistanceKm(lat, lng, cp.latitude, cp.longitude);
         if (dist < nearestDist) {
           nearestDist = dist;
@@ -692,23 +661,14 @@ export default function TouringPage() {
 
       if (nearestCp && nearestDist < 0.5) {
         locationName = `Berhenti di ${nearestCp.city_name}`;
-        notes = `Berhenti di ${nearestCp.city_name}`;
       } else {
-        // Cek apakah di SPBU atau tempat istirahat (simulasi)
-        // Di real implementation, bisa menggunakan Places API
-        locationName = "Berhenti (Tempat tidak diketahui)";
-        notes = "Berhenti - kecepatan 0 km/jam";
-        
-        // Simulasi deteksi SPBU - di real implementation pakai Places API
-        // Untuk sekarang, kita asumsikan jika berhenti di lokasi random
-        // bisa jadi SPBU atau rest area
+        locationName = `Berhenti (${(speed * 3.6).toFixed(1)} km/jam)`;
       }
     } else {
-      // Sedang berjalan
-      // Cek lokasi terdekat
       let nearestCp = null;
       let nearestDist = Infinity;
       for (const cp of checkpoints) {
+        if (cp.is_deleted) continue;
         const dist = getDistanceKm(lat, lng, cp.latitude, cp.longitude);
         if (dist < nearestDist) {
           nearestDist = dist;
@@ -723,7 +683,6 @@ export default function TouringPage() {
       }
     }
 
-    // Update status di state
     setCurrentStatus({
       status: newStatus,
       location_name: locationName,
@@ -731,7 +690,6 @@ export default function TouringPage() {
       last_update: new Date()
     });
 
-    // Simpan ke database
     await supabase
       .from("touring_sessions")
       .update({
@@ -742,7 +700,6 @@ export default function TouringPage() {
       })
       .eq("id", sessionId);
 
-    // Simpan ke status logs
     await supabase
       .from("touring_status_logs")
       .insert({
@@ -751,14 +708,11 @@ export default function TouringPage() {
         location_name: locationName,
         latitude: lat,
         longitude: lng,
-        notes: notes || locationName
+        notes: locationName
       });
 
-    // Kirim notifikasi jika status berubah
     if (newStatus === "stopped") {
       addNotification("info", `⏸️ ${locationName}`, 0);
-    } else if (newStatus === "running" && speed > 0) {
-      // Tidak perlu notifikasi setiap kali jalan, cukup jika sebelumnya berhenti
     }
   }, [checkpoints, addNotification]);
 
@@ -786,9 +740,7 @@ export default function TouringPage() {
         const scheduledDateTime = new Date(`${cpData.scheduled_date}T${cpData.scheduled_time}:00`);
         const now = new Date();
         
-        // Auto-start jika waktu sekarang >= jadwal berangkat
         if (now >= scheduledDateTime) {
-          // Cek apakah sudah mencapai final destination
           const { data: finalCp } = await supabase
             .from("touring_checkpoints")
             .select("*")
@@ -798,7 +750,6 @@ export default function TouringPage() {
             .single();
 
           if (finalCp && finalCp.status === "reached") {
-            // Sudah sampai tujuan akhir, stop
             await supabase
               .from("touring_sessions")
               .update({ 
@@ -812,7 +763,6 @@ export default function TouringPage() {
             return;
           }
 
-          // Auto start
           const { data: sessionData } = await supabase
             .from("touring_sessions")
             .update({ 
@@ -861,9 +811,7 @@ export default function TouringPage() {
       .eq("id", sessionIdRef.current)
       .then(() => saveToDatabase());
 
-    // Start background tracking
     startTrackingInBackground(sessionIdRef.current);
-
     addNotification("info", "🚀 Perjalanan dimulai", 0);
   }, [saveToDatabase, startTrackingInBackground, addNotification]);
 
@@ -906,7 +854,6 @@ export default function TouringPage() {
   const checkForCheckpoint = useCallback((lat, lng) => {
     const threshold = 0.5;
     const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
     checkpoints.forEach((cp, index) => {
       if (cp.status === "reached" || cp.is_deleted) return;
@@ -938,7 +885,6 @@ export default function TouringPage() {
 
         saveToDatabase();
 
-        // Check if final destination reached
         if (cp.is_final_destination) {
           stopTracking();
           addNotification("info", `🎉 Perjalanan selesai! Tiba di tujuan akhir: ${cp.city_name}`, 0);
@@ -959,16 +905,18 @@ export default function TouringPage() {
       created_at: new Date().toISOString() 
     }, ...prev].slice(0, 10));
 
-    supabase
-      .from("touring_notifications")
-      .insert({
-        session_id: sessionIdRef.current,
-        checkpoint_id: selectedCheckpoint?.id || null,
-        type,
-        minutes,
-        message
-      })
-      .then(() => {});
+    if (sessionIdRef.current) {
+      supabase
+        .from("touring_notifications")
+        .insert({
+          session_id: sessionIdRef.current,
+          checkpoint_id: selectedCheckpoint?.id || null,
+          type,
+          minutes,
+          message
+        })
+        .then(() => {});
+    }
   }, [selectedCheckpoint]);
 
   const removeNotification = useCallback((id) => {
@@ -999,13 +947,15 @@ export default function TouringPage() {
 
   const handleLateDeparture = useCallback(() => {
     setLateDeparture(true);
-    supabase
-      .from("touring_sessions")
-      .update({ late_departure: true })
-      .eq("id", sessionIdRef.current)
-      .then(() => {
-        addNotification("info", "⚠️ Berangkat telat, auto-start dinonaktifkan", 0);
-      });
+    if (sessionIdRef.current) {
+      supabase
+        .from("touring_sessions")
+        .update({ late_departure: true })
+        .eq("id", sessionIdRef.current)
+        .then(() => {
+          addNotification("info", "⚠️ Berangkat telat, auto-start dinonaktifkan", 0);
+        });
+    }
   }, [addNotification]);
 
   // ─── EDIT CHECKPOINT ──────────────────────────────────────────────────
@@ -1043,7 +993,6 @@ export default function TouringPage() {
   }, [checkpoints, saveToDatabase]);
 
   const removeCheckpoint = useCallback((index) => {
-    // Soft delete
     const updated = [...checkpoints];
     updated[index] = { ...updated[index], is_deleted: true };
     setCheckpoints(updated.filter(cp => !cp.is_deleted));
@@ -1172,7 +1121,7 @@ export default function TouringPage() {
         </div>
       </header>
 
-      {/* Status Bar - Real-time status */}
+      {/* Status Bar */}
       {sessionStatus === "active" && !isSessionComplete && (
         <div style={styles.statusBar}>
           <div style={styles.statusBarContent}>
@@ -1210,7 +1159,6 @@ export default function TouringPage() {
             </button>
           </div>
           
-          {/* Status Detail Popup */}
           {showStatusDetail && (
             <div style={styles.statusDetailPopup}>
               <div style={styles.statusDetailItem}>
@@ -1680,7 +1628,6 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
   const polylineRef = useRef(null);
   const currentMarkerRef = useRef(null);
   const initializedRef = useRef(false);
-  const animationRef = useRef(null);
 
   useEffect(() => {
     if (initializedRef.current || mapInstanceRef.current) return;
@@ -1713,9 +1660,6 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
         initializedRef.current = false;
-      }
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
       }
     };
   }, [isMobile]);
@@ -1766,18 +1710,15 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
     renderMarkers(L, mapInstanceRef.current);
   }, [checkpoints, isMobile]);
 
-  // Smooth animation for current location
   useEffect(() => {
     const L = window.L;
     if (!L || !mapInstanceRef.current || !currentLocation || !initializedRef.current) return;
 
     if (currentMarkerRef.current) {
-      // Smooth move
       const latlng = [currentLocation.lat, currentLocation.lng];
       currentMarkerRef.current.setLatLng(latlng);
       
       if (isTracking) {
-        // Smooth pan
         mapInstanceRef.current.panTo(latlng, { animate: true, duration: 0.5 });
       }
     } else {
@@ -1801,7 +1742,6 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
       }
     }
 
-    // Update marker popup with status
     if (currentMarkerRef.current && currentStatus) {
       const statusText = currentStatus.status === "running" ? "🟢 Berjalan" : 
                          currentStatus.status === "stopped" ? "🟡 Berhenti" : "⏳ Idle";
@@ -1829,10 +1769,6 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
         @keyframes ping {
           0% { transform: scale(1); opacity: 1; }
           100% { transform: scale(2.5); opacity: 0; }
-        }
-        @keyframes pulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.5; transform: scale(0.8); }
         }
       `}</style>
       <div ref={mapRef} style={{ width: "100%", height: "100%", borderRadius: "12px" }} />
@@ -2011,7 +1947,6 @@ const styles = {
     padding: "4px 10px",
     fontSize: "10px"
   },
-  // Status Bar
   statusBar: {
     background: "#1E293B",
     borderBottom: "1px solid #334155",
