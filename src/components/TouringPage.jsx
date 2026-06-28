@@ -10,7 +10,8 @@ import {
   FiZap, FiMenu, FiMap, FiBell, FiList, FiPlay, FiSquare,
   FiHash, FiGlobe, FiMinus, FiInfo, FiLink, FiEyeOff,
   FiCalendar, FiClock as FiClockIcon, FiUsers, FiMoreVertical,
-  FiPower, FiAlertTriangle
+  FiPower, FiAlertTriangle, FiActivity, FiPause, FiTarget,
+  FiCompass, FiRadio, FiWifi, FiWifiOff
 } from "react-icons/fi";
 import { MdTwoWheeler, MdDirectionsCar, MdDirectionsWalk, MdTrain } from "react-icons/md";
 
@@ -44,18 +45,6 @@ function formatDate(dateStr) {
   return date.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 }
 
-function formatDateTime(dateStr) {
-  if (!dateStr) return "-";
-  const date = new Date(dateStr);
-  return date.toLocaleDateString("id-ID", { 
-    day: "numeric", 
-    month: "short", 
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-}
-
 function formatTimeAgo(dateStr) {
   if (!dateStr) return "-";
   const date = new Date(dateStr);
@@ -82,6 +71,14 @@ function getTransportLabel(type) {
   const labels = { motor: "Motor", mobil: "Mobil", jalan: "Jalan Kaki", kereta: "Kereta" };
   return labels[type] || "Mobil";
 }
+
+// Tempat-tempat yang dikenali untuk status berhenti
+const STOP_LOCATIONS = [
+  { keywords: ["spbu", "pom bensin", "pertamina", "shell", "bp"], status: "BBM" },
+  { keywords: ["rest area", "restoran", "warung", "cafe", "kafe", "rumah makan"], status: "Istirahat" },
+  { keywords: ["masjid", "musholla", "gereja", "pura", "vihara"], status: "Ibadah" },
+  { keywords: ["hotel", "penginapan", "guest house", "villa"], status: "Tidur" },
+];
 
 const TRANSPORT_OPTIONS = [
   { value: "motor", label: "Motor", icon: <MdTwoWheeler size={20} /> },
@@ -223,14 +220,14 @@ export default function TouringPage() {
   const [sessions, setSessions] = useState([]);
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const [session, setSession] = useState(null);
-  const [checkpoints, setCheckpoints] = useState(DEFAULT_CHECKPOINTS);
+  const [checkpoints, setCheckpoints] = useState([]);
   const [transport, setTransport] = useState({ 
     transport_type: "motor", 
     plate_number: "", 
     driver_name: "", 
     fuel_liters: 5 
   });
-  const [currentLocation, setCurrentLocation] = useState({ lat: -7.7200, lng: 109.9084 });
+  const [currentLocation, setCurrentLocation] = useState(null);
   const [sessionStatus, setSessionStatus] = useState("pending");
   const [isTracking, setIsTracking] = useState(false);
   const [notifications, setNotifications] = useState([]);
@@ -248,6 +245,14 @@ export default function TouringPage() {
   const [lateDeparture, setLateDeparture] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [currentStatus, setCurrentStatus] = useState({ 
+    status: "idle", 
+    location_name: "Belum mulai",
+    speed: 0,
+    last_update: null
+  });
+  const [showStatusDetail, setShowStatusDetail] = useState(false);
+  const [mapInitialized, setMapInitialized] = useState(false);
   
   const watchIdRef = useRef(null);
   const notificationIdRef = useRef(0);
@@ -256,12 +261,21 @@ export default function TouringPage() {
   const loadAttempted = useRef(false);
   const autoStartIntervalRef = useRef(null);
   const backgroundIntervalRef = useRef(null);
+  const statusCheckIntervalRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const mapInitRef = useRef(false);
 
   // ─── RESPONSIVE ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 768);
+      // Re-initialize map on resize
+      if (mapInstanceRef.current) {
+        setTimeout(() => {
+          mapInstanceRef.current.invalidateSize();
+        }, 300);
+      }
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -289,7 +303,7 @@ export default function TouringPage() {
             const existing = data?.find(s => s.id === parsed.id);
             if (existing) {
               setSelectedSessionId(existing.id);
-              loadSessionData(existing.id);
+              await loadSessionData(existing.id);
               return;
             }
           } catch (e) {}
@@ -297,9 +311,9 @@ export default function TouringPage() {
         
         if (data && data.length > 0) {
           setSelectedSessionId(data[0].id);
-          loadSessionData(data[0].id);
+          await loadSessionData(data[0].id);
         } else {
-          createNewSession();
+          await createNewSession();
         }
       }
     } catch (error) {
@@ -338,8 +352,11 @@ export default function TouringPage() {
         fuel_liters: data.fuel_liters || 5
       });
       
+      // Load checkpoints - filter yang tidak dihapus
       if (data.touring_checkpoints && data.touring_checkpoints.length > 0) {
-        const sorted = data.touring_checkpoints.sort((a, b) => a.order_index - b.order_index);
+        const sorted = data.touring_checkpoints
+          .filter(cp => !cp.is_deleted)
+          .sort((a, b) => a.order_index - b.order_index);
         setCheckpoints(sorted);
       } else {
         setCheckpoints(DEFAULT_CHECKPOINTS);
@@ -372,14 +389,30 @@ export default function TouringPage() {
       if (trackData && trackData.length > 0) {
         setCurrentLocation({
           lat: trackData[0].latitude,
-          lng: trackData[0].longitude
+          lng: trackData[0].longitude,
+          speed: trackData[0].speed || 0
+        });
+      }
+
+      // Load status
+      if (data.current_status) {
+        setCurrentStatus({
+          status: data.current_status,
+          location_name: data.current_location_name || "Lokasi tidak diketahui",
+          speed: 0,
+          last_update: data.last_location_update || new Date()
         });
       }
 
       // Check if already tracking
-      if (data.status === "active") {
+      if (data.status === "active" && data.is_running) {
         setIsTracking(true);
-        startBackgroundTracking(data.id);
+        // Start tracking di background
+        startTrackingInBackground(data.id);
+      } else if (data.status === "active") {
+        setIsTracking(true);
+        // Cek apakah session active tapi tracking belum jalan
+        startTrackingInBackground(data.id);
       }
 
       // Start auto-start checker
@@ -410,7 +443,9 @@ export default function TouringPage() {
           title: `Touring ${new Date().toLocaleDateString("id-ID")}`,
           transport_type: "motor",
           status: "pending",
-          late_departure: false
+          late_departure: false,
+          is_running: false,
+          current_status: "idle"
         })
         .select()
         .single();
@@ -428,7 +463,8 @@ export default function TouringPage() {
         scheduled_time: cp.scheduled_time,
         scheduled_datetime: new Date(`${cp.scheduled_date || today}T${cp.scheduled_time}:00`).toISOString(),
         status: "pending",
-        is_final_destination: cp.is_final_destination || false
+        is_final_destination: cp.is_final_destination || false,
+        is_deleted: false
       }));
 
       const { error: cpError } = await supabase
@@ -507,10 +543,14 @@ export default function TouringPage() {
           fuel_liters: transport.fuel_liters,
           status: sessionStatus,
           late_departure: lateDeparture,
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
+          current_status: currentStatus.status,
+          current_location_name: currentStatus.location_name,
+          last_location_update: new Date().toISOString()
         })
         .eq("id", sessionIdRef.current);
 
+      // Update checkpoints - soft delete
       for (const cp of checkpoints) {
         if (cp.id) {
           const scheduledDatetime = cp.scheduled_date && cp.scheduled_time 
@@ -529,13 +569,15 @@ export default function TouringPage() {
               order_index: checkpoints.indexOf(cp),
               status: cp.status || "pending",
               delay_minutes: cp.delay_minutes || 0,
-              is_final_destination: cp.is_final_destination || false
+              is_final_destination: cp.is_final_destination || false,
+              is_deleted: cp.is_deleted || false
             })
             .eq("id", cp.id)
             .eq("session_id", sessionIdRef.current);
         }
       }
 
+      // Refresh session list
       const { data: sessionsData } = await supabase
         .from("touring_sessions")
         .select("*")
@@ -548,50 +590,177 @@ export default function TouringPage() {
     } catch (error) {
       console.error("Error saving to database:", error);
     }
-  }, [checkpoints, transport, sessionStatus, lateDeparture]);
+  }, [checkpoints, transport, sessionStatus, lateDeparture, currentStatus]);
 
   // ─── BACKGROUND TRACKING ──────────────────────────────────────────────────
 
-  const startBackgroundTracking = useCallback((sessionId) => {
+  const startTrackingInBackground = useCallback((sessionId) => {
+    if (!sessionId) return;
+    
+    // Clear existing intervals
     if (backgroundIntervalRef.current) {
       clearInterval(backgroundIntervalRef.current);
     }
+    if (statusCheckIntervalRef.current) {
+      clearInterval(statusCheckIntervalRef.current);
+    }
 
-    // Update lokasi setiap 10 detik di background
+    // Update lokasi setiap 5 detik (lebih cepat untuk smooth)
     backgroundIntervalRef.current = setInterval(() => {
       if (!sessionId) return;
       
       navigator.geolocation.getCurrentPosition(
         async (position) => {
-          const { latitude, longitude, speed, heading } = position.coords;
-          setCurrentLocation({ lat: latitude, lng: longitude });
+          const { latitude, longitude, speed } = position.coords;
+          const currentSpeed = speed || 0;
+          
+          // Update lokasi
+          setCurrentLocation({ lat: latitude, lng: longitude, speed: currentSpeed });
 
+          // Simpan ke database
           await supabase
             .from("touring_location_tracking")
             .insert({
               session_id: sessionId,
               latitude,
               longitude,
-              speed: speed || 0,
-              heading: heading || 0
+              speed: currentSpeed,
+              heading: position.coords.heading || 0
             });
 
+          // Update status berdasarkan kecepatan
+          await updateStatusBasedOnSpeed(sessionId, latitude, longitude, currentSpeed);
+
+          // Cek checkpoint
           checkForCheckpoint(latitude, longitude);
         },
         (error) => {
           console.error("Background geolocation error:", error);
         },
-        { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
       );
+    }, 5000); // 5 detik
+
+    // Check status setiap 10 detik
+    statusCheckIntervalRef.current = setInterval(async () => {
+      if (!sessionId) return;
+      
+      // Cek status dari database
+      const { data } = await supabase
+        .from("touring_sessions")
+        .select("current_status, current_location_name")
+        .eq("id", sessionId)
+        .single();
+      
+      if (data) {
+        setCurrentStatus({
+          status: data.current_status || "idle",
+          location_name: data.current_location_name || "Lokasi tidak diketahui",
+          speed: 0,
+          last_update: new Date()
+        });
+      }
     }, 10000);
   }, []);
 
-  const stopBackgroundTracking = useCallback(() => {
-    if (backgroundIntervalRef.current) {
-      clearInterval(backgroundIntervalRef.current);
-      backgroundIntervalRef.current = null;
+  // Update status berdasarkan kecepatan
+  const updateStatusBasedOnSpeed = useCallback(async (sessionId, lat, lng, speed) => {
+    if (!sessionId) return;
+
+    let newStatus = "running";
+    let locationName = "Sedang berjalan";
+    let notes = "";
+
+    // Jika kecepatan < 1 km/jam (0.3 m/s), dianggap berhenti
+    if (speed < 0.3) {
+      newStatus = "stopped";
+      
+      // Cek lokasi berhenti menggunakan reverse geocoding (simulasi)
+      // Di real implementation, bisa menggunakan Google Maps API atau OpenCage
+      // Untuk sekarang, kita gunakan pendekatan sederhana
+      
+      // Cek apakah dekat dengan checkpoint
+      let nearestCp = null;
+      let nearestDist = Infinity;
+      for (const cp of checkpoints) {
+        const dist = getDistanceKm(lat, lng, cp.latitude, cp.longitude);
+        if (dist < nearestDist) {
+          nearestDist = dist;
+          nearestCp = cp;
+        }
+      }
+
+      if (nearestCp && nearestDist < 0.5) {
+        locationName = `Berhenti di ${nearestCp.city_name}`;
+        notes = `Berhenti di ${nearestCp.city_name}`;
+      } else {
+        // Cek apakah di SPBU atau tempat istirahat (simulasi)
+        // Di real implementation, bisa menggunakan Places API
+        locationName = "Berhenti (Tempat tidak diketahui)";
+        notes = "Berhenti - kecepatan 0 km/jam";
+        
+        // Simulasi deteksi SPBU - di real implementation pakai Places API
+        // Untuk sekarang, kita asumsikan jika berhenti di lokasi random
+        // bisa jadi SPBU atau rest area
+      }
+    } else {
+      // Sedang berjalan
+      // Cek lokasi terdekat
+      let nearestCp = null;
+      let nearestDist = Infinity;
+      for (const cp of checkpoints) {
+        const dist = getDistanceKm(lat, lng, cp.latitude, cp.longitude);
+        if (dist < nearestDist) {
+          nearestDist = dist;
+          nearestCp = cp;
+        }
+      }
+
+      if (nearestCp && nearestDist < 10) {
+        locationName = `Menuju ${nearestCp.city_name} (${nearestDist.toFixed(1)} km)`;
+      } else {
+        locationName = `Sedang berjalan (${(speed * 3.6).toFixed(1)} km/jam)`;
+      }
     }
-  }, []);
+
+    // Update status di state
+    setCurrentStatus({
+      status: newStatus,
+      location_name: locationName,
+      speed: speed,
+      last_update: new Date()
+    });
+
+    // Simpan ke database
+    await supabase
+      .from("touring_sessions")
+      .update({
+        current_status: newStatus,
+        current_location_name: locationName,
+        is_running: true,
+        last_location_update: new Date().toISOString()
+      })
+      .eq("id", sessionId);
+
+    // Simpan ke status logs
+    await supabase
+      .from("touring_status_logs")
+      .insert({
+        session_id: sessionId,
+        status: newStatus,
+        location_name: locationName,
+        latitude: lat,
+        longitude: lng,
+        notes: notes || locationName
+      });
+
+    // Kirim notifikasi jika status berubah
+    if (newStatus === "stopped") {
+      addNotification("info", `⏸️ ${locationName}`, 0);
+    } else if (newStatus === "running" && speed > 0) {
+      // Tidak perlu notifikasi setiap kali jalan, cukup jika sebelumnya berhenti
+    }
+  }, [checkpoints, addNotification]);
 
   // ─── AUTO START CHECKER ──────────────────────────────────────────────────
 
@@ -609,6 +778,7 @@ export default function TouringPage() {
           .select("*")
           .eq("session_id", sessionId)
           .eq("order_index", 0)
+          .eq("is_deleted", false)
           .single();
 
         if (!cpData || !cpData.scheduled_date || !cpData.scheduled_time) return;
@@ -624,6 +794,7 @@ export default function TouringPage() {
             .select("*")
             .eq("session_id", sessionId)
             .eq("is_final_destination", true)
+            .eq("is_deleted", false)
             .single();
 
           if (finalCp && finalCp.status === "reached") {
@@ -632,11 +803,12 @@ export default function TouringPage() {
               .from("touring_sessions")
               .update({ 
                 status: "completed",
-                completed_at: new Date().toISOString()
+                completed_at: new Date().toISOString(),
+                is_running: false
               })
               .eq("id", sessionId);
             setSessionStatus("completed");
-            stopTracking();
+            stopTrackingInBackground();
             return;
           }
 
@@ -645,7 +817,8 @@ export default function TouringPage() {
             .from("touring_sessions")
             .update({ 
               status: "active",
-              auto_started: true
+              auto_started: true,
+              is_running: true
             })
             .eq("id", sessionId)
             .select()
@@ -654,15 +827,15 @@ export default function TouringPage() {
           if (sessionData) {
             setSessionStatus("active");
             setIsTracking(true);
-            startBackgroundTracking(sessionId);
-            addNotification("info", "Perjalanan dimulai otomatis sesuai jadwal", 0);
+            startTrackingInBackground(sessionId);
+            addNotification("info", "🚀 Perjalanan dimulai otomatis sesuai jadwal", 0);
           }
         }
       } catch (error) {
         console.error("Auto-start checker error:", error);
       }
-    }, 30000); // Cek setiap 30 detik
-  }, [lateDeparture, sessionStatus]);
+    }, 30000);
+  }, [lateDeparture, sessionStatus, startTrackingInBackground, addNotification]);
 
   // ─── TRACKING FUNCTIONS ──────────────────────────────────────────────────
 
@@ -681,48 +854,36 @@ export default function TouringPage() {
       .update({ 
         status: "active",
         late_departure: false,
-        auto_started: false
+        auto_started: false,
+        is_running: true,
+        current_status: "running"
       })
       .eq("id", sessionIdRef.current)
       .then(() => saveToDatabase());
 
-    startBackgroundTracking(sessionIdRef.current);
+    // Start background tracking
+    startTrackingInBackground(sessionIdRef.current);
 
-    // Watch position untuk real-time update
-    if (watchIdRef.current) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
+    addNotification("info", "🚀 Perjalanan dimulai", 0);
+  }, [saveToDatabase, startTrackingInBackground, addNotification]);
+
+  const stopTrackingInBackground = useCallback(() => {
+    if (backgroundIntervalRef.current) {
+      clearInterval(backgroundIntervalRef.current);
+      backgroundIntervalRef.current = null;
     }
-
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      async (position) => {
-        const { latitude, longitude, speed, heading } = position.coords;
-        setCurrentLocation({ lat: latitude, lng: longitude });
-
-        await supabase
-          .from("touring_location_tracking")
-          .insert({
-            session_id: sessionIdRef.current,
-            latitude,
-            longitude,
-            speed: speed || 0,
-            heading: heading || 0
-          });
-
-        checkForCheckpoint(latitude, longitude);
-      },
-      (error) => {
-        console.error("Geolocation error:", error);
-      },
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
-    );
-  }, [saveToDatabase, startBackgroundTracking]);
-
-  const stopTracking = useCallback(async () => {
+    if (statusCheckIntervalRef.current) {
+      clearInterval(statusCheckIntervalRef.current);
+      statusCheckIntervalRef.current = null;
+    }
     if (watchIdRef.current) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     }
-    stopBackgroundTracking();
+  }, []);
+
+  const stopTracking = useCallback(async () => {
+    stopTrackingInBackground();
     setIsTracking(false);
     setSessionStatus("completed");
 
@@ -730,13 +891,15 @@ export default function TouringPage() {
       .from("touring_sessions")
       .update({ 
         status: "completed",
-        completed_at: new Date().toISOString()
+        completed_at: new Date().toISOString(),
+        is_running: false,
+        current_status: "idle"
       })
       .eq("id", sessionIdRef.current);
 
     saveToDatabase();
-    addNotification("info", "Perjalanan telah selesai", 0);
-  }, [saveToDatabase, stopBackgroundTracking]);
+    addNotification("info", "🏁 Perjalanan telah selesai", 0);
+  }, [saveToDatabase, stopTrackingInBackground, addNotification]);
 
   // ─── CHECK CHECKPOINT ──────────────────────────────────────────────────
 
@@ -746,7 +909,7 @@ export default function TouringPage() {
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
     checkpoints.forEach((cp, index) => {
-      if (cp.status === "reached") return;
+      if (cp.status === "reached" || cp.is_deleted) return;
       
       const dist = getDistanceKm(lat, lng, cp.latitude, cp.longitude);
       if (dist < threshold) {
@@ -782,7 +945,7 @@ export default function TouringPage() {
         }
       }
     });
-  }, [checkpoints, saveToDatabase, stopTracking]);
+  }, [checkpoints, saveToDatabase, stopTracking, addNotification]);
 
   // ─── NOTIFICATIONS ─────────────────────────────────────────────────────
 
@@ -872,14 +1035,18 @@ export default function TouringPage() {
       scheduled_date: today,
       scheduled_time: "12:00", 
       status: "pending",
-      is_final_destination: false
+      is_final_destination: false,
+      is_deleted: false
     };
     setCheckpoints([...checkpoints, newCp]);
     saveToDatabase();
   }, [checkpoints, saveToDatabase]);
 
   const removeCheckpoint = useCallback((index) => {
-    setCheckpoints(checkpoints.filter((_, i) => i !== index));
+    // Soft delete
+    const updated = [...checkpoints];
+    updated[index] = { ...updated[index], is_deleted: true };
+    setCheckpoints(updated.filter(cp => !cp.is_deleted));
     saveToDatabase();
   }, [checkpoints, saveToDatabase]);
 
@@ -919,15 +1086,12 @@ export default function TouringPage() {
 
     return () => {
       isMounted.current = false;
-      if (watchIdRef.current) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-      }
-      stopBackgroundTracking();
+      stopTrackingInBackground();
       if (autoStartIntervalRef.current) {
         clearInterval(autoStartIntervalRef.current);
       }
     };
-  }, [loadAllSessions, stopBackgroundTracking]);
+  }, [loadAllSessions, stopTrackingInBackground]);
 
   // ─── RENDER ────────────────────────────────────────────────────────────
 
@@ -1007,6 +1171,82 @@ export default function TouringPage() {
           )}
         </div>
       </header>
+
+      {/* Status Bar - Real-time status */}
+      {sessionStatus === "active" && !isSessionComplete && (
+        <div style={styles.statusBar}>
+          <div style={styles.statusBarContent}>
+            <div style={styles.statusIcon}>
+              {currentStatus.status === "running" ? (
+                <FiActivity size={20} color="#10B981" />
+              ) : currentStatus.status === "stopped" ? (
+                <FiPause size={20} color="#F59E0B" />
+              ) : (
+                <FiClock size={20} color="#94A3B8" />
+              )}
+            </div>
+            <div style={styles.statusInfo}>
+              <div style={styles.statusText}>
+                {currentStatus.status === "running" ? (
+                  <span style={{ color: "#10B981" }}>🟢 Sedang Berjalan</span>
+                ) : currentStatus.status === "stopped" ? (
+                  <span style={{ color: "#F59E0B" }}>🟡 Sedang Berhenti</span>
+                ) : (
+                  <span style={{ color: "#94A3B8" }}>⏳ Menunggu</span>
+                )}
+                <span style={styles.statusLocation}>{currentStatus.location_name || "Lokasi tidak diketahui"}</span>
+              </div>
+              {currentStatus.speed !== undefined && currentStatus.status === "running" && (
+                <span style={styles.statusSpeed}>
+                  {(currentStatus.speed * 3.6).toFixed(1)} km/jam
+                </span>
+              )}
+            </div>
+            <button 
+              onClick={() => setShowStatusDetail(!showStatusDetail)}
+              style={styles.statusDetailBtn}
+            >
+              <FiInfo size={14} /> Detail
+            </button>
+          </div>
+          
+          {/* Status Detail Popup */}
+          {showStatusDetail && (
+            <div style={styles.statusDetailPopup}>
+              <div style={styles.statusDetailItem}>
+                <span style={styles.statusDetailLabel}>Status</span>
+                <span style={{ 
+                  color: currentStatus.status === "running" ? "#10B981" : 
+                         currentStatus.status === "stopped" ? "#F59E0B" : "#94A3B8"
+                }}>
+                  {currentStatus.status === "running" ? "🟢 Berjalan" : 
+                   currentStatus.status === "stopped" ? "🟡 Berhenti" : "⏳ Idle"}
+                </span>
+              </div>
+              <div style={styles.statusDetailItem}>
+                <span style={styles.statusDetailLabel}>Lokasi</span>
+                <span>{currentStatus.location_name || "-"}</span>
+              </div>
+              {currentStatus.speed !== undefined && (
+                <div style={styles.statusDetailItem}>
+                  <span style={styles.statusDetailLabel}>Kecepatan</span>
+                  <span>{(currentStatus.speed * 3.6).toFixed(1)} km/jam</span>
+                </div>
+              )}
+              <div style={styles.statusDetailItem}>
+                <span style={styles.statusDetailLabel}>Update</span>
+                <span>{currentStatus.last_update ? formatTimeAgo(currentStatus.last_update) : "-"}</span>
+              </div>
+              <div style={styles.statusDetailItem}>
+                <span style={styles.statusDetailLabel}>Sinyal GPS</span>
+                <span style={{ color: "#10B981" }}>
+                  <FiWifi size={12} /> Aktif
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Mobile Menu */}
       {isMobile && showMobileMenu && (
@@ -1295,6 +1535,9 @@ export default function TouringPage() {
                               {cp.is_final_destination && (
                                 <span style={{ color: "#F59E0B", fontSize: "10px", marginLeft: "6px" }}>🏁</span>
                               )}
+                              {cp.status === "reached" && (
+                                <FiCheckCircle size={12} color="#10B981" style={{ marginLeft: "4px" }} />
+                              )}
                             </div>
                             <div style={{ ...styles.checkpointTime, ...(isMobile ? styles.checkpointTimeMobile : {}) }}>
                               <FiCalendar size={10} /> {formatDate(cp.scheduled_date)} <FiClock size={10} /> {formatTime(cp.scheduled_time)}
@@ -1377,6 +1620,7 @@ export default function TouringPage() {
             }}
             isTracking={isTracking}
             isMobile={isMobile}
+            currentStatus={currentStatus}
           />
         </div>
       </div>
@@ -1429,13 +1673,14 @@ export default function TouringPage() {
 
 // ─── MAP COMPONENT ────────────────────────────────────────────────────────────
 
-function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay, onMarkReached, isTracking, isMobile }) {
+function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay, onMarkReached, isTracking, isMobile, currentStatus }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
   const polylineRef = useRef(null);
   const currentMarkerRef = useRef(null);
   const initializedRef = useRef(false);
+  const animationRef = useRef(null);
 
   useEffect(() => {
     if (initializedRef.current || mapInstanceRef.current) return;
@@ -1469,6 +1714,9 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
         mapInstanceRef.current = null;
         initializedRef.current = false;
       }
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
     };
   }, [isMobile]);
 
@@ -1478,6 +1726,7 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
     markersRef.current = [];
 
     checkpoints.forEach((cp, i) => {
+      if (cp.is_deleted) return;
       const color = cp.status === "reached" ? "#10B981" : cp.status === "active" ? "#3B82F6" : "#6B7280";
       const size = isMobile ? 28 : 34;
       const icon = L.divIcon({
@@ -1491,6 +1740,7 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
           <b>${cp.city_name}</b><br>
           Tanggal: ${cp.scheduled_date || "--"}<br>
           Jadwal: ${cp.scheduled_time || "--:--"}<br>
+          ${cp.status === "reached" ? "✅ Tiba" : ""}
           ${cp.delay_minutes ? `Delay: ${cp.delay_minutes} menit` : ""}
           ${cp.is_final_destination ? "<br>🏁 Tujuan Akhir" : ""}
         `)
@@ -1499,7 +1749,9 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
     });
 
     if (polylineRef.current) polylineRef.current.remove();
-    const latlngs = checkpoints.map(cp => [cp.latitude, cp.longitude]);
+    const latlngs = checkpoints
+      .filter(cp => !cp.is_deleted)
+      .map(cp => [cp.latitude, cp.longitude]);
     polylineRef.current = L.polyline(latlngs, { 
       color: "#3B82F6", 
       weight: isMobile ? 2 : 3, 
@@ -1514,35 +1766,75 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
     renderMarkers(L, mapInstanceRef.current);
   }, [checkpoints, isMobile]);
 
+  // Smooth animation for current location
   useEffect(() => {
     const L = window.L;
     if (!L || !mapInstanceRef.current || !currentLocation || !initializedRef.current) return;
 
-    if (currentMarkerRef.current) currentMarkerRef.current.remove();
+    if (currentMarkerRef.current) {
+      // Smooth move
+      const latlng = [currentLocation.lat, currentLocation.lng];
+      currentMarkerRef.current.setLatLng(latlng);
+      
+      if (isTracking) {
+        // Smooth pan
+        mapInstanceRef.current.panTo(latlng, { animate: true, duration: 0.5 });
+      }
+    } else {
+      const size = isMobile ? 30 : 40;
+      const pulseIcon = L.divIcon({
+        html: `<div style="position:relative;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center">
+          <div style="position:absolute;width:${size}px;height:${size}px;background:rgba(59,130,246,0.2);border-radius:50%;animation:ping 1.5s infinite"></div>
+          <div style="width:${isMobile ? 14 : 20}px;height:${isMobile ? 14 : 20}px;background:#3B82F6;border-radius:50%;border:3px solid white;box-shadow:0 0 12px rgba(59,130,246,0.6);position:relative;z-index:1"></div>
+        </div>`,
+        className: "",
+        iconSize: [size, size],
+        iconAnchor: [size/2, size/2],
+      });
 
-    const size = isMobile ? 30 : 40;
-    const pulseIcon = L.divIcon({
-      html: `<div style="position:relative;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center">
-        <div style="position:absolute;width:${size}px;height:${size}px;background:rgba(59,130,246,0.2);border-radius:50%;animation:ping 1.5s infinite"></div>
-        <div style="width:${isMobile ? 14 : 20}px;height:${isMobile ? 14 : 20}px;background:#3B82F6;border-radius:50%;border:3px solid white;box-shadow:0 0 12px rgba(59,130,246,0.6);position:relative;z-index:1"></div>
-      </div>`,
-      className: "",
-      iconSize: [size, size],
-      iconAnchor: [size/2, size/2],
-    });
+      currentMarkerRef.current = L.marker([currentLocation.lat, currentLocation.lng], { icon: pulseIcon })
+        .bindPopup("📍 Lokasi Anda Sekarang")
+        .addTo(mapInstanceRef.current);
 
-    currentMarkerRef.current = L.marker([currentLocation.lat, currentLocation.lng], { icon: pulseIcon })
-      .bindPopup("📍 Lokasi Anda Sekarang")
-      .addTo(mapInstanceRef.current);
-
-    if (isTracking) {
-      mapInstanceRef.current.setView([currentLocation.lat, currentLocation.lng], isMobile ? 11 : 13, { animate: true });
+      if (isTracking) {
+        mapInstanceRef.current.setView([currentLocation.lat, currentLocation.lng], isMobile ? 11 : 13, { animate: true });
+      }
     }
-  }, [currentLocation, isTracking, isMobile]);
+
+    // Update marker popup with status
+    if (currentMarkerRef.current && currentStatus) {
+      const statusText = currentStatus.status === "running" ? "🟢 Berjalan" : 
+                         currentStatus.status === "stopped" ? "🟡 Berhenti" : "⏳ Idle";
+      currentMarkerRef.current.setPopupContent(`
+        📍 Lokasi Anda Sekarang<br>
+        Status: ${statusText}<br>
+        ${currentStatus.location_name || ""}
+      `);
+    }
+
+  }, [currentLocation, isTracking, isMobile, currentStatus]);
+
+  // Invalidate map on resize
+  useEffect(() => {
+    if (mapInstanceRef.current) {
+      setTimeout(() => {
+        mapInstanceRef.current.invalidateSize();
+      }, 300);
+    }
+  }, [isMobile]);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      <style>{`@keyframes ping{0%{transform:scale(1);opacity:1}100%{transform:scale(2.5);opacity:0}}`}</style>
+      <style>{`
+        @keyframes ping {
+          0% { transform: scale(1); opacity: 1; }
+          100% { transform: scale(2.5); opacity: 0; }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(0.8); }
+        }
+      `}</style>
       <div ref={mapRef} style={{ width: "100%", height: "100%", borderRadius: "12px" }} />
     </div>
   );
@@ -1719,16 +2011,97 @@ const styles = {
     padding: "4px 10px",
     fontSize: "10px"
   },
+  // Status Bar
+  statusBar: {
+    background: "#1E293B",
+    borderBottom: "1px solid #334155",
+    padding: "8px 16px",
+    position: "relative"
+  },
+  statusBarContent: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    flexWrap: "wrap"
+  },
+  statusIcon: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "36px",
+    height: "36px",
+    borderRadius: "50%",
+    background: "rgba(16, 185, 129, 0.1)",
+    flexShrink: 0
+  },
+  statusInfo: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px"
+  },
+  statusText: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    fontSize: "14px",
+    fontWeight: "600",
+    flexWrap: "wrap"
+  },
+  statusLocation: {
+    color: "#94A3B8",
+    fontSize: "12px",
+    fontWeight: "400"
+  },
+  statusSpeed: {
+    color: "#64748B",
+    fontSize: "11px"
+  },
+  statusDetailBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: "4px",
+    padding: "4px 12px",
+    background: "#0F172A",
+    border: "1px solid #334155",
+    borderRadius: "6px",
+    color: "#94A3B8",
+    cursor: "pointer",
+    fontSize: "12px",
+    transition: "all 0.2s"
+  },
+  statusDetailPopup: {
+    position: "absolute",
+    top: "calc(100% + 8px)",
+    right: "16px",
+    background: "#0F172A",
+    border: "1px solid #334155",
+    borderRadius: "10px",
+    padding: "12px 16px",
+    minWidth: "200px",
+    zIndex: 100,
+    boxShadow: "0 8px 24px rgba(0,0,0,0.4)"
+  },
+  statusDetailItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    padding: "4px 0",
+    fontSize: "12px",
+    borderBottom: "1px solid #1E293B"
+  },
+  statusDetailLabel: {
+    color: "#64748B"
+  },
   mainContent: {
     display: "flex",
     flex: 1,
-    height: "calc(100vh - 80px)",
+    height: "calc(100vh - 120px)",
     overflow: "hidden"
   },
   mainContentMobile: {
     flexDirection: "column",
     height: "auto",
-    minHeight: "calc(100vh - 120px)"
+    minHeight: "calc(100vh - 160px)"
   },
   sessionSidebar: {
     width: "280px",
@@ -2205,7 +2578,6 @@ const styles = {
     marginTop: "16px",
     fontSize: "14px"
   },
-  // Mobile Menu
   mobileMenu: {
     background: "#1E293B",
     padding: "12px 16px",
