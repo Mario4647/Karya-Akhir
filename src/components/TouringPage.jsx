@@ -210,6 +210,7 @@ export default function TouringPage() {
   const [stopStartTime, setStopStartTime] = useState(null);
   const [currentStopId, setCurrentStopId] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
   
   const watchIdRef = useRef(null);
   const notificationIdRef = useRef(0);
@@ -1083,24 +1084,27 @@ export default function TouringPage() {
 
   const addNotification = useCallback((type, message, minutes) => {
     const id = notificationIdRef.current++;
-    setNotifications(prev => [{ 
+    const newNotification = { 
       id, 
       type, 
       message, 
       minutes, 
       created_at: new Date().toISOString() 
-    }, ...prev].slice(0, 50));
+    };
+    setNotifications(prev => [newNotification, ...prev].slice(0, 50));
 
-    supabase
-      .from("touring_notifications")
-      .insert({
-        session_id: sessionIdRef.current,
-        checkpoint_id: selectedCheckpoint?.id || null,
-        type,
-        minutes,
-        message
-      })
-      .then(() => {});
+    if (sessionIdRef.current) {
+      supabase
+        .from("touring_notifications")
+        .insert({
+          session_id: sessionIdRef.current,
+          checkpoint_id: selectedCheckpoint?.id || null,
+          type,
+          minutes,
+          message
+        })
+        .then(() => {});
+    }
   }, [selectedCheckpoint]);
 
   const removeNotification = useCallback((id) => {
@@ -1986,31 +1990,30 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
 
   // Inisialisasi map
   useEffect(() => {
-    if (initializedRef.current || mapInstanceRef.current) return;
-    
-    const loadLeaflet = () => {
-      if (window.L) {
-        initMap();
-        return;
-      }
-      
-      const script = document.createElement('script');
-      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-      script.async = true;
-      script.onload = () => {
+    // Cek apakah Leaflet sudah tersedia
+    if (window.L) {
+      initMap();
+      return;
+    }
+
+    // Load Leaflet
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.async = true;
+    script.onload = () => {
+      // Tambahkan CSS
+      if (!document.querySelector('link[href*="leaflet"]')) {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
         document.head.appendChild(link);
-        setTimeout(initMap, 300);
-      };
-      script.onerror = () => {
-        console.error('Failed to load Leaflet');
-      };
-      document.head.appendChild(script);
+      }
+      setTimeout(initMap, 100);
     };
-
-    loadLeaflet();
+    script.onerror = () => {
+      console.error('Failed to load Leaflet');
+    };
+    document.head.appendChild(script);
 
     return () => {
       if (mapInstanceRef.current) {
@@ -2023,7 +2026,7 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
 
   const initMap = () => {
     const L = window.L;
-    if (!L) return;
+    if (!L || !mapRef.current) return;
 
     const startLat = currentLocation?.lat || (checkpoints[0]?.latitude || -7.7200);
     const startLng = currentLocation?.lng || (checkpoints[0]?.longitude || 109.9084);
@@ -2044,16 +2047,17 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
     map.setView([startLat, startLng], isMobile ? 8 : 9);
     initializedRef.current = true;
     
-    setTimeout(() => {
-      map.invalidateSize();
-    }, 100);
-    
+    // Render markers setelah map siap
     renderMarkers(L, map);
   };
 
   const renderMarkers = (L, map) => {
-    if (!map) return;
-    markersRef.current.forEach(m => m.remove());
+    if (!map || !L) return;
+    
+    // Hapus marker lama
+    markersRef.current.forEach(m => {
+      try { m.remove(); } catch (e) {}
+    });
     markersRef.current = [];
 
     checkpoints.forEach((cp, i) => {
@@ -2086,7 +2090,11 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
       markersRef.current.push(marker);
     });
 
-    if (polylineRef.current) polylineRef.current.remove();
+    // Polyline
+    if (polylineRef.current) {
+      try { polylineRef.current.remove(); } catch (e) {}
+      polylineRef.current = null;
+    }
     if (checkpoints.length > 1) {
       const latlngs = checkpoints.map(cp => [cp.latitude, cp.longitude]);
       polylineRef.current = L.polyline(latlngs, { 
@@ -2100,7 +2108,13 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
 
   useEffect(() => {
     const L = window.L;
-    if (!L || !mapInstanceRef.current || !initializedRef.current) return;
+    if (!L || !mapInstanceRef.current || !initializedRef.current) {
+      // Jika map belum siap, coba inisialisasi
+      if (mapRef.current && !mapInstanceRef.current) {
+        initMap();
+      }
+      return;
+    }
     renderMarkers(L, mapInstanceRef.current);
   }, [checkpoints, isMobile]);
 
@@ -2108,7 +2122,10 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
     const L = window.L;
     if (!L || !mapInstanceRef.current || !currentLocation || !initializedRef.current) return;
 
-    if (currentMarkerRef.current) currentMarkerRef.current.remove();
+    if (currentMarkerRef.current) {
+      try { currentMarkerRef.current.remove(); } catch (e) {}
+      currentMarkerRef.current = null;
+    }
 
     const size = isMobile ? 30 : 40;
     const isMoving = statusMessage?.isMoving !== false && sessionStatus !== "completed";
@@ -2152,7 +2169,7 @@ function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay
     const handleResize = () => {
       if (mapInstanceRef.current) {
         setTimeout(() => {
-          mapInstanceRef.current.invalidateSize();
+          try { mapInstanceRef.current.invalidateSize(); } catch (e) {}
         }, 300);
       }
     };
