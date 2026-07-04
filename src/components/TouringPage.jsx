@@ -1,6 +1,6 @@
 // TouringPage.jsx
 // Halaman Utama Touring Tracker - Manual Start Only
-import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "../supabaseClient";
 import {
   FiMapPin, FiClock, FiTruck, FiAlertCircle, FiCheckCircle,
@@ -168,11 +168,6 @@ const iconBtn = {
   transition: "all 0.2s"
 };
 
-// ─── MAP COMPONENT (dengan dynamic import) ──────────────────────────────────
-
-// Komponen map yang di-load secara lazy
-const LazyMap = lazy(() => import('./TouringMap'));
-
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 
 export default function TouringPage() {
@@ -215,7 +210,6 @@ export default function TouringPage() {
   const [stopStartTime, setStopStartTime] = useState(null);
   const [currentStopId, setCurrentStopId] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [mapLoaded, setMapLoaded] = useState(false);
   
   const watchIdRef = useRef(null);
   const notificationIdRef = useRef(0);
@@ -240,7 +234,9 @@ export default function TouringPage() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // ─── WAKE LOCK ──────────────────────────────────────────────────────────────
+  // ─── WAKE LOCK (mencegah layar mati saat tracking aktif) ────────────────────
+  // Catatan: ini HANYA mencegah layar mengunci selagi tab dibuka & tracking aktif.
+  // Ini bukan "background tracking" sungguhan (lihat penjelasan di chat).
 
   const requestWakeLock = useCallback(async () => {
     try {
@@ -266,6 +262,8 @@ export default function TouringPage() {
     }
   }, []);
 
+  // Re-acquire wake lock saat tab kembali terlihat (browser otomatis melepas
+  // wake lock saat tab disembunyikan/minimize)
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible" && isTrackingRef.current && !wakeLockRef.current) {
@@ -278,6 +276,7 @@ export default function TouringPage() {
 
   // ─── FUNGSI ──────────────────────────────────────────────────────────────────
 
+  // Load semua session
   const loadAllSessions = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -320,6 +319,7 @@ export default function TouringPage() {
     }
   }, []);
 
+  // Load data session tertentu
   const loadSessionData = useCallback(async (sessionId) => {
     try {
       setIsLoading(true);
@@ -348,6 +348,7 @@ export default function TouringPage() {
         fuel_liters: data.fuel_liters || 5
       });
       
+      // Load checkpoints dari database - JANGAN PAKAI DEFAULT
       let cpData = [];
       if (data.touring_checkpoints && data.touring_checkpoints.length > 0) {
         cpData = data.touring_checkpoints
@@ -355,6 +356,7 @@ export default function TouringPage() {
           .sort((a, b) => a.order_index - b.order_index);
       }
       
+      // Jika ada data dari checkpoints_data di session
       if (cpData.length === 0 && data.checkpoints_data && data.checkpoints_data.length > 0) {
         cpData = data.checkpoints_data;
       }
@@ -365,6 +367,7 @@ export default function TouringPage() {
       setSelectedSessionId(data.id);
       localStorage.setItem("touring_session", JSON.stringify({ id: data.id, code: data.session_code }));
 
+      // Check if session is completed
       const isCompleted = data.status === "completed";
       isSessionCompletedRef.current = isCompleted;
       
@@ -387,6 +390,7 @@ export default function TouringPage() {
         setStatusMessage({ text: "⏳ Belum Mulai", location: "", isMoving: false });
       }
 
+      // Load notifications
       const { data: notifData } = await supabase
         .from("touring_notifications")
         .select("*")
@@ -398,6 +402,7 @@ export default function TouringPage() {
         setNotifications(notifData);
       }
 
+      // Load stops
       const { data: stopsData } = await supabase
         .from("touring_stops")
         .select("*")
@@ -408,6 +413,7 @@ export default function TouringPage() {
         setStops(stopsData);
       }
 
+      // Load latest tracking
       const { data: trackData } = await supabase
         .from("touring_location_tracking")
         .select("*")
@@ -426,6 +432,7 @@ export default function TouringPage() {
         };
       }
 
+      // Load report jika ada
       if (data.report_generated) {
         const { data: reportData } = await supabase
           .from("touring_reports")
@@ -449,6 +456,7 @@ export default function TouringPage() {
     }
   }, []);
 
+  // Buat session baru - TANPA DEFAULT CHECKPOINTS
   const createNewSession = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -465,13 +473,14 @@ export default function TouringPage() {
           late_departure: false,
           total_distance_km: 0,
           manual_start_only: true,
-          checkpoints_data: []
+          checkpoints_data: [] // Kosong
         })
         .select()
         .single();
 
       if (createError) throw createError;
 
+      // Refresh session list
       const { data: sessionsData } = await supabase
         .from("touring_sessions")
         .select("*")
@@ -498,6 +507,7 @@ export default function TouringPage() {
     }
   }, [loadSessionData]);
 
+  // Hapus session
   const deleteSession = useCallback(async (sessionId) => {
     if (!window.confirm("Apakah Anda yakin ingin menghapus perjalanan ini?")) return;
     
@@ -526,17 +536,26 @@ export default function TouringPage() {
     }
   }, [selectedSessionId, sessions, loadSessionData, createNewSession]);
 
+  // ─── SAVE CHECKPOINTS KE DATABASE ──────────────────────────────────────
+  // PENTING: fungsi ini menerima parameter `checkpointsToSave` secara eksplisit.
+  // Jangan hanya mengandalkan state `checkpoints` dari closure, karena setState
+  // bersifat asynchronous — jika dipanggil tepat setelah setCheckpoints(updated),
+  // closure lama akan menyimpan data yang BELUM diperbarui (inilah penyebab
+  // bug "kota baru tidak tersimpan / reset ke default").
+
   const saveCheckpointsToDatabase = useCallback(async (checkpointsToSave = checkpoints) => {
     if (!sessionIdRef.current || isSaving) return;
     
     setIsSaving(true);
     
     try {
+      // 1. Soft delete semua checkpoint lama
       await supabase
         .from("touring_checkpoints")
         .update({ is_deleted: true })
         .eq("session_id", sessionIdRef.current);
 
+      // 2. Insert checkpoint baru (pakai data yang benar-benar terbaru)
       for (let i = 0; i < checkpointsToSave.length; i++) {
         const cp = checkpointsToSave[i];
         const scheduledDatetime = cp.scheduled_date && cp.scheduled_time 
@@ -565,6 +584,7 @@ export default function TouringPage() {
         }
       }
 
+      // 3. Update session dengan checkpoints_data (data terbaru, bukan closure lama)
       await supabase
         .from("touring_sessions")
         .update({
@@ -573,6 +593,7 @@ export default function TouringPage() {
         })
         .eq("id", sessionIdRef.current);
 
+      // 4. Refresh session list
       const { data: sessionsData } = await supabase
         .from("touring_sessions")
         .select("*")
@@ -582,6 +603,7 @@ export default function TouringPage() {
         setSessions(sessionsData);
       }
 
+      // 5. Reload data untuk memastikan (sekarang aman, karena DB sudah berisi data terbaru)
       await loadSessionData(sessionIdRef.current);
       
       alert("Data rute berhasil disimpan!");
@@ -594,10 +616,13 @@ export default function TouringPage() {
     }
   }, [checkpoints, isSaving, loadSessionData]);
 
+  // ─── SAVE ALL DATA ──────────────────────────────────────────────────────
+
   const saveAllToDatabase = useCallback(async () => {
     if (!sessionIdRef.current) return;
 
     try {
+      // Save transport data
       await supabase
         .from("touring_sessions")
         .update({
@@ -612,6 +637,7 @@ export default function TouringPage() {
         })
         .eq("id", sessionIdRef.current);
 
+      // Save checkpoints (checkpoints state saat ini sudah yang terbaru di titik ini)
       await saveCheckpointsToDatabase(checkpoints);
 
     } catch (error) {
@@ -619,6 +645,8 @@ export default function TouringPage() {
       alert("Gagal menyimpan data. Silakan coba lagi.");
     }
   }, [transport, sessionStatus, lateDeparture, checkpoints, saveCheckpointsToDatabase]);
+
+  // ─── UPDATE STATUS MESSAGE ──────────────────────────────────────────────
 
   const updateStatusMessage = useCallback((status, location = null, isMoving = null) => {
     let text = "";
@@ -666,6 +694,8 @@ export default function TouringPage() {
     setIsStopped(!moving && status === "active");
   }, [currentLocation, checkpoints]);
 
+  // ─── MOVEMENT DETECTION ──────────────────────────────────────────────────
+
   const startMovementDetection = useCallback(() => {
     if (movementCheckIntervalRef.current) {
       clearInterval(movementCheckIntervalRef.current);
@@ -696,6 +726,8 @@ export default function TouringPage() {
 
     }, 5000);
   }, [statusMessage, sessionStatus, updateStatusMessage]);
+
+  // ─── RECORD STOP ─────────────────────────────────────────────────────────
 
   const recordStop = useCallback(async (lat, lng) => {
     if (currentStopId || isSessionCompletedRef.current) return;
@@ -729,6 +761,8 @@ export default function TouringPage() {
     }
   }, [currentStopId]);
 
+  // ─── RESUME FROM STOP ────────────────────────────────────────────────────
+
   const resumeFromStop = useCallback(async () => {
     if (!currentStopId || isSessionCompletedRef.current) return;
 
@@ -761,6 +795,12 @@ export default function TouringPage() {
       console.error("Error resuming from stop:", error);
     }
   }, [currentStopId, stopStartTime]);
+
+  // ─── BACKGROUND TRACKING ──────────────────────────────────────────────────
+  // Catatan penting: interval ini HANYA berjalan selama tab/browser terbuka
+  // (baik di foreground maupun background tab). Browser akan menghentikan
+  // seluruh JavaScript (termasuk setInterval & watchPosition) begitu tab/app
+  // benar-benar ditutup atau layar HP dikunci dalam mode hemat daya tertentu.
 
   const startBackgroundTracking = useCallback((sessionId) => {
     if (backgroundIntervalRef.current) {
@@ -838,6 +878,8 @@ export default function TouringPage() {
     }
     isTrackingRef.current = false;
   }, []);
+
+  // ─── TRACKING FUNCTIONS ──────────────────────────────────────────────────
 
   const startTracking = useCallback(() => {
     if (isSessionCompletedRef.current || sessionStatus === "completed") {
@@ -982,8 +1024,45 @@ export default function TouringPage() {
     updateStatusMessage("completed");
     addNotification("info", `✅ Perjalanan selesai! Total jarak: ${totalDistanceRef.current.toFixed(1)} km`, 0);
     
+    // Auto generate report
     await generateReport();
   }, [stopBackgroundTracking, updateStatusMessage, currentStopId, resumeFromStop, releaseWakeLock]);
+
+  // ─── NOTIFICATIONS ─────────────────────────────────────────────────────
+  // PENTING: blok ini HARUS didefinisikan SEBELUM checkForCheckpoint, karena
+  // checkForCheckpoint mencantumkan `addNotification` di dependency array
+  // useCallback-nya. Kalau addNotification dideklarasikan SETELAH itu (const
+  // di JS punya "temporal dead zone"), maka setiap render akan langsung
+  // melempar "ReferenceError: Cannot access 'addNotification' before
+  // initialization" — inilah penyebab layar blank putih sebelumnya.
+
+  const addNotification = useCallback((type, message, minutes) => {
+    const id = notificationIdRef.current++;
+    setNotifications(prev => [{ 
+      id, 
+      type, 
+      message, 
+      minutes, 
+      created_at: new Date().toISOString() 
+    }, ...prev].slice(0, 50));
+
+    supabase
+      .from("touring_notifications")
+      .insert({
+        session_id: sessionIdRef.current,
+        checkpoint_id: selectedCheckpoint?.id || null,
+        type,
+        minutes,
+        message
+      })
+      .then(() => {});
+  }, [selectedCheckpoint]);
+
+  const removeNotification = useCallback((id) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  }, []);
+
+  // ─── CHECK CHECKPOINT ──────────────────────────────────────────────────
 
   const checkForCheckpoint = useCallback((lat, lng) => {
     if (isSessionCompletedRef.current) return;
@@ -1026,6 +1105,7 @@ export default function TouringPage() {
       });
 
       if (changed) {
+        // Simpan ke database dengan data checkpoint TERBARU (bukan closure lama)
         saveCheckpointsToDatabase(updated);
         return updated;
       }
@@ -1033,34 +1113,7 @@ export default function TouringPage() {
     });
   }, [stopTracking, addNotification, saveCheckpointsToDatabase]);
 
-  const addNotification = useCallback((type, message, minutes) => {
-    const id = notificationIdRef.current++;
-    const newNotification = { 
-      id, 
-      type, 
-      message, 
-      minutes, 
-      created_at: new Date().toISOString() 
-    };
-    setNotifications(prev => [newNotification, ...prev].slice(0, 50));
-
-    if (sessionIdRef.current) {
-      supabase
-        .from("touring_notifications")
-        .insert({
-          session_id: sessionIdRef.current,
-          checkpoint_id: selectedCheckpoint?.id || null,
-          type,
-          minutes,
-          message
-        })
-        .then(() => {});
-    }
-  }, [selectedCheckpoint]);
-
-  const removeNotification = useCallback((id) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
-  }, []);
+  // ─── MANUAL DELAY ──────────────────────────────────────────────────────
 
   const handleManualDelay = useCallback((cp, type, minutes) => {
     const updated = checkpoints.map(c => {
@@ -1077,8 +1130,11 @@ export default function TouringPage() {
       ? `⏰ Telat ${minutes} menit di ${cp.city_name} (manual)` 
       : `⏰ Lebih awal ${minutes} menit di ${cp.city_name} (manual)`;
     addNotification(type, message, minutes);
+    // Kirim array `updated` langsung, JANGAN andalkan closure `checkpoints`
     saveCheckpointsToDatabase(updated);
   }, [checkpoints, addNotification, saveCheckpointsToDatabase]);
+
+  // ─── LATE DEPARTURE ──────────────────────────────────────────────────
 
   const handleLateDeparture = useCallback(() => {
     if (isSessionCompletedRef.current) return;
@@ -1093,6 +1149,8 @@ export default function TouringPage() {
       });
   }, [addNotification]);
 
+  // ─── EDIT CHECKPOINT ──────────────────────────────────────────────────
+
   const startEditCheckpoint = useCallback((cp, index) => {
     setEditingCheckpoint(index);
     setEditForm({ ...cp });
@@ -1104,8 +1162,14 @@ export default function TouringPage() {
     setCheckpoints(updated);
     setEditingCheckpoint(null);
     setEditForm({});
+    // FIX BUG UTAMA: kirim array `updated` (data hasil edit) langsung ke fungsi
+    // simpan, bukan mengandalkan state `checkpoints` yang belum ter-update
+    // (closure lama) — inilah yang sebelumnya menyebabkan data ter-reset ke
+    // "Kota Baru" / nilai default setelah disimpan.
     saveCheckpointsToDatabase(updated);
   }, [editingCheckpoint, editForm, checkpoints, saveCheckpointsToDatabase]);
+
+  // ─── CHECKPOINT CRUD ──────────────────────────────────────────────────
 
   const addCheckpoint = useCallback(() => {
     if (isSessionCompletedRef.current) {
@@ -1125,6 +1189,8 @@ export default function TouringPage() {
     };
     const newCheckpoints = [...checkpoints, newCp];
     setCheckpoints(newCheckpoints);
+    // Langsung buka form edit untuk kota yang baru ditambahkan, supaya user
+    // bisa langsung isi nama/koordinat/jadwal sebelum sempat lupa menyimpan.
     setEditingCheckpoint(newCheckpoints.length - 1);
     setEditForm({ ...newCp });
   }, [checkpoints]);
@@ -1154,6 +1220,8 @@ export default function TouringPage() {
     saveCheckpointsToDatabase(arr);
   }, [checkpoints, saveCheckpointsToDatabase]);
 
+  // ─── SHARE ────────────────────────────────────────────────────────────
+
   const shareLink = useCallback(() => {
     const url = `${window.location.origin}${window.location.pathname}?view=${sessionCode}`;
     return url;
@@ -1164,6 +1232,8 @@ export default function TouringPage() {
     await navigator.clipboard.writeText(url);
     alert("Link pemantau berhasil disalin!");
   }, [shareLink]);
+
+  // ─── GENERATE REPORT ──────────────────────────────────────────────────
 
   const generateReport = useCallback(async () => {
     if (!sessionIdRef.current) return;
@@ -1285,9 +1355,6 @@ export default function TouringPage() {
     if (viewCode) {
       window.location.href = `/touring-view?code=${viewCode}`;
     }
-
-    // Load map component
-    setMapLoaded(true);
 
     return () => {
       isMounted.current = false;
@@ -1824,73 +1891,32 @@ export default function TouringPage() {
           </aside>
         )}
 
-        {/* Map Area dengan Lazy Loading */}
+        {/* Map Area */}
         <div style={{ ...styles.mapContainer, ...(isMobile ? styles.mapContainerMobile : {}) }}>
-          {mapLoaded ? (
-            <Suspense fallback={
-              <div style={{ 
-                display: "flex", 
-                alignItems: "center", 
-                justifyContent: "center", 
-                height: "100%", 
-                minHeight: "250px",
-                background: "#0F172A",
-                borderRadius: "10px",
-                border: "1px solid #334155"
-              }}>
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ 
-                    width: "30px", 
-                    height: "30px", 
-                    border: "3px solid #1E293B", 
-                    borderTop: "3px solid #3B82F6", 
-                    borderRadius: "50%", 
-                    animation: "spin 1s linear infinite",
-                    margin: "0 auto 12px"
-                  }}></div>
-                  <p style={{ color: "#64748B", fontSize: "12px" }}>Memuat Peta...</p>
-                </div>
-              </div>
-            }>
-              <LazyMap
-                checkpoints={checkpoints}
-                currentLocation={currentLocation}
-                sessionStatus={sessionStatus}
-                onReportDelay={(cp) => {
-                  setSelectedCheckpoint(cp);
-                  setShowDelayModal(true);
-                }}
-                onMarkReached={(cp) => {
-                  const updated = checkpoints.map(c => {
-                    if (c.id === cp.id) {
-                      return { ...c, status: "reached", actual_arrival_time: new Date().toISOString() };
-                    }
-                    return c;
-                  });
-                  setCheckpoints(updated);
-                  saveCheckpointsToDatabase(updated);
-                }}
-                isTracking={isTracking}
-                isMobile={isMobile}
-                totalDistance={totalDistance}
-                statusMessage={statusMessage}
-                stops={stops}
-              />
-            </Suspense>
-          ) : (
-            <div style={{ 
-              display: "flex", 
-              alignItems: "center", 
-              justifyContent: "center", 
-              height: "100%", 
-              minHeight: "250px",
-              background: "#0F172A",
-              borderRadius: "10px",
-              border: "1px solid #334155"
-            }}>
-              <p style={{ color: "#64748B" }}>Memuat peta...</p>
-            </div>
-          )}
+          <TouringMap
+            checkpoints={checkpoints}
+            currentLocation={currentLocation}
+            sessionStatus={sessionStatus}
+            onReportDelay={(cp) => {
+              setSelectedCheckpoint(cp);
+              setShowDelayModal(true);
+            }}
+            onMarkReached={(cp) => {
+              const updated = checkpoints.map(c => {
+                if (c.id === cp.id) {
+                  return { ...c, status: "reached", actual_arrival_time: new Date().toISOString() };
+                }
+                return c;
+              });
+              setCheckpoints(updated);
+              saveCheckpointsToDatabase(updated);
+            }}
+            isTracking={isTracking}
+            isMobile={isMobile}
+            totalDistance={totalDistance}
+            statusMessage={statusMessage}
+            stops={stops}
+          />
         </div>
       </div>
 
@@ -1950,6 +1976,222 @@ export default function TouringPage() {
           isMobile={isMobile}
         />
       )}
+    </div>
+  );
+}
+
+// ─── MAP COMPONENT ────────────────────────────────────────────────────────────
+
+function TouringMap({ checkpoints, currentLocation, sessionStatus, onReportDelay, onMarkReached, isTracking, isMobile, totalDistance, statusMessage, stops }) {
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const markersRef = useRef([]);
+  const polylineRef = useRef(null);
+  const currentMarkerRef = useRef(null);
+  const initializedRef = useRef(false);
+
+  // Inisialisasi map
+  useEffect(() => {
+    if (initializedRef.current || mapInstanceRef.current) return;
+    
+    const loadLeaflet = () => {
+      if (window.L) {
+        initMap();
+        return;
+      }
+      
+      const script = document.createElement('script');
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      script.async = true;
+      script.onload = () => {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        document.head.appendChild(link);
+        setTimeout(initMap, 300);
+      };
+      script.onerror = () => {
+        console.error('Failed to load Leaflet');
+      };
+      document.head.appendChild(script);
+    };
+
+    loadLeaflet();
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+        initializedRef.current = false;
+      }
+    };
+  }, []);
+
+  const initMap = () => {
+    const L = window.L;
+    if (!L) return;
+
+    const startLat = currentLocation?.lat || (checkpoints[0]?.latitude || -7.7200);
+    const startLng = currentLocation?.lng || (checkpoints[0]?.longitude || 109.9084);
+
+    const map = L.map(mapRef.current, { 
+      zoomControl: true,
+      attributionControl: true,
+      fadeAnimation: true,
+      zoomAnimation: true
+    });
+    mapInstanceRef.current = map;
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19,
+    }).addTo(map);
+
+    map.setView([startLat, startLng], isMobile ? 8 : 9);
+    initializedRef.current = true;
+    
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 100);
+    
+    renderMarkers(L, map);
+  };
+
+  const renderMarkers = (L, map) => {
+    if (!map) return;
+    markersRef.current.forEach(m => m.remove());
+    markersRef.current = [];
+
+    checkpoints.forEach((cp, i) => {
+      const color = cp.status === "reached" ? "#10B981" : cp.status === "active" ? "#3B82F6" : "#6B7280";
+      const size = isMobile ? 28 : 34;
+      
+      const popupContent = `
+        <div style="font-family: Arial, sans-serif; padding: 4px;">
+          <b style="font-size: ${isMobile ? '12px' : '14px'};">${i + 1}. ${cp.city_name}</b><br>
+          <span style="font-size: ${isMobile ? '10px' : '12px'}; color: #666;">
+            📅 ${cp.scheduled_date || "--"}<br>
+            ⏰ ${cp.scheduled_time || "--:--"}<br>
+            ${cp.status === "reached" ? "✅ Tiba" : "⏳ Menunggu"}<br>
+            ${cp.delay_minutes ? `⏱️ Delay: ${cp.delay_minutes} menit` : ""}
+            ${cp.is_final_destination ? "<br>🏁 Tujuan Akhir" : ""}
+          </span>
+        </div>
+      `;
+      
+      const icon = L.divIcon({
+        html: `<div style="background:${color};color:white;border-radius:50%;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:${isMobile ? 10 : 13}px;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)">${i + 1}</div>`,
+        className: "",
+        iconSize: [size, size],
+        iconAnchor: [size/2, size/2],
+      });
+      
+      const marker = L.marker([cp.latitude, cp.longitude], { icon })
+        .bindPopup(popupContent)
+        .addTo(map);
+      markersRef.current.push(marker);
+    });
+
+    if (polylineRef.current) polylineRef.current.remove();
+    if (checkpoints.length > 1) {
+      const latlngs = checkpoints.map(cp => [cp.latitude, cp.longitude]);
+      polylineRef.current = L.polyline(latlngs, { 
+        color: "#3B82F6", 
+        weight: isMobile ? 2 : 3, 
+        opacity: 0.6, 
+        dashArray: "8,4" 
+      }).addTo(map);
+    }
+  };
+
+  useEffect(() => {
+    const L = window.L;
+    if (!L || !mapInstanceRef.current || !initializedRef.current) return;
+    renderMarkers(L, mapInstanceRef.current);
+  }, [checkpoints, isMobile]);
+
+  useEffect(() => {
+    const L = window.L;
+    if (!L || !mapInstanceRef.current || !currentLocation || !initializedRef.current) return;
+
+    if (currentMarkerRef.current) currentMarkerRef.current.remove();
+
+    const size = isMobile ? 30 : 40;
+    const isMoving = statusMessage?.isMoving !== false && sessionStatus !== "completed";
+    const color = isMoving ? "#3B82F6" : sessionStatus === "completed" ? "#10B981" : "#EF4444";
+    
+    const popupContent = `
+      <div style="font-family: Arial, sans-serif; padding: 4px;">
+        <b style="font-size: ${isMobile ? '12px' : '14px'};">📍 Lokasi Saat Ini</b><br>
+        <span style="font-size: ${isMobile ? '10px' : '12px'}; color: #666;">
+          Status: ${statusMessage?.text || 'Sedang Berjalan'}<br>
+          Lokasi: ${statusMessage?.location || '-'}<br>
+          Total Jarak: ${totalDistance?.toFixed(1) || 0} km
+          ${stops?.length > 0 ? `<br>Berhenti: ${stops.length} kali` : ''}
+        </span>
+      </div>
+    `;
+    
+    const pulseIcon = L.divIcon({
+      html: `<div style="position:relative;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center">
+        <div style="position:absolute;width:${size}px;height:${size}px;background:${color}33;border-radius:50%;animation:ping 1.5s infinite"></div>
+        <div style="width:${isMobile ? 14 : 20}px;height:${isMobile ? 14 : 20}px;background:${color};border-radius:50%;border:2px solid white;box-shadow:0 0 12px ${color}99;position:relative;z-index:1;transition:background 0.5s"></div>
+        ${!isMoving && sessionStatus === "active" ? `<div style="position:absolute;top:-6px;right:-6px;background:#EF4444;border-radius:50%;width:12px;height:12px;display:flex;align-items:center;justify-content:center;font-size:7px;color:white;border:2px solid white;">⏸</div>` : ''}
+        ${sessionStatus === "completed" ? `<div style="position:absolute;top:-6px;right:-6px;background:#10B981;border-radius:50%;width:12px;height:12px;display:flex;align-items:center;justify-content:center;font-size:7px;color:white;border:2px solid white;">✓</div>` : ''}
+      </div>`,
+      className: "",
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2],
+    });
+
+    currentMarkerRef.current = L.marker([currentLocation.lat, currentLocation.lng], { icon: pulseIcon })
+      .bindPopup(popupContent)
+      .addTo(mapInstanceRef.current);
+
+    if (isTracking && sessionStatus === "active") {
+      mapInstanceRef.current.setView([currentLocation.lat, currentLocation.lng], isMobile ? 11 : 13, { animate: true });
+    }
+  }, [currentLocation, isTracking, isMobile, statusMessage, totalDistance, stops, sessionStatus]);
+
+  // Force invalidate size on resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (mapInstanceRef.current) {
+        setTimeout(() => {
+          mapInstanceRef.current.invalidateSize();
+        }, 300);
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  return (
+    <div style={{ position: "relative", width: "100%", height: "100%", minHeight: "250px" }}>
+      <style>{`
+        @keyframes ping {
+          0% { transform: scale(1); opacity: 1; }
+          100% { transform: scale(2.5); opacity: 0; }
+        }
+        .leaflet-popup-content-wrapper {
+          border-radius: 8px !important;
+        }
+        .leaflet-popup-content {
+          margin: 8px 10px !important;
+        }
+        .leaflet-container {
+          width: 100% !important;
+          height: 100% !important;
+          min-height: 250px !important;
+        }
+        @media (max-width: 768px) {
+          .leaflet-control-zoom {
+            display: flex !important;
+          }
+        }
+      `}</style>
+      <div ref={mapRef} style={{ width: "100%", height: "100%", minHeight: "250px", borderRadius: "10px" }} />
     </div>
   );
 }
@@ -2864,6 +3106,7 @@ const styles = {
     fontWeight: "600",
     fontFamily: "monospace"
   },
+  // Report styles
   reportContent: {
     padding: "4px 0"
   },
