@@ -222,6 +222,7 @@ export default function TouringPage() {
   const isTrackingRef = useRef(false);
   const lastLocationRef = useRef(null);
   const isSessionCompletedRef = useRef(false);
+  const wakeLockRef = useRef(null);
 
   // ─── RESPONSIVE ─────────────────────────────────────────────────────────────
 
@@ -232,6 +233,46 @@ export default function TouringPage() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // ─── WAKE LOCK (mencegah layar mati saat tracking aktif) ────────────────────
+  // Catatan: ini HANYA mencegah layar mengunci selagi tab dibuka & tracking aktif.
+  // Ini bukan "background tracking" sungguhan (lihat penjelasan di chat).
+
+  const requestWakeLock = useCallback(async () => {
+    try {
+      if ("wakeLock" in navigator) {
+        wakeLockRef.current = await navigator.wakeLock.request("screen");
+        wakeLockRef.current.addEventListener("release", () => {
+          wakeLockRef.current = null;
+        });
+      }
+    } catch (err) {
+      console.warn("Wake Lock tidak tersedia/ditolak:", err);
+    }
+  }, []);
+
+  const releaseWakeLock = useCallback(async () => {
+    try {
+      if (wakeLockRef.current) {
+        await wakeLockRef.current.release();
+        wakeLockRef.current = null;
+      }
+    } catch (err) {
+      console.warn("Gagal melepas wake lock:", err);
+    }
+  }, []);
+
+  // Re-acquire wake lock saat tab kembali terlihat (browser otomatis melepas
+  // wake lock saat tab disembunyikan/minimize)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && isTrackingRef.current && !wakeLockRef.current) {
+        requestWakeLock();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [requestWakeLock]);
 
   // ─── FUNGSI ──────────────────────────────────────────────────────────────────
 
@@ -496,8 +537,13 @@ export default function TouringPage() {
   }, [selectedSessionId, sessions, loadSessionData, createNewSession]);
 
   // ─── SAVE CHECKPOINTS KE DATABASE ──────────────────────────────────────
+  // PENTING: fungsi ini menerima parameter `checkpointsToSave` secara eksplisit.
+  // Jangan hanya mengandalkan state `checkpoints` dari closure, karena setState
+  // bersifat asynchronous — jika dipanggil tepat setelah setCheckpoints(updated),
+  // closure lama akan menyimpan data yang BELUM diperbarui (inilah penyebab
+  // bug "kota baru tidak tersimpan / reset ke default").
 
-  const saveCheckpointsToDatabase = useCallback(async () => {
+  const saveCheckpointsToDatabase = useCallback(async (checkpointsToSave = checkpoints) => {
     if (!sessionIdRef.current || isSaving) return;
     
     setIsSaving(true);
@@ -509,8 +555,9 @@ export default function TouringPage() {
         .update({ is_deleted: true })
         .eq("session_id", sessionIdRef.current);
 
-      // 2. Insert checkpoint baru
-      for (const cp of checkpoints) {
+      // 2. Insert checkpoint baru (pakai data yang benar-benar terbaru)
+      for (let i = 0; i < checkpointsToSave.length; i++) {
+        const cp = checkpointsToSave[i];
         const scheduledDatetime = cp.scheduled_date && cp.scheduled_time 
           ? new Date(`${cp.scheduled_date}T${cp.scheduled_time}:00`).toISOString()
           : null;
@@ -519,7 +566,7 @@ export default function TouringPage() {
           .from("touring_checkpoints")
           .insert({
             session_id: sessionIdRef.current,
-            order_index: checkpoints.indexOf(cp),
+            order_index: i,
             city_name: cp.city_name,
             latitude: cp.latitude,
             longitude: cp.longitude,
@@ -537,11 +584,11 @@ export default function TouringPage() {
         }
       }
 
-      // 3. Update session dengan checkpoints_data
+      // 3. Update session dengan checkpoints_data (data terbaru, bukan closure lama)
       await supabase
         .from("touring_sessions")
         .update({
-          checkpoints_data: checkpoints,
+          checkpoints_data: checkpointsToSave,
           updated_at: new Date().toISOString()
         })
         .eq("id", sessionIdRef.current);
@@ -556,7 +603,7 @@ export default function TouringPage() {
         setSessions(sessionsData);
       }
 
-      // 5. Reload data untuk memastikan
+      // 5. Reload data untuk memastikan (sekarang aman, karena DB sudah berisi data terbaru)
       await loadSessionData(sessionIdRef.current);
       
       alert("Data rute berhasil disimpan!");
@@ -567,7 +614,7 @@ export default function TouringPage() {
     } finally {
       setIsSaving(false);
     }
-  }, [checkpoints, loadSessionData]);
+  }, [checkpoints, isSaving, loadSessionData]);
 
   // ─── SAVE ALL DATA ──────────────────────────────────────────────────────
 
@@ -590,14 +637,14 @@ export default function TouringPage() {
         })
         .eq("id", sessionIdRef.current);
 
-      // Save checkpoints
-      await saveCheckpointsToDatabase();
+      // Save checkpoints (checkpoints state saat ini sudah yang terbaru di titik ini)
+      await saveCheckpointsToDatabase(checkpoints);
 
     } catch (error) {
       console.error("Error saving all data:", error);
       alert("Gagal menyimpan data. Silakan coba lagi.");
     }
-  }, [transport, sessionStatus, lateDeparture, saveCheckpointsToDatabase]);
+  }, [transport, sessionStatus, lateDeparture, checkpoints, saveCheckpointsToDatabase]);
 
   // ─── UPDATE STATUS MESSAGE ──────────────────────────────────────────────
 
@@ -722,6 +769,7 @@ export default function TouringPage() {
     try {
       const now = new Date();
       const duration = stopStartTime ? Math.floor((now - stopStartTime) / 60000) : 0;
+      const stopIdToUpdate = currentStopId;
 
       await supabase
         .from("touring_stops")
@@ -729,16 +777,16 @@ export default function TouringPage() {
           resumed_at: now.toISOString(),
           duration_minutes: duration
         })
-        .eq("id", currentStopId);
+        .eq("id", stopIdToUpdate);
 
-      setCurrentStopId(null);
-      setStopStartTime(null);
-      
       setStops(prev => prev.map(s => 
-        s.id === currentStopId 
+        s.id === stopIdToUpdate 
           ? { ...s, resumed_at: now.toISOString(), duration_minutes: duration }
           : s
       ));
+
+      setCurrentStopId(null);
+      setStopStartTime(null);
 
       if (duration > 0) {
         addNotification("info", `🚀 Melanjutkan perjalanan setelah ${duration} menit`, 0);
@@ -749,6 +797,10 @@ export default function TouringPage() {
   }, [currentStopId, stopStartTime]);
 
   // ─── BACKGROUND TRACKING ──────────────────────────────────────────────────
+  // Catatan penting: interval ini HANYA berjalan selama tab/browser terbuka
+  // (baik di foreground maupun background tab). Browser akan menghentikan
+  // seluruh JavaScript (termasuk setInterval & watchPosition) begitu tab/app
+  // benar-benar ditutup atau layar HP dikunci dalam mode hemat daya tertentu.
 
   const startBackgroundTracking = useCallback((sessionId) => {
     if (backgroundIntervalRef.current) {
@@ -853,6 +905,8 @@ export default function TouringPage() {
       { enableHighAccuracy: true }
     );
 
+    requestWakeLock();
+
     setIsTracking(true);
     isTrackingRef.current = true;
     setSessionStatus("active");
@@ -939,7 +993,7 @@ export default function TouringPage() {
     );
 
     addNotification("info", "🚀 Perjalanan dimulai!", 0);
-  }, [checkpoints, startBackgroundTracking, updateStatusMessage, sessionStatus]);
+  }, [checkpoints, startBackgroundTracking, updateStatusMessage, sessionStatus, requestWakeLock]);
 
   const stopTracking = useCallback(async () => {
     if (watchIdRef.current) {
@@ -952,6 +1006,7 @@ export default function TouringPage() {
     }
     
     stopBackgroundTracking();
+    releaseWakeLock();
     setIsTracking(false);
     isTrackingRef.current = false;
     setSessionStatus("completed");
@@ -971,7 +1026,7 @@ export default function TouringPage() {
     
     // Auto generate report
     await generateReport();
-  }, [stopBackgroundTracking, updateStatusMessage, currentStopId, resumeFromStop]);
+  }, [stopBackgroundTracking, updateStatusMessage, currentStopId, resumeFromStop, releaseWakeLock]);
 
   // ─── CHECK CHECKPOINT ──────────────────────────────────────────────────
 
@@ -981,41 +1036,48 @@ export default function TouringPage() {
     const threshold = 0.5;
     const now = new Date();
 
-    checkpoints.forEach((cp, index) => {
-      if (cp.status === "reached") return;
-      
-      const dist = getDistanceKm(lat, lng, cp.latitude, cp.longitude);
-      if (dist < threshold) {
-        const updated = [...checkpoints];
-        updated[index] = { 
-          ...cp, 
-          status: "reached", 
-          actual_arrival_time: now.toISOString() 
-        };
-        setCheckpoints(updated);
+    setCheckpoints(prevCheckpoints => {
+      let changed = false;
+      const updated = prevCheckpoints.map(cp => ({ ...cp }));
 
-        if (cp.scheduled_time && cp.scheduled_date) {
-          const scheduledDateTime = new Date(`${cp.scheduled_date}T${cp.scheduled_time}:00`);
-          const delayMinutes = Math.floor((now - scheduledDateTime) / 60000);
-          updated[index].delay_minutes = delayMinutes;
-          setCheckpoints(updated);
+      updated.forEach((cp, index) => {
+        if (cp.status === "reached") return;
 
-          if (delayMinutes > 5) {
-            addNotification("late", `⏰ Telat ${delayMinutes} menit di ${cp.city_name}`, delayMinutes);
-          } else if (delayMinutes < -5) {
-            addNotification("early", `⏰ Lebih awal ${Math.abs(delayMinutes)} menit di ${cp.city_name}`, delayMinutes);
-          } else {
-            addNotification("arrived", `✅ Tiba tepat waktu di ${cp.city_name}`, 0);
+        const dist = getDistanceKm(lat, lng, cp.latitude, cp.longitude);
+        if (dist < threshold) {
+          changed = true;
+          cp.status = "reached";
+          cp.actual_arrival_time = now.toISOString();
+
+          if (cp.scheduled_time && cp.scheduled_date) {
+            const scheduledDateTime = new Date(`${cp.scheduled_date}T${cp.scheduled_time}:00`);
+            const delayMinutes = Math.floor((now - scheduledDateTime) / 60000);
+            cp.delay_minutes = delayMinutes;
+
+            if (delayMinutes > 5) {
+              addNotification("late", `⏰ Telat ${delayMinutes} menit di ${cp.city_name}`, delayMinutes);
+            } else if (delayMinutes < -5) {
+              addNotification("early", `⏰ Lebih awal ${Math.abs(delayMinutes)} menit di ${cp.city_name}`, delayMinutes);
+            } else {
+              addNotification("arrived", `✅ Tiba tepat waktu di ${cp.city_name}`, 0);
+            }
+          }
+
+          if (cp.is_final_destination) {
+            stopTracking();
+            addNotification("info", `🎉 Perjalanan selesai! Tiba di tujuan akhir: ${cp.city_name}`, 0);
           }
         }
+      });
 
-        if (cp.is_final_destination) {
-          stopTracking();
-          addNotification("info", `🎉 Perjalanan selesai! Tiba di tujuan akhir: ${cp.city_name}`, 0);
-        }
+      if (changed) {
+        // Simpan ke database dengan data checkpoint TERBARU (bukan closure lama)
+        saveCheckpointsToDatabase(updated);
+        return updated;
       }
+      return prevCheckpoints;
     });
-  }, [checkpoints, stopTracking]);
+  }, [stopTracking, addNotification, saveCheckpointsToDatabase]);
 
   // ─── NOTIFICATIONS ─────────────────────────────────────────────────────
 
@@ -1062,7 +1124,8 @@ export default function TouringPage() {
       ? `⏰ Telat ${minutes} menit di ${cp.city_name} (manual)` 
       : `⏰ Lebih awal ${minutes} menit di ${cp.city_name} (manual)`;
     addNotification(type, message, minutes);
-    saveCheckpointsToDatabase();
+    // Kirim array `updated` langsung, JANGAN andalkan closure `checkpoints`
+    saveCheckpointsToDatabase(updated);
   }, [checkpoints, addNotification, saveCheckpointsToDatabase]);
 
   // ─── LATE DEPARTURE ──────────────────────────────────────────────────
@@ -1093,7 +1156,11 @@ export default function TouringPage() {
     setCheckpoints(updated);
     setEditingCheckpoint(null);
     setEditForm({});
-    saveCheckpointsToDatabase();
+    // FIX BUG UTAMA: kirim array `updated` (data hasil edit) langsung ke fungsi
+    // simpan, bukan mengandalkan state `checkpoints` yang belum ter-update
+    // (closure lama) — inilah yang sebelumnya menyebabkan data ter-reset ke
+    // "Kota Baru" / nilai default setelah disimpan.
+    saveCheckpointsToDatabase(updated);
   }, [editingCheckpoint, editForm, checkpoints, saveCheckpointsToDatabase]);
 
   // ─── CHECKPOINT CRUD ──────────────────────────────────────────────────
@@ -1116,6 +1183,10 @@ export default function TouringPage() {
     };
     const newCheckpoints = [...checkpoints, newCp];
     setCheckpoints(newCheckpoints);
+    // Langsung buka form edit untuk kota yang baru ditambahkan, supaya user
+    // bisa langsung isi nama/koordinat/jadwal sebelum sempat lupa menyimpan.
+    setEditingCheckpoint(newCheckpoints.length - 1);
+    setEditForm({ ...newCp });
   }, [checkpoints]);
 
   const removeCheckpoint = useCallback((index) => {
@@ -1129,7 +1200,8 @@ export default function TouringPage() {
     }
     const newCheckpoints = checkpoints.filter((_, i) => i !== index);
     setCheckpoints(newCheckpoints);
-  }, [checkpoints]);
+    saveCheckpointsToDatabase(newCheckpoints);
+  }, [checkpoints, saveCheckpointsToDatabase]);
 
   const moveCheckpoint = useCallback((index, direction) => {
     if (isSessionCompletedRef.current) return;
@@ -1139,7 +1211,8 @@ export default function TouringPage() {
     if (swap < 0 || swap >= arr.length) return;
     [arr[index], arr[swap]] = [arr[swap], arr[index]];
     setCheckpoints(arr);
-  }, [checkpoints]);
+    saveCheckpointsToDatabase(arr);
+  }, [checkpoints, saveCheckpointsToDatabase]);
 
   // ─── SHARE ────────────────────────────────────────────────────────────
 
@@ -1283,8 +1356,9 @@ export default function TouringPage() {
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
       stopBackgroundTracking();
+      releaseWakeLock();
     };
-  }, [loadAllSessions, stopBackgroundTracking]);
+  }, [loadAllSessions, stopBackgroundTracking, releaseWakeLock]);
 
   // ─── RENDER ────────────────────────────────────────────────────────────
 
@@ -1737,7 +1811,7 @@ export default function TouringPage() {
                   <FiPlus size={14} /> Tambah Kota
                 </button>
                 <button 
-                  onClick={saveCheckpointsToDatabase} 
+                  onClick={() => saveCheckpointsToDatabase(checkpoints)} 
                   style={{ ...btnPrimary, width: "100%", justifyContent: "center", marginTop: "8px", background: "#10B981" }}
                   disabled={isSaving}
                 >
@@ -1829,7 +1903,7 @@ export default function TouringPage() {
                 return c;
               });
               setCheckpoints(updated);
-              saveCheckpointsToDatabase();
+              saveCheckpointsToDatabase(updated);
             }}
             isTracking={isTracking}
             isMobile={isMobile}
@@ -3199,34 +3273,37 @@ const styles = {
 };
 
 // Tambahkan animasi
-const styleSheet = document.createElement("style");
-styleSheet.textContent = `
-  @keyframes slideIn {
-    from { transform: translateX(100%); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
-  }
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-  @media (max-width: 768px) {
-    .leaflet-control-zoom {
-      display: flex !important;
+if (typeof document !== "undefined" && !document.getElementById("touring-tracker-keyframes")) {
+  const styleSheet = document.createElement("style");
+  styleSheet.id = "touring-tracker-keyframes";
+  styleSheet.textContent = `
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
     }
-  }
-  @media print {
-    .modalOverlay {
-      position: static !important;
-      background: white !important;
-      backdrop-filter: none !important;
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
     }
-    .modalContent {
-      box-shadow: none !important;
-      border: 1px solid #ddd !important;
+    @media (max-width: 768px) {
+      .leaflet-control-zoom {
+        display: flex !important;
+      }
     }
-    button {
-      display: none !important;
+    @media print {
+      .modalOverlay {
+        position: static !important;
+        background: white !important;
+        backdrop-filter: none !important;
+      }
+      .modalContent {
+        box-shadow: none !important;
+        border: 1px solid #ddd !important;
+      }
+      button {
+        display: none !important;
+      }
     }
-  }
-`;
-document.head.appendChild(styleSheet);
+  `;
+  document.head.appendChild(styleSheet);
+}
