@@ -33,7 +33,7 @@ import DDOS from "./pages/DDOS/DDOS";
 import DapodikSyncPage from "./pages/Admin/DapodikSyncPage";
 import AkunTerkunci       from "./pages/AkunTerkunci";
 import AdminAccountLocks  from "./pages/Admin/AdminAccountLocks";
-
+import SeaBank from "./pages/User/SeaBank";
 
 
 // Import komponen untuk penjualan tiket konser
@@ -87,6 +87,7 @@ function App() {
 <Route path="/reset-password" element={<ResetPassword />} />
 <Route path="/user/pip" element={<CekPIP />} />
         <Route path="/akun-terkunci" element={<AkunTerkunci />} />
+        <Route path="/sea-bank" element={<SeaBank />} />
 <Route path="/touring" element={
   <ProtectedRoute allowedRoles={['user', 'user-raport', 'admin', 'admin-event']}>
     <TouringPage />
