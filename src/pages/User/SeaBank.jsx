@@ -31,12 +31,13 @@ import {
   FaShieldAlt,
   FaLock,
   FaGift,
-  FaCash,
   FaHandHoldingUsd,
   FaUsers,
   FaFileInvoiceDollar,
   FaMobileAlt,
-  FaTv
+  FaTv,
+  FaMoneyBill,
+  FaCoins
 } from 'react-icons/fa';
 import { 
   MdAccountBalance, 
@@ -46,7 +47,8 @@ import {
   MdOutlineArrowUpward,
   MdOutlineArrowDownward,
   MdQrCodeScanner,
-  MdOutlineAccountBalance
+  MdOutlineAccountBalance,
+  MdAttachMoney
 } from 'react-icons/md';
 import { 
   RiBankFill, 
@@ -467,7 +469,7 @@ const HomePage = ({ onHistoryClick }) => {
           </button>
           <button className="flex flex-col items-center gap-1">
             <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
-              <FaCash className="w-5 h-5 text-blue-600" />
+              <FaMoneyBill className="w-5 h-5 text-blue-600" />
             </div>
             <span className="text-xs text-gray-600">Setor Tunai</span>
           </button>
