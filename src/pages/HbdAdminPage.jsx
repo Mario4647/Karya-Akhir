@@ -45,7 +45,7 @@ export default function HbdAdminPage() {
   const loadAdminConfig = async () => {
     try {
       setLoading(true);
-      const { data: config } = await supabase
+      const { data: config, error } = await supabase
         .from('hbd_settings')
         .select('*')
         .eq('is_active', true)
@@ -53,10 +53,21 @@ export default function HbdAdminPage() {
         .limit(1)
         .maybeSingle();
 
+      if (error) throw error;
+
       if (config) {
         setActiveConfigId(config.id);
+
+        // Format ISO Date String ke HTML datetime-local (yyyy-MM-ddThh:mm)
+        let formattedDate = '';
+        if (config.timer_end) {
+          const dateObj = new Date(config.timer_end);
+          const tzOffset = dateObj.getTimezoneOffset() * 60000;
+          formattedDate = new Date(dateObj.getTime() - tzOffset).toISOString().slice(0, 16);
+        }
+
         setFormData({
-          timerEnd: config.timer_end ? new Date(config.timer_end).toISOString().slice(0, 16) : '',
+          timerEnd: formattedDate,
           message: config.message || '',
           paymentMethod: config.payment_method || 'GoPay',
           accountNumber: config.account_number || '',
@@ -96,7 +107,6 @@ export default function HbdAdminPage() {
       };
 
       if (activeConfigId) {
-        // Update data eksis
         const { error } = await supabase
           .from('hbd_settings')
           .update(payload)
@@ -104,7 +114,6 @@ export default function HbdAdminPage() {
 
         if (error) throw error;
       } else {
-        // Buat record baru jika belum ada
         const { data: newSetting, error } = await supabase
           .from('hbd_settings')
           .insert([payload])
@@ -117,7 +126,7 @@ export default function HbdAdminPage() {
 
       setNotification({
         type: 'success',
-        text: 'Pengaturan HBD & Pembayaran berhasil disimpan ke database!',
+        text: 'Pengaturan berhasil disimpan! Data langsung terintegrasi dengan halaman /hbd.',
       });
     } catch (err) {
       console.error('Gagal menyimpan:', err);
@@ -150,7 +159,7 @@ export default function HbdAdminPage() {
             </div>
             <div>
               <h1 className="text-2xl font-extrabold text-sky-800">Dashboard Admin HBD</h1>
-              <p className="text-xs text-slate-500 mt-0.5">Atur timer, pesan ulang tahun, dan jalur e-wallet/bank pencairan Midtrans.</p>
+              <p className="text-xs text-slate-500 mt-0.5">Atur timer, pesan ulang tahun, dan penerima e-wallet/bank Midtrans.</p>
             </div>
           </div>
           <span className="px-3 py-1 bg-sky-100 text-sky-700 font-semibold rounded-full text-xs">
@@ -192,7 +201,7 @@ export default function HbdAdminPage() {
                 required
                 value={formData.message}
                 onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                placeholder="Tulis ucapan ulang tahun di sini..."
+                placeholder="Tulis pesan ucapan ulang tahun di sini..."
                 className="w-full px-4 py-2.5 rounded-xl border border-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-sm"
               />
             </div>
@@ -202,7 +211,7 @@ export default function HbdAdminPage() {
           <div className="bg-sky-50/50 p-5 rounded-2xl border border-sky-100 space-y-4">
             <div className="flex items-center gap-2 text-sky-800 font-bold text-sm uppercase tracking-wider">
               <FiCreditCard className="text-base" />
-              <span>2. Pengaturan Tujuan Pembayaran / Pencairan</span>
+              <span>2. Data Penerima Pembayaran</span>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -220,13 +229,13 @@ export default function HbdAdminPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Nominal Hadiah (Rp)</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Nama Pemilik Rekening / Penerima</label>
                 <input
-                  type="number"
-                  min="1000"
+                  type="text"
                   required
-                  value={formData.amount}
-                  onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                  placeholder="Contoh: Budi Santoso"
+                  value={formData.accountName}
+                  onChange={(e) => setFormData({ ...formData, accountName: e.target.value })}
                   className="w-full px-4 py-2.5 rounded-xl border border-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-sm"
                 />
               </div>
@@ -244,13 +253,13 @@ export default function HbdAdminPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Nama Pemilik Rekening</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Nominal Pembayaran (Rp)</label>
                 <input
-                  type="text"
+                  type="number"
+                  min="1000"
                   required
-                  placeholder="Contoh: Budi Santoso"
-                  value={formData.accountName}
-                  onChange={(e) => setFormData({ ...formData, accountName: e.target.value })}
+                  value={formData.amount}
+                  onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
                   className="w-full px-4 py-2.5 rounded-xl border border-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white text-sm"
                 />
               </div>
@@ -294,7 +303,7 @@ export default function HbdAdminPage() {
             className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-sky-400 to-blue-500 hover:from-sky-500 hover:to-blue-600 text-white font-bold text-base shadow-lg shadow-sky-200 transition-all transform active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
           >
             <FiSave className="text-xl" />
-            <span>{saving ? 'Saving Config...' : 'SIMPAN PENGATURAN ADMIN'}</span>
+            <span>{saving ? 'Menyimpan...' : 'SIMPAN PENGATURAN ADMIN'}</span>
           </button>
         </form>
       </div>
