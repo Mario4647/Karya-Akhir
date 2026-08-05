@@ -214,7 +214,7 @@ export default function HbdUserPage() {
           <div className="flex justify-center mb-3">
             <FiGift className="text-5xl text-white animate-bounce" />
           </div>
-          <h1 className="text-2xl font-extrabold tracking-wide">Spesial Ulang Tahun!</h1>
+          <h1 className="text-2xl font-extrabold tracking-wide">Haloo Alifyaa</h1>
           <p className="text-sky-100 text-sm mt-1 flex items-center justify-center gap-1">
             <span>Halo, <span className="font-semibold text-white">{profile?.name || 'Teman Sejati'}</span></span>
             <FiSmile className="text-lg" />
@@ -227,7 +227,7 @@ export default function HbdUserPage() {
             <div className="my-4">
               <div className="flex items-center justify-center gap-2 text-slate-500 text-sm font-medium mb-4">
                 <FiClock className="text-sky-500 text-base" />
-                <span>Momen spesial akan terbuka dalam:</span>
+                <span>Akan terbuka dalam:</span>
               </div>
 
               <div className="grid grid-cols-4 gap-2">
@@ -246,7 +246,7 @@ export default function HbdUserPage() {
                 ))}
               </div>
 
-              <p className="text-xs text-slate-400 mt-6 italic">Tunggu sampai timer selesai untuk membuka pesan kejutanmu!</p>
+              <p className="text-xs text-slate-400 mt-6 italic">Tunggu sampai timer selesai untuk membuka pesan</p>
             </div>
           ) : (
             /* Tampilan Setelah Timer Habis (Pesan + Nama Penerima + Tombol Ambil) */
