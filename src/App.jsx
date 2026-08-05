@@ -34,6 +34,9 @@ import DapodikSyncPage from "./pages/Admin/DapodikSyncPage";
 import AkunTerkunci       from "./pages/AkunTerkunci";
 import AdminAccountLocks  from "./pages/Admin/AdminAccountLocks";
 import SeaBank from "./pages/User/SeaBank";
+import HbdUserPage from "./pages/HbdUserPage";
+import HbdAdminPage from "./pages/HbdAdminPage";
+
 
 
 // Import komponen untuk penjualan tiket konser
@@ -164,6 +167,12 @@ function App() {
           </ProtectedRoute>
         } />
 
+<Route path="/hbd-admin" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <HbdAdminPage />
+          </ProtectedRoute>
+        } />
+        
         
         {/* DDoS Tool Route */}
 <Route path="/ddos" element={
@@ -233,6 +242,12 @@ function App() {
         <Route path="/triplist" element={
           <ProtectedRoute allowedRoles={['user', 'user-raport', 'admin']}>
             <UserTripDashboard />
+          </ProtectedRoute>
+        } />
+
+        <Route path="/hbd" element={
+          <ProtectedRoute allowedRoles={['user', 'user-raport', 'admin']}>
+            <HbdUserPage />
           </ProtectedRoute>
         } />
         
