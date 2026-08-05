@@ -7,7 +7,8 @@ import {
   FiXCircle, 
   FiSmile, 
   FiHeart, 
-  FiCreditCard 
+  FiUser,
+  FiCreditCard
 } from 'react-icons/fi';
 
 export default function HbdUserPage() {
@@ -28,8 +29,8 @@ export default function HbdUserPage() {
   const fetchUserDataAndConfig = async () => {
     try {
       setLoading(true);
-      
-      // 1. Get Auth User & Profile
+
+      // 1. Ambil Profil User yang Sedang Login
       const { data: { user } } = await supabase.auth.getUser();
       let currentUserId = null;
 
@@ -37,15 +38,15 @@ export default function HbdUserPage() {
         currentUserId = user.id;
         const { data: userProfile } = await supabase
           .from('profiles')
-          .select('id, name, email, roles, nomor_telepon')
+          .select('id, name, email, roles')
           .eq('id', user.id)
-          .single();
+          .maybeSingle();
 
         setProfile(userProfile || { name: user.email?.split('@')[0], email: user.email });
       }
 
-      // 2. Fetch Config dari tabel hbd_settings
-      const { data: settings } = await supabase
+      // 2. Ambil Pengaturan Aktif dari Tabel hbd_settings
+      const { data: settings, error: settingsError } = await supabase
         .from('hbd_settings')
         .select('*')
         .eq('is_active', true)
@@ -53,19 +54,25 @@ export default function HbdUserPage() {
         .limit(1)
         .maybeSingle();
 
+      if (settingsError) throw settingsError;
+
       if (settings) {
         setSettingConfig(settings);
 
-        // Inject Midtrans Script jika Client Key tersedia
+        // Load Midtrans Snap SDK Jika Client Key Tersedia
         if (settings.midtrans_client_key) {
           const snapScriptUrl = 'https://app.sandbox.midtrans.com/snap/snap.js';
-          const script = document.createElement('script');
-          script.src = snapScriptUrl;
-          script.setAttribute('data-client-key', settings.midtrans_client_key);
-          document.body.appendChild(script);
+          const existingScript = document.getElementById('midtrans-script');
+          if (!existingScript) {
+            const script = document.createElement('script');
+            script.id = 'midtrans-script';
+            script.src = snapScriptUrl;
+            script.setAttribute('data-client-key', settings.midtrans_client_key);
+            document.body.appendChild(script);
+          }
         }
 
-        // 3. Cek apakah user sudah pernah klaim untuk setting_id ini
+        // 3. Cek Riwayat Klaim User
         if (currentUserId) {
           const { data: claimData } = await supabase
             .from('hbd_claims')
@@ -78,30 +85,29 @@ export default function HbdUserPage() {
             setHasClaimed(true);
             setClaimStatus({
               success: claimData.status === 'success',
-              message: `Anda sudah mengambil hadiah ini pada ${new Date(claimData.claimed_at).toLocaleString('id-ID')}.`,
+              message: `Hadiah ini sudah pernah diambil pada ${new Date(claimData.claimed_at).toLocaleString('id-ID')}.`,
               trxId: claimData.transaction_ref,
             });
           }
         }
       }
     } catch (err) {
-      console.error('Error fetching data:', err);
+      console.error('Gagal memuat data:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  // Timer Countdown Loop
+  // Logic Countdown Timer yang Valid & Responsif
   useEffect(() => {
     if (!settingConfig?.timer_end) return;
 
-    const interval = setInterval(() => {
+    const updateTimer = () => {
+      const targetTime = new Date(settingConfig.timer_end).getTime();
       const now = new Date().getTime();
-      const target = new Date(settingConfig.timer_end).getTime();
-      const diff = target - now;
+      const diff = targetTime - now;
 
-      if (diff <= 0) {
-        clearInterval(interval);
+      if (isNaN(targetTime) || diff <= 0) {
         setIsTimerFinished(true);
         setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
       } else {
@@ -113,11 +119,14 @@ export default function HbdUserPage() {
           seconds: Math.floor((diff % (1000 * 60)) / 1000),
         });
       }
-    }, 1000);
+    };
 
-    return () => clearInterval(interval);
+    updateTimer();
+    const timerInterval = setInterval(updateTimer, 1000);
+    return () => clearInterval(timerInterval);
   }, [settingConfig?.timer_end]);
 
+  // Fungsi Proses Klaim Otomatis
   const handleClaimReward = async () => {
     if (!profile?.id || !settingConfig) return;
 
@@ -127,7 +136,7 @@ export default function HbdUserPage() {
     try {
       const orderId = `HBD-CLAIM-${Date.now()}`;
 
-      // Insert ke tabel hbd_claims
+      // Catat ke Tabel hbd_claims
       const { error: claimError } = await supabase.from('hbd_claims').insert([
         {
           user_id: profile.id,
@@ -143,14 +152,14 @@ export default function HbdUserPage() {
 
       if (claimError) throw claimError;
 
-      // Catat juga ke tabel transactions utama
+      // Catat Transaksi Pendapatan User
       await supabase.from('transactions').insert([
         {
           user_id: profile.id,
           type: 'income',
           amount: settingConfig.amount,
           category: 'HBD Gift',
-          description: `Klaim Hadiah Ulang Tahun via ${settingConfig.payment_method} (${settingConfig.account_number})`,
+          description: `Hadiah Ulang Tahun ke ${settingConfig.payment_method} (${settingConfig.account_name})`,
           date: new Date().toISOString(),
         },
       ]);
@@ -158,15 +167,15 @@ export default function HbdUserPage() {
       setHasClaimed(true);
       setClaimStatus({
         success: true,
-        message: `Berhasil! Dana sebesar Rp ${Number(settingConfig.amount).toLocaleString('id-ID')} telah diproses ke ${settingConfig.payment_method} (${settingConfig.account_number} a.n ${settingConfig.account_name}).`,
+        message: `Pembayaran berhasil diproses otomatis ke ${settingConfig.payment_method} atas nama ${settingConfig.account_name}.`,
         trxId: orderId,
       });
 
     } catch (error) {
-      console.error('Pencairan gagal:', error);
+      console.error('Proses klaim gagal:', error);
       setClaimStatus({
         success: false,
-        message: 'Gagal memproses klaim pembayaran. Silakan coba lagi.',
+        message: 'Gagal memproses pembayaran otomatis. Silakan coba kembali.',
       });
     } finally {
       setIsProcessing(false);
@@ -181,9 +190,21 @@ export default function HbdUserPage() {
     );
   }
 
+  if (!settingConfig) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-sky-100 to-blue-100 flex items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-3xl shadow-lg text-center max-w-md">
+          <FiClock className="text-4xl text-sky-500 mx-auto mb-3" />
+          <h2 className="text-lg font-bold text-slate-800">Belum Ada Pengaturan</h2>
+          <p className="text-sm text-slate-500 mt-1">Admin belum mengonfigurasi acara Ulang Tahun di /hbd-admin.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-sky-100 via-sky-50 to-blue-100 flex items-center justify-center p-4">
-      <div className="max-w-lg w-full bg-white/80 backdrop-blur-md rounded-3xl shadow-xl border border-sky-100 overflow-hidden text-slate-800">
+      <div className="max-w-lg w-full bg-white/85 backdrop-blur-md rounded-3xl shadow-xl border border-sky-100 overflow-hidden text-slate-800">
         
         {/* Header Visual */}
         <div className="bg-gradient-to-r from-sky-400 to-blue-500 p-8 text-center text-white relative overflow-hidden">
@@ -201,12 +222,14 @@ export default function HbdUserPage() {
         </div>
 
         <div className="p-6 text-center">
+          {/* Tampilan Timer Menghitung Mundur */}
           {!isTimerFinished && !hasClaimed ? (
             <div className="my-4">
               <div className="flex items-center justify-center gap-2 text-slate-500 text-sm font-medium mb-4">
                 <FiClock className="text-sky-500 text-base" />
                 <span>Momen spesial akan terbuka dalam:</span>
               </div>
+
               <div className="grid grid-cols-4 gap-2">
                 {[
                   { label: 'Hari', val: timeLeft.days },
@@ -222,31 +245,43 @@ export default function HbdUserPage() {
                   </div>
                 ))}
               </div>
-              <p className="text-xs text-slate-400 mt-6 italic">Tunggu sampai timer selesai untuk mengambil kejutanmu!</p>
+
+              <p className="text-xs text-slate-400 mt-6 italic">Tunggu sampai timer selesai untuk membuka pesan kejutanmu!</p>
             </div>
           ) : (
-            <div className="space-y-6 animate-fade-in">
+            /* Tampilan Setelah Timer Habis (Pesan + Nama Penerima + Tombol Ambil) */
+            <div className="space-y-6">
+              
+              {/* Tampilan Pesan */}
               <div className="bg-sky-50/70 border border-sky-200 rounded-2xl p-5 text-left">
                 <div className="flex items-center gap-2 mb-2 text-sky-600 font-semibold text-sm">
                   <FiHeart className="text-rose-500 text-base" />
                   <span>Pesan Spesial:</span>
                 </div>
                 <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-line">
-                  {settingConfig?.message}
+                  {settingConfig.message}
                 </p>
               </div>
 
+              {/* Tampilan Nama Penerima & Metode */}
               <div className="bg-gradient-to-r from-blue-50 to-sky-50 border border-blue-100 rounded-2xl p-4 flex items-center justify-between">
-                <div className="text-left">
-                  <p className="text-xs text-slate-500">Nominal Hadiah</p>
-                  <p className="text-xl font-black text-sky-600">Rp {Number(settingConfig?.amount || 0).toLocaleString('id-ID')}</p>
+                <div className="text-left flex items-center gap-3">
+                  <div className="p-2.5 bg-sky-200/60 text-sky-700 rounded-xl">
+                    <FiUser className="text-lg" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400 font-medium">Nama Penerima</p>
+                    <p className="text-sm font-bold text-slate-700">{settingConfig.account_name}</p>
+                  </div>
                 </div>
-                <div className="text-right flex items-center gap-1.5 px-3 py-1 bg-sky-200/60 text-sky-700 font-semibold rounded-full text-xs">
+                
+                <div className="flex items-center gap-1 px-3 py-1 bg-sky-200/60 text-sky-700 font-semibold rounded-full text-xs">
                   <FiCreditCard />
-                  <span>{settingConfig?.payment_method}</span>
+                  <span>{settingConfig.payment_method}</span>
                 </div>
               </div>
 
+              {/* Status Hasil Klaim */}
               {claimStatus && (
                 <div className={`p-4 rounded-xl text-xs text-left flex items-start gap-3 ${claimStatus.success ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-rose-50 border border-rose-200 text-rose-800'}`}>
                   {claimStatus.success ? (
@@ -261,6 +296,7 @@ export default function HbdUserPage() {
                 </div>
               )}
 
+              {/* Tombol Ambil */}
               {!hasClaimed && (
                 <button
                   onClick={handleClaimReward}
@@ -273,12 +309,12 @@ export default function HbdUserPage() {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                       </svg>
-                      <span>Memproses Transaksi...</span>
+                      <span>Memproses Pembayaran...</span>
                     </>
                   ) : (
                     <>
                       <FiGift className="text-xl" />
-                      <span>AMBIL HADIAH SEKARANG</span>
+                      <span>AMBIL</span>
                     </>
                   )}
                 </button>
