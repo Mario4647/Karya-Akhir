@@ -413,6 +413,23 @@ const ConcertPage = ({ user }) => {
 
       console.log('Creating order (stock NOT reduced yet):', orderData)
 
+      // Di dalam createOrder(), sebelum insert order
+const { data: existingProfile } = await supabase
+  .from('profiles')
+  .select('id')
+  .eq('id', user.id)
+  .single()
+
+if (!existingProfile) {
+  const { error: profileError } = await supabase
+    .from('profiles')
+    .insert({ id: user.id, email: user.email })
+  
+  if (profileError) {
+    throw new Error('Gagal membuat profil pengguna. Silakan logout dan login kembali.')
+  }
+}
+    
       // Insert order
       const { data: order, error: orderError } = await supabase
         .from('orders')
