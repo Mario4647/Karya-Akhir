@@ -648,7 +648,7 @@ const Form = () => {
                 <div className="max-w-7xl mx-auto">
                     <div className="text-center mb-8">
                         <h2 className="text-2xl md:text-3xl font-bold text-gray-800 leading-tight">
-                           Selamat Datang Di Website Mayonaise
+                           Selamat Datang Di Website Penjualan Tiket Konser
                         </h2>
                         <p className="text-base md:text-lg text-gray-600 mt-2">
                             Daftar dan Login untuk mengakses website
